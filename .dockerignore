@@ -1,0 +1,17 @@
+.git
+.idea
+.vscode
+.claude
+.codex
+.opencode
+target
+build
+logs
+api-convert.db
+*.db
+*.log
+AGENTS.local.md
+.agent/settings.local.json
+frontend/node_modules
+frontend/dist
+frontend/.vite

@@ -1,0 +1,4 @@
+{
+  "version": 1,
+  "description": "Shared agent settings placeholder. Put personal settings in .agent/settings.local.json."
+}

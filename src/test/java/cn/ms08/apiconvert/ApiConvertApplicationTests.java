@@ -1,0 +1,678 @@
+package cn.ms08.apiconvert;
+
+import cn.ms08.apiconvert.adapter.OpenAiResponseAdapter;
+import cn.ms08.apiconvert.service.RoutingService;
+import cn.ms08.apiconvert.vo.OpenAiChatCompletionResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.net.InetSocketAddress;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * 管理端认证和渠道聚合接口的 Spring 集成冒烟测试。
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+class ApiConvertApplicationTests {
+
+    /**
+     * MockMvc 在不启动真实 HTTP 服务的情况下驱动管理端接口。
+     */
+    @Autowired
+    private MockMvc mockMvc;
+
+    /**
+     * 直接验证模型到渠道的授权路由选择。
+     */
+    @Autowired
+    private RoutingService routingService;
+
+    /**
+     * 解析管理端接口返回的 JSON 响应。
+     */
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * 项目统一日期时间格式，测试接口出参和查询入参保持一致。
+     */
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /**
+     * 验证当前 Bean 装配下 Spring 应用上下文可以启动。
+     */
+    @Test
+    void contextLoads() {
+    }
+
+    /**
+     * 保护前端登录后依赖的 Authorization: Bearer token 请求头格式。
+     */
+    @Test
+    void adminTokenWorksWithBearerAuthorizationHeader() throws Exception {
+        String token = loginAsAdmin();
+
+        mockMvc.perform(get("/admin/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * 验证控制台网关信息接口能展示反向代理后的 Base URL 和当前公开调用端点。
+     */
+    @Test
+    void adminGatewayInfoShowsBaseUrlAndSupportedEndpoints() throws Exception {
+        String token = loginAsAdmin();
+
+        String response = mockMvc.perform(get("/admin/gateway-info")
+                        .header("Authorization", "Bearer " + token)
+                        .header("X-Forwarded-Proto", "https")
+                        .header("X-Forwarded-Host", "gateway.example.com"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode data = objectMapper.readTree(response).path("data");
+        assertThat(data.path("baseUrl").asText()).isEqualTo("https://gateway.example.com");
+        assertThat(data.path("endpoints").toString())
+                .contains("/health", "/v1/models", "/v1/chat/completions", "/v1/messages");
+    }
+
+    /**
+     * 验证 OpenAI 兼容响应中的缓存读取 token 能进入统一用量统计。
+     */
+    @Test
+    void openAiUsageReadsCachedInputTokens() throws Exception {
+        OpenAiChatCompletionResponse response = objectMapper.readValue("""
+                {
+                  "id": "chatcmpl-test",
+                  "model": "provider-model",
+                  "choices": [],
+                  "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 30,
+                    "total_tokens": 150,
+                    "prompt_tokens_details": {
+                      "cached_tokens": 80
+                    }
+                  }
+                }
+                """, OpenAiChatCompletionResponse.class);
+
+        var unified = new OpenAiResponseAdapter().toUnified(response);
+
+        assertThat(unified.usage().inputTokens()).isEqualTo(120);
+        assertThat(unified.usage().outputTokens()).isEqualTo(30);
+        assertThat(unified.usage().totalTokens()).isEqualTo(150);
+        assertThat(unified.usage().cacheReadInputTokens()).isEqualTo(80);
+    }
+
+    /**
+     * 验证渠道聚合创建、查询和删除流程，并确保不会暴露原始 API Key。
+     */
+    @Test
+    void adminCanCreateAndListCustomChannel() throws Exception {
+        String token = loginAsAdmin();
+        String code = "test-channel-" + UUID.randomUUID();
+        String alias = code + "-alias";
+
+        String createResponse = mockMvc.perform(post("/admin/channels")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "%s",
+                                  "name": "测试渠道",
+                                  "type": "OPENAI_COMPATIBLE",
+                                  "baseUrl": "https://api.example.com",
+                                  "chatPath": "/v1/chat/completions",
+                                  "modelsPath": "/v1/models",
+                                  "apiKey": "sk-test-channel-key",
+                                  "priority": 100,
+                                  "status": "ACTIVE",
+                                  "modelPrefix": "%s",
+                                  "models": [
+                                    {"providerModel": "deepseek-chat"},
+                                    {"publicName": "%s", "providerModel": "deepseek-coder"}
+                                  ],
+                                  "enabled": true
+                                }
+                                """.formatted(code, code, alias)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode created = objectMapper.readTree(createResponse).path("data");
+        long channelId = created.path("id").asLong();
+
+        try {
+            String listResponse = mockMvc.perform(get("/admin/channels")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            assertThat(listResponse).contains(code, "https://api.example.com", "/v1/chat/completions");
+            assertThat(listResponse).contains(code + "/deepseek-chat", alias, "\"modelCount\":2");
+
+            String modelsResponse = mockMvc.perform(get("/admin/models")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            assertThat(modelsResponse).contains(code + "/deepseek-chat", alias);
+
+            mockMvc.perform(post("/admin/channels")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "code": "%s-duplicate",
+                                      "name": "重复别名渠道",
+                                      "type": "OPENAI_COMPATIBLE",
+                                      "baseUrl": "https://api.example.com",
+                                      "chatPath": "/v1/chat/completions",
+                                      "modelsPath": "/v1/models",
+                                      "apiKey": "sk-test-channel-key",
+                                      "models": [
+                                        {"publicName": "%s", "providerModel": "deepseek-chat"}
+                                      ],
+                                      "enabled": true
+                                    }
+                                    """.formatted(code, alias)))
+                    .andExpect(status().isBadRequest());
+        } finally {
+            mockMvc.perform(delete("/admin/channels/" + channelId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    /**
+     * 验证编辑渠道时 API Key 留空，模型发现接口会使用数据库中已保存的供应商密钥。
+     */
+    @Test
+    void editingChannelCanFetchModelsWithSavedApiKeyWhenFormKeyIsBlank() throws Exception {
+        String token = loginAsAdmin();
+        String code = "fetch-models-" + UUID.randomUUID();
+        String savedApiKey = "sk-saved-model-fetch-key";
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/models", exchange -> {
+            String authorization = exchange.getRequestHeaders().getFirst("Authorization");
+            if (!("Bearer " + savedApiKey).equals(authorization)) {
+                exchange.sendResponseHeaders(401, -1);
+                exchange.close();
+                return;
+            }
+            byte[] body = """
+                    {"data":[{"id":"saved-key-model","owned_by":"test-upstream"}]}
+                    """.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        long channelId = 0;
+
+        try {
+            String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            String createResponse = mockMvc.perform(post("/admin/channels")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "code": "%s",
+                                      "name": "模型发现密钥回退",
+                                      "type": "OPENAI_COMPATIBLE",
+                                      "baseUrl": "%s",
+                                      "chatPath": "/v1/chat/completions",
+                                      "modelsPath": "/v1/models",
+                                      "apiKey": "%s",
+                                      "models": [],
+                                      "enabled": true
+                                    }
+                                    """.formatted(code, baseUrl, savedApiKey)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            channelId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+            String modelsResponse = mockMvc.perform(post("/admin/channels/models")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "type": "OPENAI_COMPATIBLE",
+                                      "channelId": %d,
+                                      "baseUrl": "%s",
+                                      "modelsPath": "/v1/models",
+                                      "apiKey": ""
+                                    }
+                                    """.formatted(channelId, baseUrl)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            assertThat(modelsResponse).contains("saved-key-model", "test-upstream");
+        } finally {
+            if (channelId > 0) {
+                mockMvc.perform(delete("/admin/channels/" + channelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            server.stop(0);
+        }
+    }
+
+    /**
+     * 验证同一个默认对外模型名可以由多个渠道承载，模型管理中只聚合展示一次。
+     */
+    @Test
+    void duplicateDefaultModelCanBeServedByMultipleChannels() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String firstCode = "shared-a-" + suffix;
+        String secondCode = "shared-b-" + suffix;
+        String sharedModel = "shared-model-" + suffix;
+        long firstId = createChannel(token, firstCode, sharedModel);
+        long secondId = createChannel(token, secondCode, sharedModel);
+        final long[] scopedKeyId = {0};
+
+        try {
+            String keyResponse = mockMvc.perform(post("/admin/api-keys")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "name": "限定渠道密钥",
+                                      "channelCodes": ["%s"]
+                                    }
+                                    """.formatted(firstCode)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode keyData = objectMapper.readTree(keyResponse).path("data");
+            scopedKeyId[0] = keyData.path("id").asLong();
+            assertThat(keyData.path("channelCodes").toString()).contains(firstCode);
+
+            String modelsResponse = mockMvc.perform(get("/admin/models")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            JsonNode models = objectMapper.readTree(modelsResponse).path("data");
+            JsonNode shared = null;
+            for (JsonNode model : models) {
+                if (sharedModel.equals(model.path("publicName").asText())) {
+                    shared = model;
+                    break;
+                }
+            }
+            assertThat(shared).isNotNull();
+            assertThat(shared.path("channelCount").asLong()).isEqualTo(2);
+            assertThat(shared.path("providerCodes").toString()).contains(firstCode, secondCode);
+            assertThat(routingService.resolve(sharedModel, Set.of(firstCode)).providerCode()).isEqualTo(firstCode);
+            assertThat(routingService.resolve(sharedModel, Set.of(secondCode)).providerCode()).isEqualTo(secondCode);
+        } finally {
+            if (scopedKeyId[0] > 0) {
+                mockMvc.perform(delete("/admin/api-keys/" + scopedKeyId[0])
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            mockMvc.perform(delete("/admin/channels/" + firstId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+            mockMvc.perform(delete("/admin/channels/" + secondId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    /**
+     * 验证模型额度单价和密钥余额会在请求上游前参与预检，余额不足时直接返回额度不足。
+     */
+    @Test
+    void chatRequestIsRejectedWhenApiKeyQuotaIsInsufficient() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String code = "quota-channel-" + suffix;
+        String model = "quota-model-" + suffix;
+        long channelId = 0;
+        long apiKeyId = 0;
+
+        try {
+            String channelResponse = mockMvc.perform(post("/admin/channels")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "code": "%s",
+                                      "name": "额度测试渠道",
+                                      "type": "OPENAI_COMPATIBLE",
+                                      "baseUrl": "https://api.example.com",
+                                      "chatPath": "/v1/chat/completions",
+                                      "modelsPath": "/v1/models",
+                                      "apiKey": "sk-test-channel-key",
+                                      "models": [
+                                        {
+                                          "publicName": "%s",
+                                          "providerModel": "%s",
+                                          "inputQuotaPerMillion": 1000000
+                                        }
+                                      ],
+                                      "enabled": true
+                                    }
+                                    """.formatted(code, model, model)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            channelId = objectMapper.readTree(channelResponse).path("data").path("id").asLong();
+
+            String keyResponse = mockMvc.perform(post("/admin/api-keys")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "name": "低余额密钥",
+                                      "channelCodes": ["%s"],
+                                      "quotaBalance": 1
+                                    }
+                                    """.formatted(code)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode key = objectMapper.readTree(keyResponse).path("data");
+            apiKeyId = key.path("id").asLong();
+            String rawKey = key.path("rawKey").asText();
+
+            String response = mockMvc.perform(post("/v1/chat/completions")
+                            .header("Authorization", "Bearer " + rawKey)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "model": "%s",
+                                      "messages": [{"role": "user", "content": "这是一段用于触发额度预检的较长测试输入"}],
+                                      "stream": false
+                                    }
+                                    """.formatted(model)))
+                    .andExpect(status().isPaymentRequired())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            assertThat(response).contains("quota_insufficient");
+        } finally {
+            if (apiKeyId > 0) {
+                mockMvc.perform(delete("/admin/api-keys/" + apiKeyId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            if (channelId > 0) {
+                mockMvc.perform(delete("/admin/channels/" + channelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+        }
+    }
+
+    /**
+     * 验证管理端可以在模型聚合页同步更新同名模型的额度单价。
+     */
+    @Test
+    void adminCanUpdateModelQuotaPricing() throws Exception {
+        String token = loginAsAdmin();
+        String code = "quota-config-" + UUID.randomUUID();
+        String model = "quota-config-model-" + UUID.randomUUID();
+        long channelId = createChannel(token, code, model);
+
+        try {
+            String modelsResponse = mockMvc.perform(get("/admin/models")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode modelRow = null;
+            for (JsonNode row : objectMapper.readTree(modelsResponse).path("data")) {
+                if (model.equals(row.path("publicName").asText())) {
+                    modelRow = row;
+                    break;
+                }
+            }
+            assertThat(modelRow).isNotNull();
+            long modelId = modelRow.path("id").asLong();
+
+            String updateResponse = mockMvc.perform(put("/admin/models/" + modelId + "/quota")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "inputQuotaPerMillion": 2.5,
+                                      "outputQuotaPerMillion": 10,
+                                      "cacheReadQuotaPerMillion": 1
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            JsonNode updated = objectMapper.readTree(updateResponse).path("data");
+            assertThat(updated.path("inputQuotaPerMillion").decimalValue()).isEqualByComparingTo("2.5");
+            assertThat(updated.path("outputQuotaPerMillion").decimalValue()).isEqualByComparingTo("10");
+            assertThat(updated.path("cacheReadQuotaPerMillion").decimalValue()).isEqualByComparingTo("1");
+        } finally {
+            mockMvc.perform(delete("/admin/channels/" + channelId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    /**
+     * 验证模型管理页关闭聚合模型后，同名渠道映射都会被禁用，路由不再命中该模型。
+     */
+    @Test
+    void adminCanDisableModelFromModelManagement() throws Exception {
+        String token = loginAsAdmin();
+        String code = "disable-model-" + UUID.randomUUID();
+        String model = "disable-model-public-" + UUID.randomUUID();
+        long channelId = createChannel(token, code, model);
+
+        try {
+            long modelId = findAdminModelId(token, model);
+
+            String updateResponse = mockMvc.perform(put("/admin/models/" + modelId + "/enabled")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"enabled": false}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            JsonNode updated = objectMapper.readTree(updateResponse).path("data");
+            assertThat(updated.path("enabled").asBoolean()).isFalse();
+            assertThatThrownBy(() -> routingService.resolve(model, Set.of(code)))
+                    .hasMessageContaining("Model not found or no active channel");
+        } finally {
+            mockMvc.perform(delete("/admin/channels/" + channelId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    /**
+     * 验证流式对话在路由失败时仍会记录协议、接口类型、流式标记、耗时和错误码。
+     */
+    @Test
+    void streamingChatRoutingFailureIsRecordedInRequestLog() throws Exception {
+        String token = loginAsAdmin();
+        String model = "stream-test-" + UUID.randomUUID();
+        long apiKeyId = 0;
+
+        try {
+            String keyResponse = mockMvc.perform(post("/admin/api-keys")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "stream-routing-failure-key"}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode keyData = objectMapper.readTree(keyResponse).path("data");
+            apiKeyId = keyData.path("id").asLong();
+            String rawKey = keyData.path("rawKey").asText();
+
+            mockMvc.perform(post("/v1/chat/completions")
+                            .header("Authorization", "Bearer " + rawKey)
+                            .accept(MediaType.ALL)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "model": "%s",
+                                      "messages": [{"role": "user", "content": "hello"}],
+                                      "stream": true
+                                    }
+                                    """.formatted(model)))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("model_not_found")));
+
+            String logsResponse = mockMvc.perform(get("/admin/request-logs")
+                            .header("Authorization", "Bearer " + token)
+                            .param("publicModel", model)
+                            .param("sourceProtocol", "openai")
+                            .param("requestType", "chat_completions")
+                            .param("startTime", "2025-05-15 00:00:00")
+                            .param("endTime", "2099-12-31 23:59:59"))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            JsonNode record = objectMapper.readTree(logsResponse).path("data").path("records").get(0);
+            assertThat(record.path("publicModel").asText()).isEqualTo(model);
+            assertThat(record.path("sourceProtocol").asText()).isEqualTo("openai");
+            assertThat(record.path("requestType").asText()).isEqualTo("chat_completions");
+            assertThat(record.path("stream").asBoolean()).isTrue();
+            assertThat(record.path("success").asBoolean()).isFalse();
+            assertThat(record.path("httpStatus").asInt()).isEqualTo(400);
+            assertThat(record.path("latencyMs").asLong()).isGreaterThanOrEqualTo(0);
+            assertThat(record.path("errorCode").asText()).isEqualTo("MODEL_NOT_FOUND");
+            String createdAt = record.path("createdAt").asText();
+            assertThat(createdAt).matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}");
+            LocalDateTime shanghaiNow = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+            assertThat(LocalDateTime.parse(createdAt, DATE_TIME_FORMATTER))
+                    .isBetween(shanghaiNow.minusMinutes(1), shanghaiNow.plusMinutes(1));
+        } finally {
+            if (apiKeyId > 0) {
+                mockMvc.perform(delete("/admin/api-keys/" + apiKeyId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+        }
+    }
+
+    /**
+     * 使用初始化管理员账号登录，并只返回测试所需的 token。
+     */
+    private String loginAsAdmin() throws Exception {
+        String loginResponse = mockMvc.perform(post("/admin/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"admin","password":"admin123"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode root = objectMapper.readTree(loginResponse);
+        return root.path("data").path("token").asText();
+    }
+
+    /**
+     * 创建只包含一个默认模型名的测试渠道，返回渠道主键以便清理。
+     */
+    private long createChannel(String token, String code, String providerModel) throws Exception {
+        String createResponse = mockMvc.perform(post("/admin/channels")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "%s",
+                                  "name": "%s",
+                                  "type": "OPENAI_COMPATIBLE",
+                                  "baseUrl": "https://api.example.com",
+                                  "chatPath": "/v1/chat/completions",
+                                  "modelsPath": "/v1/models",
+                                  "apiKey": "sk-test-channel-key",
+                                  "models": [
+                                    {"providerModel": "%s"}
+                                  ],
+                                  "enabled": true
+                                }
+                                """.formatted(code, code, providerModel)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(createResponse).path("data").path("id").asLong();
+    }
+
+    /**
+     * 从管理端聚合模型列表里查找指定对外模型名对应的模型记录 ID。
+     */
+    private long findAdminModelId(String token, String publicModel) throws Exception {
+        String modelsResponse = mockMvc.perform(get("/admin/models")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        for (JsonNode row : objectMapper.readTree(modelsResponse).path("data")) {
+            if (publicModel.equals(row.path("publicName").asText())) {
+                return row.path("id").asLong();
+            }
+        }
+        throw new AssertionError("model not found: " + publicModel);
+    }
+
+}

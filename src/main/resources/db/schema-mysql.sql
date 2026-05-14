@@ -1,0 +1,98 @@
+-- 首次安装脚本：只创建缺失对象，不删除任何用户表或历史数据。
+
+CREATE TABLE IF NOT EXISTS gateway_schema_version (
+  version INT PRIMARY KEY COMMENT '结构版本号',
+  installed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '安装时间',
+  description TEXT NOT NULL COMMENT '版本说明'
+) COMMENT='网关数据库结构版本，用于判断是否需要执行增量迁移';
+
+CREATE TABLE IF NOT EXISTS ai_channel (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '渠道主键',
+  code VARCHAR(128) NOT NULL UNIQUE COMMENT '渠道编码，路由和模型映射使用的稳定标识',
+  name VARCHAR(255) NOT NULL COMMENT '渠道名称',
+  type VARCHAR(64) NOT NULL COMMENT '协议类型，例如 OPENAI_COMPATIBLE 或 ANTHROPIC',
+  base_url VARCHAR(1024) NOT NULL COMMENT '上游基础地址',
+  chat_path VARCHAR(512) NOT NULL DEFAULT '/v1/chat/completions' COMMENT '对话或消息请求路径',
+  models_path VARCHAR(512) NOT NULL DEFAULT '/v1/models' COMMENT '模型列表请求路径',
+  api_key TEXT COMMENT '上游 API Key，返回前和日志中必须脱敏',
+  priority INT NOT NULL DEFAULT 100 COMMENT '路由优先级，预留给后续加权或故障转移',
+  status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT '凭证状态，例如 ACTIVE 或 DISABLED',
+  enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '渠道是否启用',
+  last_error TEXT COMMENT '最近一次上游错误，仅保存脱敏后的排查信息',
+  last_used_at TIMESTAMP NULL COMMENT '最近使用时间',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) COMMENT='AI 渠道主表，整合供应商、端点和凭证配置';
+
+CREATE TABLE IF NOT EXISTS ai_channel_model (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '模型映射主键',
+  public_name VARCHAR(255) NOT NULL COMMENT '网关对外模型名，允许多个渠道重复承载',
+  model_alias VARCHAR(255) NULL COMMENT '用户手动别名，非空时必须全局唯一',
+  channel_code VARCHAR(128) NOT NULL COMMENT '所属渠道编码',
+  provider_model VARCHAR(255) NOT NULL COMMENT '上游真实模型名',
+  capabilities_json TEXT COMMENT '能力配置 JSON',
+  input_quota_per_million DECIMAL(20,6) NULL COMMENT '每 100 万普通输入 token 消耗的额度',
+  output_quota_per_million DECIMAL(20,6) NULL COMMENT '每 100 万输出 token 消耗的额度',
+  cache_read_quota_per_million DECIMAL(20,6) NULL COMMENT '每 100 万缓存读取输入 token 消耗的额度',
+  enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '模型映射是否启用',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  CONSTRAINT fk_ai_channel_model_channel FOREIGN KEY(channel_code) REFERENCES ai_channel(code),
+  UNIQUE KEY uk_ai_channel_model_channel_provider(channel_code, provider_model),
+  UNIQUE KEY uk_ai_channel_model_alias(model_alias),
+  KEY idx_ai_channel_model_public_name(public_name)
+) COMMENT='渠道模型映射表，同一对外模型名可以由多个渠道承载';
+
+CREATE TABLE IF NOT EXISTS gateway_api_key (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '密钥主键',
+  name VARCHAR(255) NOT NULL COMMENT '密钥名称',
+  raw_key TEXT COMMENT '明文密钥，仅管理端复制使用，日志必须脱敏',
+  api_key_hash VARCHAR(128) NOT NULL UNIQUE COMMENT 'API Key 哈希值，用于鉴权匹配',
+  key_preview VARCHAR(64) COMMENT '脱敏展示值，不能用于鉴权',
+  status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT '密钥状态',
+  quota_balance DECIMAL(20,6) NULL COMMENT '密钥剩余额度；NULL 表示不限总额度',
+  quota_limit DECIMAL(20,6) NULL COMMENT '滑动窗口内最多可使用的额度；NULL 表示不限制',
+  quota_window_value INT NULL COMMENT '滑动窗口长度数值，例如 3 小时或 7 天',
+  quota_window_unit VARCHAR(16) NULL COMMENT '滑动窗口单位：HOUR、DAY、MONTH',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) COMMENT='网关调用方 API Key 表，明文用于管理端复制，哈希用于鉴权匹配';
+
+CREATE TABLE IF NOT EXISTS gateway_api_key_channel (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '授权记录主键',
+  api_key_id BIGINT NOT NULL COMMENT '网关密钥 ID',
+  channel_code VARCHAR(128) NOT NULL COMMENT '允许使用的渠道编码',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  CONSTRAINT fk_gateway_api_key_channel_key FOREIGN KEY(api_key_id) REFERENCES gateway_api_key(id),
+  CONSTRAINT fk_gateway_api_key_channel_channel FOREIGN KEY(channel_code) REFERENCES ai_channel(code),
+  UNIQUE KEY uk_gateway_api_key_channel(api_key_id, channel_code),
+  KEY idx_gateway_api_key_channel_api_key(api_key_id)
+) COMMENT='网关密钥渠道授权表，没有授权记录表示允许所有渠道';
+
+CREATE TABLE IF NOT EXISTS request_log (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '日志主键',
+  request_id VARCHAR(128) NOT NULL COMMENT '请求 ID',
+  gateway_api_key_id BIGINT COMMENT '调用方密钥 ID',
+  source_protocol VARCHAR(64) NOT NULL COMMENT '来源协议',
+  request_type VARCHAR(64) NOT NULL DEFAULT 'chat_completions' COMMENT '对话接口类型，例如 chat_completions 或 messages',
+  provider_code VARCHAR(128) COMMENT '实际渠道编码',
+  provider_type VARCHAR(64) COMMENT '实际供应商协议类型',
+  public_model VARCHAR(255) COMMENT '请求对外模型名',
+  provider_model VARCHAR(255) COMMENT '上游模型名',
+  stream BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否流式请求',
+  success BOOLEAN NOT NULL DEFAULT FALSE COMMENT '请求是否成功',
+  http_status INT COMMENT 'HTTP 状态码',
+  latency_ms BIGINT COMMENT '耗时毫秒',
+  input_tokens INT COMMENT '输入 token 数',
+  cache_read_input_tokens INT COMMENT '缓存读取输入 token 数',
+  output_tokens INT COMMENT '输出 token 数',
+  total_tokens INT COMMENT '总 token 数',
+  error_code VARCHAR(128) COMMENT '错误码',
+  error_message TEXT COMMENT '错误信息',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  KEY idx_request_log_created_at(created_at),
+  KEY idx_request_log_request_type(source_protocol, request_type),
+  KEY idx_request_log_provider_code(provider_code)
+) COMMENT='请求日志表，记录网关调用结果和用量统计';
+
+INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (9, 'Add API key quota and model quota pricing');

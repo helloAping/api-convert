@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" monitorInterval="30">
+    <Properties>
+        <!-- 日志级别可通过环境变量覆盖；SQL 日志会打印参数，生产环境开启前需要确认密钥等敏感字段不会落盘。 -->
+        <Property name="rootLogLevel">${env:LOG_LEVEL:-INFO}</Property>
+        <Property name="appLogLevel">${env:APP_LOG_LEVEL:-INFO}</Property>
+        <Property name="sqlLogLevel">${env:SQL_LOG_LEVEL:-DEBUG}</Property>
+        <Property name="sqlParamLogLevel">${env:SQL_PARAM_LOG_LEVEL:-DEBUG}</Property>
+        <Property name="logPath">${env:LOG_PATH:-logs}</Property>
+        <Property name="logPattern">%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${logPattern}"/>
+        </Console>
+        <RollingFile name="ApplicationFile"
+                     fileName="${logPath}/api-convert.log"
+                     filePattern="${logPath}/api-convert-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="100 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="30"/>
+        </RollingFile>
+        <RollingFile name="SqlFile"
+                     fileName="${logPath}/sql.log"
+                     filePattern="${logPath}/sql-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="100 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="30"/>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="cn.ms08.apiconvert" level="${appLogLevel}" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="ApplicationFile"/>
+        </Logger>
+
+        <!-- MyBatis 会用 Mapper 命名空间输出 SQL 和参数。 -->
+        <Logger name="cn.ms08.apiconvert.dao" level="${sqlParamLogLevel}" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="SqlFile"/>
+        </Logger>
+        <Logger name="org.mybatis" level="${sqlLogLevel}" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="SqlFile"/>
+        </Logger>
+        <Logger name="com.baomidou.mybatisplus" level="${sqlLogLevel}" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="SqlFile"/>
+        </Logger>
+        <Logger name="org.springframework.jdbc.core.JdbcTemplate" level="${sqlLogLevel}" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="SqlFile"/>
+        </Logger>
+        <Logger name="org.springframework.jdbc.core.StatementCreatorUtils" level="${sqlParamLogLevel}" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="SqlFile"/>
+        </Logger>
+
+        <Root level="${rootLogLevel}">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="ApplicationFile"/>
+        </Root>
+    </Loggers>
+</Configuration>

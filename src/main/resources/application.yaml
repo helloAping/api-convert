@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: api-convert
+  profiles:
+    active: ${API_CONVERT_DB_TYPE:sqlite}
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:sqlite:${api-convert.database.sqlite-path}}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+api-convert:
+  time-zone: ${API_CONVERT_TIME_ZONE:Asia/Shanghai}
+  database:
+    type: ${API_CONVERT_DB_TYPE:sqlite}
+    sqlite-path: ${API_CONVERT_SQLITE_PATH:${user.dir}/api-convert.db}
+    install-enabled: ${API_CONVERT_DB_INSTALL_ENABLED:true}
+  security:
+    enabled: ${API_CONVERT_SECURITY_ENABLED:true}
+    admin:
+      username: ${API_CONVERT_ADMIN_USERNAME:admin}
+      password: ${API_CONVERT_ADMIN_PASSWORD:admin123}
+
+# 渠道、端点、上游密钥和模型不再通过配置文件维护；请通过管理端或数据库写入 ai_channel、ai_channel_model 等表。
+
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  timeout: 1800
+  active-timeout: 1800
+  is-concurrent: true
+  is-share: false
+  token-style: simple-uuid
+  is-log: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: sqlite
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver

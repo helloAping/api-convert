@@ -1,0 +1,32 @@
+version: '1.0'
+name: pr-pipeline
+displayName: laster-dev
+triggers:
+  trigger: manual
+  push:
+    branches:
+      prefix:
+        - ''
+stages:
+  - name: stage-d23892de
+    displayName: 打包
+    strategy: naturally
+    trigger: auto
+    executor: []
+    steps:
+      - step: build@docker
+        name: build_docker
+        displayName: 镜像构建
+        type: cert
+        certificate: 399b6620-32a8-013f-f7f6-1230de7c1145
+        tag: aping/api-convert:${GITEE_BRANCH}
+        dockerfile: ./Dockerfile
+        context: .
+        artifacts: []
+        isCache: false
+        processorType:
+          - amd64
+        parameter: {}
+        notify: []
+        strategy:
+          retry: '0'
