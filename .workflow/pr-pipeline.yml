@@ -1,12 +1,12 @@
 version: '1.0'
 name: pr-pipeline
-displayName: laster-dev
+displayName: relase
 triggers:
   trigger: manual
   push:
-    branches:
+    tags:
       prefix:
-        - ''
+        - relase
 stages:
   - name: stage-d23892de
     displayName: 打包
