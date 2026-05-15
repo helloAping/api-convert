@@ -1,12 +1,12 @@
 version: '1.0'
 name: pr-pipeline
-displayName: relase
+displayName: release
 triggers:
   trigger: manual
   push:
     tags:
       prefix:
-        - relase
+        - release
 stages:
   - name: stage-d23892de
     displayName: 打包
