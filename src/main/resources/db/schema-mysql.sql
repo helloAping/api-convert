@@ -30,7 +30,11 @@ CREATE TABLE IF NOT EXISTS ai_channel_model (
   model_alias VARCHAR(255) NULL COMMENT '用户手动别名，非空时必须全局唯一',
   channel_code VARCHAR(128) NOT NULL COMMENT '所属渠道编码',
   provider_model VARCHAR(255) NOT NULL COMMENT '上游真实模型名',
-  capabilities_json TEXT COMMENT '能力配置 JSON',
+  capabilities_json TEXT COMMENT '能力配置 JSON（已弃用，请使用结构化字段）',
+  vision BOOLEAN NULL COMMENT '是否支持图片/视觉输入',
+  tools_support BOOLEAN NULL COMMENT '是否支持工具/函数调用',
+  json_mode_support BOOLEAN NULL COMMENT '是否支持 JSON 输出模式',
+  context_length BIGINT NULL COMMENT '最大上下文窗口（token 数）',
   input_quota_per_million DECIMAL(20,6) NULL COMMENT '每 100 万普通输入 token 消耗的额度',
   output_quota_per_million DECIMAL(20,6) NULL COMMENT '每 100 万输出 token 消耗的额度',
   cache_read_quota_per_million DECIMAL(20,6) NULL COMMENT '每 100 万缓存读取输入 token 消耗的额度',
@@ -95,4 +99,4 @@ CREATE TABLE IF NOT EXISTS request_log (
   KEY idx_request_log_provider_code(provider_code)
 ) COMMENT='请求日志表，记录网关调用结果和用量统计';
 
-INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (9, 'Add API key quota and model quota pricing');
+INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (10, 'Add structured capability columns');

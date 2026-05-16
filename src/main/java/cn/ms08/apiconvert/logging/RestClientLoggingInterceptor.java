@@ -32,14 +32,16 @@ public class RestClientLoggingInterceptor implements ClientHttpRequestIntercepto
         ClientHttpResponse response = execution.execute(request, body);
         byte[] responseBody = StreamUtils.copyToByteArray(response.getBody());
         long latencyMs = System.currentTimeMillis() - startedAt;
-        log.info("HTTP outbound {} {} status={} latencyMs={} requestHeaders={} requestBody={} responseBody={}",
+        log.info("上游请求：{} {}、状态：{}、耗时：{}ms、请求头：{}、请求体：{}、请求体长度：{}、响应体：{}、响应体长度：{}",
                 request.getMethod(),
                 request.getURI(),
                 response.getStatusCode().value(),
                 latencyMs,
                 LogSanitizer.sanitizeHeaders(request.getHeaders()),
                 LogSanitizer.sanitizeBody(new String(body, StandardCharsets.UTF_8)),
-                LogSanitizer.sanitizeBody(new String(responseBody, StandardCharsets.UTF_8)));
+                body.length,
+                LogSanitizer.sanitizeBody(new String(responseBody, StandardCharsets.UTF_8)),
+                responseBody.length);
         return new CachedClientHttpResponse(response, responseBody);
     }
 

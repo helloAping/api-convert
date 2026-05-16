@@ -12,6 +12,8 @@ import cn.ms08.apiconvert.security.GatewayApiKeyFilter;
 import cn.ms08.apiconvert.security.GatewayPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
@@ -25,6 +27,11 @@ import java.util.UUID;
  */
 @Service
 public class ChatGatewayService {
+
+    /**
+     * 对话网关专用日志器。
+     */
+    private static final Logger log = LoggerFactory.getLogger(ChatGatewayService.class);
 
     /**
      * OpenAI Chat Completions 兼容接口类型。
@@ -141,9 +148,17 @@ public class ChatGatewayService {
                         "stream is not supported for provider type " + route.providerType());
             }
             UnifiedUsage usage = client.streamChat(route, request, outputStream);
+            long latencyMs = System.currentTimeMillis() - start;
+            log.info("SSE 流完成 请求ID：{}、协议：{}、接口：{}、模型：{}、渠道编码：{}、渠道类型：{}、耗时：{}ms、输入Token：{}、输出Token：{}、总计Token：{}、缓存读取Token：{}",
+                    requestId, sourceProtocol, requestType, request.model(),
+                    route.providerCode(), route.providerType(), latencyMs,
+                    usage != null ? usage.inputTokens() : 0,
+                    usage != null ? usage.outputTokens() : 0,
+                    usage != null ? usage.totalTokens() : 0,
+                    usage != null ? usage.cacheReadInputTokens() : 0);
             apiKeyQuotaService.deduct(principal.apiKeyId(), route, usage, estimatedUsage);
             usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, true,
-                    HttpStatus.OK.value(), System.currentTimeMillis() - start, usage);
+                    HttpStatus.OK.value(), latencyMs, usage);
         } catch (GatewayException exception) {
             usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), true,
                     exception.status().value(), System.currentTimeMillis() - start, exception.code().name(), exception.getMessage());

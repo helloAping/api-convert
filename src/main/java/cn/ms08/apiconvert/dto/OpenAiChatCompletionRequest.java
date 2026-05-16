@@ -16,6 +16,8 @@ public class OpenAiChatCompletionRequest {
     private Double temperature;
     @JsonProperty("max_tokens")
     private Integer maxTokens;
+    @JsonProperty("response_format")
+    private ResponseFormat responseFormat;
     private final Map<String, Object> additionalProperties = new LinkedHashMap<>();
 
     public String getModel() {
@@ -56,6 +58,14 @@ public class OpenAiChatCompletionRequest {
 
     public void setMaxTokens(Integer maxTokens) {
         this.maxTokens = maxTokens;
+    }
+
+    public ResponseFormat getResponseFormat() {
+        return responseFormat;
+    }
+
+    public void setResponseFormat(ResponseFormat responseFormat) {
+        this.responseFormat = responseFormat;
     }
 
     @JsonAnyGetter

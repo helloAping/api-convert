@@ -1,6 +1,7 @@
 package cn.ms08.apiconvert.service.admin;
 
 import cn.ms08.apiconvert.dao.AiChannelModelMapper;
+import cn.ms08.apiconvert.dto.admin.ModelCapabilitiesForm;
 import cn.ms08.apiconvert.dto.admin.ModelEnabledForm;
 import cn.ms08.apiconvert.dto.admin.ModelQuotaForm;
 import cn.ms08.apiconvert.entity.AiChannelModelEntity;
@@ -102,6 +103,27 @@ public class AdminModelService {
     }
 
     /**
+     * 更新同一对外模型名下所有渠道映射的能力配置，确保随机路由时能力表现一致。
+     */
+    @Transactional
+    public ModelVO updateCapabilities(Long id, ModelCapabilitiesForm form) {
+        var entity = modelMapper.selectById(id);
+        if (entity == null) {
+            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.NOT_FOUND, "模型不存在");
+        }
+        List<AiChannelModelEntity> samePublicName = modelMapper.selectList(new LambdaQueryWrapper<AiChannelModelEntity>()
+                .eq(AiChannelModelEntity::getPublicName, entity.getPublicName()));
+        for (AiChannelModelEntity model : samePublicName) {
+            model.setVision(form.vision());
+            model.setToolsSupport(form.toolsSupport());
+            model.setJsonModeSupport(form.jsonModeSupport());
+            model.setContextLength(form.contextLength());
+            modelMapper.updateById(model);
+        }
+        return toAggregatedVO(samePublicName);
+    }
+
+    /**
      * 将同名模型的多条渠道记录聚合为一个管理端模型视图。
      */
     private ModelVO toAggregatedVO(List<AiChannelModelEntity> models) {
@@ -111,7 +133,10 @@ public class AdminModelService {
                 first.getPublicName(),
                 first.getChannelCode(),
                 first.getProviderModel(),
-                first.getCapabilitiesJson(),
+                first.getVision(),
+                first.getToolsSupport(),
+                first.getJsonModeSupport(),
+                first.getContextLength(),
                 models.stream().anyMatch(model -> Boolean.TRUE.equals(model.getEnabled())),
                 (long) models.size(),
                 models.stream().map(AiChannelModelEntity::getChannelCode).distinct().toList(),
@@ -131,7 +156,10 @@ public class AdminModelService {
                 entity.getPublicName(),
                 entity.getChannelCode(),
                 entity.getProviderModel(),
-                entity.getCapabilitiesJson(),
+                entity.getVision(),
+                entity.getToolsSupport(),
+                entity.getJsonModeSupport(),
+                entity.getContextLength(),
                 entity.getEnabled(),
                 1L,
                 List.of(entity.getChannelCode()),

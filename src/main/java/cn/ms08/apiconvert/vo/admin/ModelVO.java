@@ -10,7 +10,10 @@ import java.util.List;
  * @param publicName 网关对外暴露的模型名
  * @param providerCode 单条记录的供应商编码，聚合列表中为首个渠道
  * @param providerModel 单条记录的上游模型名，聚合列表中为首个上游模型
- * @param capabilitiesJson 模型能力配置 JSON
+ * @param vision 是否支持图片/视觉输入
+ * @param toolsSupport 是否支持工具/函数调用
+ * @param jsonModeSupport 是否支持 JSON 输出模式
+ * @param contextLength 最大上下文窗口（token 数）
  * @param enabled 聚合后只要存在启用记录即视为启用
  * @param channelCount 保存该模型的渠道数量
  * @param providerCodes 保存该模型的渠道编码列表
@@ -24,7 +27,10 @@ public record ModelVO(
     String publicName,
     String providerCode,
     String providerModel,
-    String capabilitiesJson,
+    Boolean vision,
+    Boolean toolsSupport,
+    Boolean jsonModeSupport,
+    Long contextLength,
     Boolean enabled,
     Long channelCount,
     List<String> providerCodes,

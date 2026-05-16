@@ -4,11 +4,11 @@
 
 - The project targets Java 25.
 - Do not downgrade `pom.xml` to Java 21 only because a local default Maven uses JDK 21.
-- On this machine, verify with OpenJDK 25 explicitly:
+- On this machine, verify with OpenJDK 25 explicitly; the local JDK 25 path is stored in `AGENTS.local.md` as `JAVA_HOME_25`. If not set there, ask the user for the path and save it.
 
 ```bash
-JAVA_HOME='D:\develop\java\openjdk-25' PATH='D:\develop\java\openjdk-25\bin':$PATH mvn -q compile
-JAVA_HOME='D:\develop\java\openjdk-25' PATH='D:\develop\java\openjdk-25\bin':$PATH mvn -q test
+JAVA_HOME="$JAVA_HOME_25" PATH="$JAVA_HOME_25/bin":$PATH mvn -q compile
+JAVA_HOME="$JAVA_HOME_25" PATH="$JAVA_HOME_25/bin":$PATH mvn -q test
 ```
 
 ## Lombok

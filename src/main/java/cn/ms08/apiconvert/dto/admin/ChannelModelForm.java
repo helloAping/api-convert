@@ -11,6 +11,10 @@ import java.math.BigDecimal;
  * @param inputQuotaPerMillion 每 100 万普通输入 token 消耗的额度
  * @param outputQuotaPerMillion 每 100 万输出 token 消耗的额度
  * @param cacheReadQuotaPerMillion 每 100 万缓存读取输入 token 消耗的额度
+ * @param vision 是否支持图片/视觉输入
+ * @param toolsSupport 是否支持工具/函数调用
+ * @param jsonModeSupport 是否支持 JSON 输出模式
+ * @param contextLength 最大上下文窗口（token 数）
  */
 public record ChannelModelForm(
         String publicName,
@@ -18,19 +22,23 @@ public record ChannelModelForm(
         String modelAlias,
         BigDecimal inputQuotaPerMillion,
         BigDecimal outputQuotaPerMillion,
-        BigDecimal cacheReadQuotaPerMillion
+        BigDecimal cacheReadQuotaPerMillion,
+        Boolean vision,
+        Boolean toolsSupport,
+        Boolean jsonModeSupport,
+        Long contextLength
 ) {
     /**
      * 兼容仍然只传 publicName/providerModel 的旧调用方。
      */
     public ChannelModelForm(String publicName, String providerModel) {
-        this(publicName, providerModel, null, null, null, null);
+        this(publicName, providerModel, null, null, null, null, null, null, null, null);
     }
 
     /**
-     * 兼容已支持别名、但尚未支持额度单价的调用方。
+     * 兼容已支持别名、但尚未支持额度单价和能力的调用方。
      */
     public ChannelModelForm(String publicName, String providerModel, String modelAlias) {
-        this(publicName, providerModel, modelAlias, null, null, null);
+        this(publicName, providerModel, modelAlias, null, null, null, null, null, null, null);
     }
 }

@@ -49,8 +49,9 @@ public class AdminGatewayInfoController {
         return List.of(
                 new GatewayInfoVO.EndpointVO("GET", "/health", "通用", "无需鉴权", "健康检查和基础统计"),
                 new GatewayInfoVO.EndpointVO("GET", "/v1/models", "OpenAI", "Gateway API Key", "OpenAI 兼容模型列表"),
-                new GatewayInfoVO.EndpointVO("POST", "/v1/chat/completions", "OpenAI", "Gateway API Key", "OpenAI 兼容聊天补全，支持 SSE 流式透传"),
-                new GatewayInfoVO.EndpointVO("POST", "/v1/messages", "Anthropic", "Gateway API Key", "Anthropic Messages 兼容对话")
+                new GatewayInfoVO.EndpointVO("POST", "/v1/chat/completions", "OpenAI", "Gateway API Key", "OpenAI 兼容聊天补全，支持 SSE 流式透传、response_format（JSON 模式/JSON Schema）"),
+                new GatewayInfoVO.EndpointVO("POST", "/v1/responses", "OpenAI", "Gateway API Key", "OpenAI Responses API 新协议，支持 SSE 流式透传"),
+                new GatewayInfoVO.EndpointVO("POST", "/v1/messages", "Anthropic", "Gateway API Key", "Anthropic Messages 兼容对话，支持 SSE 流式透传")
         );
     }
 

@@ -42,9 +42,27 @@ public class AiChannelModelEntity {
      */
     private String providerModel;
     /**
-     * 能力配置 JSON。
+     * 能力配置 JSON，已弃用——请使用 <code>vision</code>、<code>toolsSupport</code>、
+     * <code>jsonModeSupport</code>、<code>contextLength</code> 等结构化字段。
      */
+    @Deprecated
     private String capabilitiesJson;
+    /**
+     * 是否支持图片/视觉输入。
+     */
+    private Boolean vision;
+    /**
+     * 是否支持工具/函数调用。
+     */
+    private Boolean toolsSupport;
+    /**
+     * 是否支持 JSON 输出模式。
+     */
+    private Boolean jsonModeSupport;
+    /**
+     * 最大上下文窗口，单位为 token 数。
+     */
+    private Long contextLength;
     /**
      * 每 100 万普通输入 token 消耗的额度；为空或 0 表示不按该维度计费。
      */

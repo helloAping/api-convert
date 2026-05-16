@@ -100,9 +100,11 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
         } catch (ProviderException exception) {
             throw exception;
         } catch (RestClientResponseException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY, upstreamError("Provider request failed", exception));
+            int status = exception.getStatusCode().value();
+            throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
+                    upstreamError(prefix(status), exception));
         } catch (RestClientException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY, "Provider request failed: " + exception.getMessage());
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider request failed: " + exception.getMessage());
         }
     }
 
@@ -132,8 +134,9 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
                     .exchange((clientRequest, response) -> {
                         if (response.getStatusCode().isError()) {
                             String body = StreamUtils.copyToString(response.getBody(), StandardCharsets.UTF_8);
-                            throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY,
-                                    upstreamError("Provider stream request failed", response.getStatusCode().value(), body));
+                            int status = response.getStatusCode().value();
+                            throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
+                                    upstreamError(prefix(status), status, body));
                         }
                         return copyOpenAiStream(response.getBody(), outputStream);
                     });
@@ -141,10 +144,10 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
         } catch (ProviderException exception) {
             throw exception;
         } catch (UncheckedIOException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY,
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
                     "Provider stream request failed: " + exception.getMessage());
         } catch (RestClientException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY,
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
                     "Provider stream request failed: " + exception.getMessage());
         }
     }
@@ -159,6 +162,7 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
             String line;
             while ((line = reader.readLine()) != null) {
                 outputStream.write((line + "\n").getBytes(StandardCharsets.UTF_8));
+                outputStream.flush();
                 if (line.isEmpty()) {
                     usage = lastUsage(usage, eventData);
                     eventData.setLength(0);
@@ -263,9 +267,11 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
                     .body(String.class);
             return parseOpenAiModelList(body);
         } catch (RestClientResponseException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY, upstreamError("Provider models request failed", exception));
+            int status = exception.getStatusCode().value();
+            throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
+                    upstreamError(prefix(status), exception));
         } catch (RestClientException | IllegalArgumentException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY, "Provider models request failed: " + exception.getMessage());
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider models request failed: " + exception.getMessage());
         }
     }
 
@@ -289,7 +295,7 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
             } catch (RestClientResponseException exception) {
                 lastResponseException = exception;
             } catch (RestClientException | IllegalArgumentException exception) {
-                throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY, "Provider quota request failed: " + exception.getMessage());
+                throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider quota request failed: " + exception.getMessage());
             }
         }
         if (lastResponseException != null) {
@@ -403,4 +409,24 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
         }
         return prefix + ": status=" + statusCode + ", body=" + body;
     }
+
+    private ErrorCode httpStatusToErrorCode(int status) {
+        if (status == 401) return ErrorCode.PROVIDER_AUTH_FAILED;
+        if (status == 403) return ErrorCode.PROVIDER_AUTH_FAILED;
+        if (status == 429) return ErrorCode.PROVIDER_RATE_LIMITED;
+        if (status >= 500) return ErrorCode.PROVIDER_UNAVAILABLE;
+        if (status == 400) return ErrorCode.PROVIDER_BAD_RESPONSE;
+        return ErrorCode.PROVIDER_BAD_RESPONSE;
+    }
+
+    private String prefix(int status) {
+        ErrorCode code = httpStatusToErrorCode(status);
+        return switch (code) {
+            case PROVIDER_AUTH_FAILED -> "Provider authentication failed";
+            case PROVIDER_RATE_LIMITED -> "Provider rate limited";
+            case PROVIDER_UNAVAILABLE -> "Provider server error";
+            default -> "Provider request failed";
+        };
+    }
+
 }

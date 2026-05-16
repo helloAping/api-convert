@@ -261,7 +261,9 @@ public class AdminChannelService {
                 (long) models.size(),
                 models.stream()
                         .map(model -> new ChannelModelMappingVO(model.getId(), model.getPublicName(),
-                                model.getProviderModel(), model.getModelAlias(), model.getEnabled(),
+                                model.getProviderModel(), model.getModelAlias(),
+                                model.getVision(), model.getToolsSupport(), model.getJsonModeSupport(), model.getContextLength(),
+                                model.getEnabled(),
                                 model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion()))
                         .toList()
         );
@@ -296,6 +298,10 @@ public class AdminChannelService {
             model.setInputQuotaPerMillion(modelForm.inputQuotaPerMillion());
             model.setOutputQuotaPerMillion(modelForm.outputQuotaPerMillion());
             model.setCacheReadQuotaPerMillion(modelForm.cacheReadQuotaPerMillion());
+            model.setVision(modelForm.vision());
+            model.setToolsSupport(modelForm.toolsSupport());
+            model.setJsonModeSupport(modelForm.jsonModeSupport());
+            model.setContextLength(modelForm.contextLength());
             model.setEnabled(true);
             channelModelMapper.insert(model);
         }
@@ -336,7 +342,8 @@ public class AdminChannelService {
                 throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "公开模型名重复: " + publicName);
             }
             normalized.put(publicName, new ChannelModelForm(publicName, model.providerModel(), alias,
-                    model.inputQuotaPerMillion(), model.outputQuotaPerMillion(), model.cacheReadQuotaPerMillion()));
+                    model.inputQuotaPerMillion(), model.outputQuotaPerMillion(), model.cacheReadQuotaPerMillion(),
+                    model.vision(), model.toolsSupport(), model.jsonModeSupport(), model.contextLength()));
         }
         return new ArrayList<>(normalized.values());
     }
