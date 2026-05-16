@@ -3,6 +3,8 @@ package cn.ms08.apiconvert.exception;
 import cn.dev33.satoken.exception.NotLoginException;
 import cn.ms08.apiconvert.vo.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -16,6 +18,8 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(GatewayException.class)
     public ResponseEntity<?> handleGatewayException(GatewayException exception, HttpServletRequest request) {
@@ -59,6 +63,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleException(Exception exception, HttpServletRequest request) {
+        log.error("未捕获异常：{}", exception.getMessage(), exception);
         if (isAdminRequest(request)) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error(500, "Internal server error"));

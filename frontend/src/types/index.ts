@@ -19,7 +19,7 @@ export interface ChannelVO {
   code: string
   /** 管理页面展示名称。 */
   name: string
-  /** 供应商协议类型，例如 OPENAI_COMPATIBLE 或 ANTHROPIC。 */
+  /** 供应商类型（ProviderType），例如 OPENAI_COMPATIBLE、ANTHROPIC、OPENAI_RESPONSES、GEMINI。 */
   type: string
   /** 渠道是否可用于路由。 */
   enabled: boolean
@@ -35,7 +35,7 @@ export interface ChannelVO {
   credentialName: string
   /** 已脱敏的 API Key，不要把该值当作真实密钥提交回后端。 */
   apiKey: string
-  /** 渠道路由优先级，数值越低越优先。 */
+  /** 渠道路由权重，加权模式下数值越高分配流量越多。 */
   priority: number
   /** 渠道状态，例如 ACTIVE 或 DISABLED。 */
   status: string
@@ -112,6 +112,8 @@ export interface RequestLogVO {
   id: number
   requestId: string
   gatewayApiKeyId: number | null
+  gatewayApiKeyName: string | null
+  gatewayApiKeyPreview: string | null
   sourceProtocol: string
   requestType: string
   providerCode: string | null
@@ -136,6 +138,20 @@ export interface AdminLoginVO {
   username: string
 }
 
+export interface RoutingConfigVO {
+  mode: string
+  failureThreshold: number
+  failureCooldownMinutes: number
+  stickyTtlMinutes: number
+}
+
+export interface RoutingConfigForm {
+  mode: string
+  failureThreshold: number
+  failureCooldownMinutes: number
+  stickyTtlMinutes: number
+}
+
 /** 控制台展示的网关外部调用信息，不包含任何密钥。 */
 export interface GatewayInfoVO {
   /** 当前后端接口 Base URL，前端展示时会与端点路径组合成完整调用地址。 */
@@ -158,13 +174,67 @@ export interface GatewayEndpointVO {
   description: string
 }
 
+export interface DashboardStatsVO {
+  summary: DashboardSummaryVO
+  dailyTokenUsage: DashboardTokenPointVO[]
+  hourlyTokenUsage: DashboardTokenPointVO[]
+  modelDistribution: DashboardDimensionUsageVO[]
+  channelDistribution: DashboardDimensionUsageVO[]
+  apiKeyDistribution: DashboardDimensionUsageVO[]
+  modelSeries: DashboardSeriesVO[]
+  channelSeries: DashboardSeriesVO[]
+  apiKeySeries: DashboardSeriesVO[]
+}
+
+export interface DashboardSummaryVO {
+  requestCount: number
+  successCount: number
+  failureCount: number
+  inputTokens: number
+  cacheReadInputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
+export interface DashboardTokenPointVO {
+  label: string
+  requestCount: number
+  inputTokens: number
+  cacheReadInputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
+export interface DashboardDimensionUsageVO {
+  key: string
+  name: string
+  requestCount: number
+  successCount: number
+  failureCount: number
+  inputTokens: number
+  cacheReadInputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
+export interface DashboardSeriesVO {
+  key: string
+  name: string
+  points: DashboardSeriesPointVO[]
+}
+
+export interface DashboardSeriesPointVO {
+  label: string
+  totalTokens: number
+}
+
 /** 创建或更新渠道聚合配置的表单载荷。 */
 export interface ChannelForm {
   /** 稳定的渠道编码，创建后不允许修改。 */
   code: string
   /** 管理页面展示名称。 */
   name: string
-  /** 用于选择后端供应商实现的协议类型。 */
+  /** 供应商类型（ProviderType），用于选择后端供应商实现。 */
   type: string
   /** 上游服务 Base URL。 */
   baseUrl: string
@@ -174,7 +244,7 @@ export interface ChannelForm {
   modelsPath: string
   /** 原始供应商密钥；更新时为空表示保留现有密钥。 */
   apiKey: string
-  /** 渠道路由优先级，数值越低越优先。 */
+  /** 渠道路由权重，加权模式下数值越高分配流量越多。 */
   priority: number
   /** 渠道状态，例如 ACTIVE 或 DISABLED。 */
   status: string
@@ -244,7 +314,7 @@ export interface ChannelModelMappingVO {
 
 /** 后端获取上游模型选项所需的未保存表单值。 */
 export interface ChannelModelFetchRequest {
-  /** 用于选择后端客户端的供应商协议类型。 */
+  /** 供应商类型（ProviderType），用于选择后端供应商客户端。 */
   type: string
   /** 编辑已有渠道时传递渠道 ID，允许后端在密钥留空时读取已保存密钥。 */
   channelId?: number | null
@@ -322,7 +392,8 @@ export interface RequestLogSearchParam {
   pageSize?: number
 }
 
-/** 渠道聚合表单当前支持的协议类型。 */
-export const channelTypes = ['OPENAI_COMPATIBLE', 'ANTHROPIC']
+/** 渠道聚合表单当前支持的供应商策略类型。 */
+export const channelTypes = ['OPENAI_COMPATIBLE', 'ANTHROPIC', 'OPENAI_RESPONSES', 'GEMINI']
 export const activeStatuses = ['ACTIVE', 'DISABLED', 'EXPIRED']
 export const quotaWindowUnits = ['HOUR', 'DAY', 'MONTH']
+export const routeModes = ['RANDOM', 'ROUND_ROBIN', 'WEIGHTED', 'SESSION_STICKY']

@@ -1,7 +1,7 @@
 package cn.ms08.apiconvert.provider;
 
-import cn.ms08.apiconvert.adapter.OpenAiRequestAdapter;
-import cn.ms08.apiconvert.adapter.OpenAiResponseAdapter;
+import cn.ms08.apiconvert.adapter.protocol.OpenAiRequestAdapter;
+import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
 import cn.ms08.apiconvert.dto.OpenAiChatCompletionRequest;
 import cn.ms08.apiconvert.dto.ProviderModel;
 import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;

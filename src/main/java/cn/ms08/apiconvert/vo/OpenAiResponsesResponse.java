@@ -101,29 +101,24 @@ public class OpenAiResponsesResponse {
         private Integer outputTokens;
         @JsonProperty("total_tokens")
         private Integer totalTokens;
+        @JsonProperty("prompt_tokens_details")
+        private Map<String, Object> promptTokensDetails;
+        @JsonProperty("completion_tokens_details")
+        private Map<String, Object> completionTokensDetails;
 
-        public Integer getInputTokens() {
-            return inputTokens;
-        }
+        public Integer getInputTokens() { return inputTokens; }
+        public void setInputTokens(Integer inputTokens) { this.inputTokens = inputTokens; }
 
-        public void setInputTokens(Integer inputTokens) {
-            this.inputTokens = inputTokens;
-        }
+        public Integer getOutputTokens() { return outputTokens; }
+        public void setOutputTokens(Integer outputTokens) { this.outputTokens = outputTokens; }
 
-        public Integer getOutputTokens() {
-            return outputTokens;
-        }
+        public Integer getTotalTokens() { return totalTokens; }
+        public void setTotalTokens(Integer totalTokens) { this.totalTokens = totalTokens; }
 
-        public void setOutputTokens(Integer outputTokens) {
-            this.outputTokens = outputTokens;
-        }
+        public Map<String, Object> getPromptTokensDetails() { return promptTokensDetails; }
+        public void setPromptTokensDetails(Map<String, Object> promptTokensDetails) { this.promptTokensDetails = promptTokensDetails; }
 
-        public Integer getTotalTokens() {
-            return totalTokens;
-        }
-
-        public void setTotalTokens(Integer totalTokens) {
-            this.totalTokens = totalTokens;
-        }
+        public Map<String, Object> getCompletionTokensDetails() { return completionTokensDetails; }
+        public void setCompletionTokensDetails(Map<String, Object> completionTokensDetails) { this.completionTokensDetails = completionTokensDetails; }
     }
 }

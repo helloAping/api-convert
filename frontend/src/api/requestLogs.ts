@@ -3,4 +3,4 @@ import type { ApiResponse, PageResult, RequestLogVO, RequestLogSearchParam } fro
 
 export const searchRequestLogs = (params: RequestLogSearchParam) =>
   request.get<ApiResponse<PageResult<RequestLogVO>>>('/api/admin/request-logs', { params })
-export const getRequestLog = (id: number) => request.get<ApiResponse<RequestLogVO>>(`/admin/request-logs/${id}`)
+export const getRequestLog = (id: number) => request.get<ApiResponse<RequestLogVO>>(`/api/admin/request-logs/${id}`)

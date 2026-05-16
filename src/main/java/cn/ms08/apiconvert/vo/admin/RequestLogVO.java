@@ -11,6 +11,8 @@ public record RequestLogVO(
     Long id,
     String requestId,
     Long gatewayApiKeyId,
+    String gatewayApiKeyName,
+    String gatewayApiKeyPreview,
     String sourceProtocol,
     String requestType,
     String providerCode,

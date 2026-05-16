@@ -33,7 +33,7 @@ public class AiChannelEntity {
      */
     private String name;
     /**
-     * 协议类型，例如 OPENAI_COMPATIBLE 或 ANTHROPIC。
+     * 供应商类型（ProviderType），例如 OPENAI_COMPATIBLE、ANTHROPIC、OPENAI_RESPONSES、GEMINI。
      */
     private String type;
     /**
@@ -53,7 +53,7 @@ public class AiChannelEntity {
      */
     private String apiKey;
     /**
-     * 路由优先级，数值越低越优先。
+     * 路由权重，加权模式下数值越高分配流量越多。
      */
     private Integer priority;
     /**

@@ -1,7 +1,8 @@
 package cn.ms08.apiconvert.provider;
 
-import cn.ms08.apiconvert.adapter.AnthropicRequestAdapter;
-import cn.ms08.apiconvert.adapter.AnthropicResponseAdapter;
+import cn.ms08.apiconvert.adapter.protocol.AnthropicRequestAdapter;
+import cn.ms08.apiconvert.adapter.protocol.AnthropicResponseAdapter;
+import cn.ms08.apiconvert.dto.AnthropicMessageRequest;
 import cn.ms08.apiconvert.dto.ModelRoute;
 import cn.ms08.apiconvert.dto.ProviderModel;
 import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
@@ -32,7 +33,9 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class AnthropicProviderClient implements AiProviderClient {
@@ -66,7 +69,7 @@ public class AnthropicProviderClient implements AiProviderClient {
                     .uri(route.chatPath())
                     .header("x-api-key", route.apiKey())
                     .header("anthropic-version", ANTHROPIC_VERSION)
-                    .body(requestAdapter.toProviderRequest(request, route.providerModel()))
+                    .body(prepareRequestBody(route, requestAdapter.toProviderRequest(request, route.providerModel())))
                     .retrieve()
                     .body(AnthropicMessageResponse.class);
             if (response == null) {
@@ -92,7 +95,7 @@ public class AnthropicProviderClient implements AiProviderClient {
 
     @Override
     public UnifiedUsage streamChat(ModelRoute route, UnifiedChatRequest request, OutputStream outputStream) {
-        Object providerBody = requestAdapter.toProviderRequest(request, route.providerModel(), true);
+        Object providerBody = prepareRequestBody(route, requestAdapter.toProviderRequest(request, route.providerModel(), true));
         try {
             UnifiedUsage usage = RestClient.builder()
                     .baseUrl(route.baseUrl())
@@ -123,6 +126,54 @@ public class AnthropicProviderClient implements AiProviderClient {
             throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
                     "Anthropic stream request failed: " + exception.getMessage());
         }
+    }
+
+    /**
+     * DeepSeek 的 Anthropic 兼容接口要求 thinking 模式下历史消息里的 thinking 块继续携带 thinking 字段。
+     */
+    AnthropicMessageRequest prepareRequestBody(ModelRoute route, AnthropicMessageRequest request) {
+        if (!isDeepSeekAnthropicRoute(route) || request == null || request.getMessages() == null) {
+            return request;
+        }
+        for (cn.ms08.apiconvert.dto.AnthropicMessage message : request.getMessages()) {
+            message.setContent(normalizeDeepSeekThinkingContent(message.getContent()));
+        }
+        return request;
+    }
+
+    private boolean isDeepSeekAnthropicRoute(ModelRoute route) {
+        if (route == null || route.baseUrl() == null) {
+            return false;
+        }
+        String upstreamUrl = (route.baseUrl() + (route.chatPath() == null ? "" : route.chatPath())).toLowerCase();
+        return upstreamUrl.contains("api.deepseek.com") && upstreamUrl.contains("/anthropic");
+    }
+
+    private Object normalizeDeepSeekThinkingContent(Object content) {
+        if (!(content instanceof List<?> contentList)) {
+            return content;
+        }
+        List<Object> normalized = new ArrayList<>(contentList.size());
+        for (Object block : contentList) {
+            if (!(block instanceof Map<?, ?> blockMap)) {
+                normalized.add(block);
+                continue;
+            }
+            String type = blockMap.containsKey("type") ? String.valueOf(blockMap.get("type")) : "";
+            if (!"thinking".equals(type)) {
+                normalized.add(block);
+                continue;
+            }
+            Map<String, Object> normalizedBlock = new LinkedHashMap<>();
+            blockMap.forEach((key, value) -> normalizedBlock.put(String.valueOf(key), value));
+            Object thinking = normalizedBlock.get("thinking");
+            if (thinking == null) {
+                Object text = normalizedBlock.get("text");
+                normalizedBlock.put("thinking", text == null ? "" : String.valueOf(text));
+            }
+            normalized.add(normalizedBlock);
+        }
+        return normalized;
     }
 
     UnifiedUsage copyAnthropicStream(InputStream inputStream, OutputStream outputStream) {

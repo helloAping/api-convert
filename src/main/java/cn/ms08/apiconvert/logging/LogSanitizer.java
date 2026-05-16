@@ -64,9 +64,55 @@ public final class LogSanitizer {
         if (sanitized == null) {
             sanitized = JSON_SECRET_PATTERN.matcher(trimmed).replaceAll("$1" + MASK + "$3");
         } else {
+            sanitized = stripMessageContent(sanitized);
             sanitized = compressJson(sanitized);
         }
         return truncate(sanitized, body.length());
+    }
+
+    /**
+     * 从 JSON 正文中移除对话消息的 content 字段，避免对话内容写入日志。
+     * 保留 role、name 等其他字段用于排查，只将 content 值替换为省略标记。
+     */
+    public static String stripMessageContent(String body) {
+        if (!StringUtils.hasText(body)) {
+            return "";
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(body);
+            stripContentFromMessages(root);
+            return OBJECT_MAPPER.writeValueAsString(root);
+        } catch (Exception ignored) {
+            return body;
+        }
+    }
+
+    /**
+     * 递归查找包含 role 字段的消息对象并将 content 替换为省略标记。
+     */
+    private static void stripContentFromMessages(JsonNode node) {
+        if (node == null) {
+            return;
+        }
+        if (node.isObject()) {
+            ObjectNode object = (ObjectNode) node;
+            // 同时有 role 和 content 字段的对象视为消息
+            if (object.has("role") && object.has("content")) {
+                JsonNode content = object.get("content");
+                if (content != null && !content.isNull()) {
+                    object.put("content", "...");
+                }
+            }
+            // 递归处理所有子字段
+            object.fieldNames().forEachRemaining(fieldName -> {
+                JsonNode child = object.get(fieldName);
+                if (child != null) {
+                    stripContentFromMessages(child);
+                }
+            });
+        } else if (node.isArray()) {
+            node.forEach(LogSanitizer::stripContentFromMessages);
+        }
     }
 
     /**

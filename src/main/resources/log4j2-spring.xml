@@ -1,72 +1,274 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Configuration status="WARN" monitorInterval="30">
     <Properties>
-        <!-- 日志级别可通过环境变量覆盖；SQL 日志会打印参数，生产环境开启前需要确认密钥等敏感字段不会落盘。 -->
+        <!-- Log levels can be overridden by environment variables; SQL TRACE may include sensitive parameter values. -->
         <Property name="rootLogLevel">${env:LOG_LEVEL:-INFO}</Property>
         <Property name="appLogLevel">${env:APP_LOG_LEVEL:-INFO}</Property>
         <Property name="sqlLogLevel">${env:SQL_LOG_LEVEL:-DEBUG}</Property>
         <Property name="sqlParamLogLevel">${env:SQL_PARAM_LOG_LEVEL:-DEBUG}</Property>
         <Property name="logPath">${env:LOG_PATH:-logs}</Property>
-        <Property name="logPattern">%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</Property>
+        <Property name="logPattern">%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} [%X{traceId}] - %msg%n</Property>
+        <Property name="retentionAge">5d</Property>
+        <Property name="rolloverSize">100 MB</Property>
     </Properties>
 
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout pattern="${logPattern}"/>
         </Console>
-        <RollingFile name="ApplicationFile"
-                     fileName="${logPath}/api-convert.log"
-                     filePattern="${logPath}/api-convert-%d{yyyy-MM-dd}-%i.log.gz">
+
+        <!-- Application logs are split by exact level for easier production troubleshooting. -->
+        <RollingFile name="AppTraceFile"
+                     fileName="${logPath}/app-trace.log"
+                     filePattern="${logPath}/app-trace-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <LevelMatchFilter level="TRACE" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
             <PatternLayout pattern="${logPattern}"/>
             <Policies>
-                <TimeBasedTriggeringPolicy/>
-                <SizeBasedTriggeringPolicy size="100 MB"/>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
             </Policies>
-            <DefaultRolloverStrategy max="30"/>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
         </RollingFile>
-        <RollingFile name="SqlFile"
-                     fileName="${logPath}/sql.log"
-                     filePattern="${logPath}/sql-%d{yyyy-MM-dd}-%i.log.gz">
+
+        <RollingFile name="AppDebugFile"
+                     fileName="${logPath}/app-debug.log"
+                     filePattern="${logPath}/app-debug-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <LevelMatchFilter level="DEBUG" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
             <PatternLayout pattern="${logPattern}"/>
             <Policies>
-                <TimeBasedTriggeringPolicy/>
-                <SizeBasedTriggeringPolicy size="100 MB"/>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
             </Policies>
-            <DefaultRolloverStrategy max="30"/>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="AppInfoFile"
+                     fileName="${logPath}/app-info.log"
+                     filePattern="${logPath}/app-info-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <LevelMatchFilter level="INFO" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="AppWarnFile"
+                     fileName="${logPath}/app-warn.log"
+                     filePattern="${logPath}/app-warn-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <LevelMatchFilter level="WARN" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="AppErrorFile"
+                     fileName="${logPath}/app-error.log"
+                     filePattern="${logPath}/app-error-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <!-- SQL logs are kept separate from application logs and split by level. -->
+        <RollingFile name="SqlTraceFile"
+                     fileName="${logPath}/sql-trace.log"
+                     filePattern="${logPath}/sql-trace-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <LevelMatchFilter level="TRACE" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="SqlDebugFile"
+                     fileName="${logPath}/sql-debug.log"
+                     filePattern="${logPath}/sql-debug-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <LevelMatchFilter level="DEBUG" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="SqlInfoFile"
+                     fileName="${logPath}/sql-info.log"
+                     filePattern="${logPath}/sql-info-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <LevelMatchFilter level="INFO" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="SqlWarnFile"
+                     fileName="${logPath}/sql-warn.log"
+                     filePattern="${logPath}/sql-warn-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <LevelMatchFilter level="WARN" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="SqlErrorFile"
+                     fileName="${logPath}/sql-error.log"
+                     filePattern="${logPath}/sql-error-%d{yyyy-MM-dd}-%i.log.gz">
+            <Filters>
+                <ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+            <PatternLayout pattern="${logPattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1"/>
+                <SizeBasedTriggeringPolicy size="${rolloverSize}"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${logPath}" maxDepth="1">
+                    <IfFileName glob="*.log.gz"/>
+                    <IfLastModified age="${retentionAge}"/>
+                </Delete>
+            </DefaultRolloverStrategy>
         </RollingFile>
     </Appenders>
 
     <Loggers>
         <Logger name="cn.ms08.apiconvert" level="${appLogLevel}" additivity="false">
             <AppenderRef ref="Console"/>
-            <AppenderRef ref="ApplicationFile"/>
+            <AppenderRef ref="AppTraceFile"/>
+            <AppenderRef ref="AppDebugFile"/>
+            <AppenderRef ref="AppInfoFile"/>
+            <AppenderRef ref="AppWarnFile"/>
+            <AppenderRef ref="AppErrorFile"/>
         </Logger>
 
-        <!-- MyBatis 会用 Mapper 命名空间输出 SQL 和参数。 -->
+        <!-- MyBatis emits SQL and parameters under mapper namespaces. -->
         <Logger name="cn.ms08.apiconvert.dao" level="${sqlParamLogLevel}" additivity="false">
             <AppenderRef ref="Console"/>
-            <AppenderRef ref="SqlFile"/>
+            <AppenderRef ref="SqlTraceFile"/>
+            <AppenderRef ref="SqlDebugFile"/>
+            <AppenderRef ref="SqlInfoFile"/>
+            <AppenderRef ref="SqlWarnFile"/>
+            <AppenderRef ref="SqlErrorFile"/>
         </Logger>
         <Logger name="org.mybatis" level="${sqlLogLevel}" additivity="false">
             <AppenderRef ref="Console"/>
-            <AppenderRef ref="SqlFile"/>
+            <AppenderRef ref="SqlTraceFile"/>
+            <AppenderRef ref="SqlDebugFile"/>
+            <AppenderRef ref="SqlInfoFile"/>
+            <AppenderRef ref="SqlWarnFile"/>
+            <AppenderRef ref="SqlErrorFile"/>
         </Logger>
         <Logger name="com.baomidou.mybatisplus" level="${sqlLogLevel}" additivity="false">
             <AppenderRef ref="Console"/>
-            <AppenderRef ref="SqlFile"/>
+            <AppenderRef ref="SqlTraceFile"/>
+            <AppenderRef ref="SqlDebugFile"/>
+            <AppenderRef ref="SqlInfoFile"/>
+            <AppenderRef ref="SqlWarnFile"/>
+            <AppenderRef ref="SqlErrorFile"/>
         </Logger>
         <Logger name="org.springframework.jdbc.core.JdbcTemplate" level="${sqlLogLevel}" additivity="false">
             <AppenderRef ref="Console"/>
-            <AppenderRef ref="SqlFile"/>
+            <AppenderRef ref="SqlTraceFile"/>
+            <AppenderRef ref="SqlDebugFile"/>
+            <AppenderRef ref="SqlInfoFile"/>
+            <AppenderRef ref="SqlWarnFile"/>
+            <AppenderRef ref="SqlErrorFile"/>
         </Logger>
         <Logger name="org.springframework.jdbc.core.StatementCreatorUtils" level="${sqlParamLogLevel}" additivity="false">
             <AppenderRef ref="Console"/>
-            <AppenderRef ref="SqlFile"/>
+            <AppenderRef ref="SqlTraceFile"/>
+            <AppenderRef ref="SqlDebugFile"/>
+            <AppenderRef ref="SqlInfoFile"/>
+            <AppenderRef ref="SqlWarnFile"/>
+            <AppenderRef ref="SqlErrorFile"/>
         </Logger>
 
         <Root level="${rootLogLevel}">
             <AppenderRef ref="Console"/>
-            <AppenderRef ref="ApplicationFile"/>
+            <AppenderRef ref="AppTraceFile"/>
+            <AppenderRef ref="AppDebugFile"/>
+            <AppenderRef ref="AppInfoFile"/>
+            <AppenderRef ref="AppWarnFile"/>
+            <AppenderRef ref="AppErrorFile"/>
         </Root>
     </Loggers>
 </Configuration>

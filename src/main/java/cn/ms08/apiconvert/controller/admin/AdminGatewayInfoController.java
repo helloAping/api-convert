@@ -1,5 +1,6 @@
 package cn.ms08.apiconvert.controller.admin;
 
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.vo.ApiResponse;
 import cn.ms08.apiconvert.vo.admin.GatewayInfoVO;
 import jakarta.servlet.http.HttpServletRequest;
@@ -8,10 +9,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
 /**
  * 管理端控制台元信息接口，用于展示外部客户端调用网关所需的基础地址和端点清单。
+ * 端点清单由 EndpointType 枚举自动推导，新增端点时无需修改此控制器。
  */
 @RestController
 @RequestMapping("/api/admin/gateway-info")
@@ -22,7 +22,7 @@ public class AdminGatewayInfoController {
      */
     @GetMapping
     public ApiResponse<GatewayInfoVO> info(HttpServletRequest request) {
-        return ApiResponse.success(new GatewayInfoVO(baseUrl(request), endpoints()));
+        return ApiResponse.success(new GatewayInfoVO(baseUrl(request), EndpointType.allEndpointVOs()));
     }
 
     /**
@@ -40,19 +40,6 @@ public class AdminGatewayInfoController {
         return trimTrailingSlash(request.getRequestURL()
                 .substring(0, request.getRequestURL().length() - request.getRequestURI().length())
                 + request.getContextPath());
-    }
-
-    /**
-     * 当前已实现的公开调用端点；管理端自身的 CRUD 接口不列入外部客户端调用清单。
-     */
-    private List<GatewayInfoVO.EndpointVO> endpoints() {
-        return List.of(
-                new GatewayInfoVO.EndpointVO("GET", "/health", "通用", "无需鉴权", "健康检查和基础统计"),
-                new GatewayInfoVO.EndpointVO("GET", "/v1/models", "OpenAI", "Gateway API Key", "OpenAI 兼容模型列表"),
-                new GatewayInfoVO.EndpointVO("POST", "/v1/chat/completions", "OpenAI", "Gateway API Key", "OpenAI 兼容聊天补全，支持 SSE 流式透传、response_format（JSON 模式/JSON Schema）"),
-                new GatewayInfoVO.EndpointVO("POST", "/v1/responses", "OpenAI", "Gateway API Key", "OpenAI Responses API 新协议，支持 SSE 流式透传"),
-                new GatewayInfoVO.EndpointVO("POST", "/v1/messages", "Anthropic", "Gateway API Key", "Anthropic Messages 兼容对话，支持 SSE 流式透传")
-        );
     }
 
     /**

@@ -71,8 +71,13 @@ Get-Item .claude, .codex, .opencode | Select-Object Name, LinkType, Target
 Key capabilities:
 
 - **Dual protocol entry**: OpenAI-compatible (`/v1/chat/completions`) and Anthropic Messages (`/v1/messages`)
+- **Responses API**: OpenAI Responses API protocol (`/v1/responses`) with SSE streaming via `RealTimeResponsesTransformer`
 - **SSE streaming passthrough**: byte-level proxy with usage extraction at stream end
 - **Smart routing**: random channel selection per model, direct channel/model specification via `channel/model` format
+- **Cross-protocol adapters**: 6× `EndpointProviderAdapter` implementations automatically transforming requests/responses between OpenAI Chat, Anthropic Messages, GPT Responses API, and Gemini protocols
+- **Stream transformer**: pluggable `StreamResponseTransformer` abstraction for real-time SSE format conversion between endpoint types and provider protocols
+- **Endpoint strategy pattern**: `EndpointType` enum + `EndpointHandler` interface, each endpoint independently handles request parsing, adaptation, and response writing
+- **Provider strategy pattern**: `ProviderType` enum + `AiProviderClient` interface, supports OpenAI-compatible, Anthropic, OpenAI Responses API, Gemini upstreams
 - **API key management**: gateway keys with SHA-256 auth, quota balance, sliding window rate limiting
 - **Admin management panel**: full CRUD for channels, models, API keys, request logs
 - **Admin auth**: Sa-Token-based login with Bearer token
@@ -112,6 +117,9 @@ JAVA_HOME="$JAVA_HOME_25" PATH="$JAVA_HOME_25/bin":$PATH mvn -q test
 # Health check (no auth)
 curl http://localhost:8080/health
 
+# Gateway info (admin endpoints metadata)
+curl -H 'Authorization: Bearer sk-local-dev' http://localhost:8080/api/admin/gateway-info
+
 # Model list
 curl -H 'Authorization: Bearer sk-local-dev' http://localhost:8080/v1/models
 
@@ -120,6 +128,12 @@ curl -X POST http://localhost:8080/v1/chat/completions \
   -H 'Authorization: Bearer sk-local-dev' \
   -H 'Content-Type: application/json' \
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "hello"}], "stream": false}'
+
+# OpenAI Responses API
+curl -X POST http://localhost:8080/v1/responses \
+  -H 'Authorization: Bearer sk-local-dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "gpt-4o", "input": "hello", "stream": false}'
 
 # Anthropic messages
 curl -X POST http://localhost:8080/v1/messages \

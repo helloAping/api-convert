@@ -6,6 +6,7 @@ import {
   ServerOutline,
   CubeOutline,
   KeyOutline,
+  SettingsOutline,
   DocumentTextOutline,
   LogOutOutline,
 } from '@vicons/ionicons5'
@@ -22,6 +23,7 @@ const menuOptions = [
   { label: '渠道管理', key: '/channels', icon: ServerOutline },
   { label: '模型管理', key: '/models', icon: CubeOutline },
   { label: '网关密钥', key: '/api-keys', icon: KeyOutline },
+  { label: '系统配置', key: '/system-config', icon: SettingsOutline },
   { label: '请求日志', key: '/request-logs', icon: DocumentTextOutline },
 ]
 

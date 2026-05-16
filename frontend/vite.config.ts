@@ -9,6 +9,24 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/vue') || id.includes('node_modules/vue-router')) {
+            return 'vue'
+          }
+          if (id.includes('node_modules/naive-ui') || id.includes('node_modules/@vicons')) {
+            return 'naive'
+          }
+          if (id.includes('node_modules/axios')) {
+            return 'http'
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

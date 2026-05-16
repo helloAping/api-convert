@@ -2,7 +2,7 @@
 import { h, onMounted, ref } from 'vue'
 import { useMessage, NButton, NTag } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
-import { activeStatuses, channelTypes } from '@/types'
+import { channelTypes } from '@/types'
 import type { ChannelForm, ChannelModelForm, ChannelQuotaVO, ChannelVO } from '@/types'
 import { createChannel, deleteChannel, fetchChannelModels, fetchChannelQuota, getChannels, updateChannel } from '@/api/channels'
 
@@ -33,7 +33,7 @@ const columns: DataTableColumn<ChannelVO>[] = [
   { title: '编号', key: 'id', width: 70 },
   { title: '渠道编码', key: 'code', width: 150 },
   { title: '渠道名称', key: 'name', width: 160 },
-  { title: '协议类型', key: 'type', width: 150, render: (row) => channelTypeLabel(row.type) },
+  { title: '供应商', key: 'type', width: 150, render: (row) => channelTypeLabel(row.type) },
   { title: 'Base URL', key: 'baseUrl', ellipsis: { tooltip: true } },
   { title: '请求路径', key: 'chatPath', width: 180 },
   { title: '模型数', key: 'modelCount', width: 90 },
@@ -97,26 +97,34 @@ function quotaText(row: ChannelVO) {
   return quota.summary || (quota.supported ? '已获取额度' : '不支持获取')
 }
 
-// 将供应商协议常量转换为管理界面的中文标签。
+// 将供应商策略常量转换为管理界面的中文标签。
 function channelTypeLabel(type: string) {
   return {
     OPENAI_COMPATIBLE: 'OpenAI 兼容',
-    ANTHROPIC: 'Anthropic Messages',
+    ANTHROPIC: 'Anthropic',
+    OPENAI_RESPONSES: 'OpenAI Responses',
+    GEMINI: 'Google Gemini',
   }[type] || type
 }
 
-// 将凭证状态常量转换为管理界面的中文标签。
-function statusLabel(status: string) {
-  return { ACTIVE: '启用', DISABLED: '禁用', EXPIRED: '已过期' }[status] || status
-}
-
-// 供应商协议变化时切换默认请求路径。
+// 供应商类型变化时切换默认请求路径和模型列表路径。
 function handleTypeChange(type: string) {
-  if (type === 'ANTHROPIC' && form.value.chatPath === '/v1/chat/completions') {
-    form.value.chatPath = '/v1/messages'
+  const defaults: Record<string, { chatPath: string; modelsPath: string }> = {
+    OPENAI_COMPATIBLE: { chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
+    ANTHROPIC: { chatPath: '/v1/messages', modelsPath: '/v1/models' },
+    OPENAI_RESPONSES: { chatPath: '/v1/responses', modelsPath: '/v1/models' },
+    GEMINI: { chatPath: '/v1beta/models', modelsPath: '/v1beta/models' },
   }
-  if (type === 'OPENAI_COMPATIBLE' && form.value.chatPath === '/v1/messages') {
-    form.value.chatPath = '/v1/chat/completions'
+  // 收集所有默认路径，用于判断用户是否手动修改过
+  const defaultPaths = new Set(Object.values(defaults).flatMap(d => [d.chatPath, d.modelsPath]))
+  const newDefault = defaults[type]
+  if (!newDefault) return
+  // 仅当当前路径仍然匹配任意默认值时自动切换，用户手动修改过的路径不会被覆盖
+  if (defaultPaths.has(form.value.chatPath)) {
+    form.value.chatPath = newDefault.chatPath
+  }
+  if (defaultPaths.has(form.value.modelsPath)) {
+    form.value.modelsPath = newDefault.modelsPath
   }
 }
 
@@ -304,8 +312,8 @@ onMounted(load)
         <n-button type="primary" @click="showCreate">新增渠道</n-button>
       </n-space>
 
-      <n-alert type="info" title="渠道用于把网关请求转发到指定上游">
-        选择协议类型后填写上游 Base URL、实际请求路径和 API Key。模型支持多选和手动输入；别名非必填，填写后模型管理中会按别名单独展示，未填写时使用“模型前缀/上游模型名”。
+      <n-alert type=”info” title=”渠道用于把网关请求转发到指定上游”>
+        选择供应商后填写上游 Base URL、实际请求路径和 API Key。模型支持多选和手动输入；别名非必填，填写后模型管理中会按别名单独展示，未填写时使用”模型前缀/上游模型名”。
       </n-alert>
 
       <n-data-table :columns="columns" :data="data" :loading="loading" :pagination="false" />
@@ -320,7 +328,7 @@ onMounted(load)
           <n-form-item label="渠道名称">
             <n-input v-model:value="form.name" placeholder="例如：DeepSeek" />
           </n-form-item>
-          <n-form-item label="协议类型">
+          <n-form-item label="供应商">
             <n-select
               v-model:value="form.type"
               :options="channelTypes.map(t => ({ label: channelTypeLabel(t), value: t }))"
@@ -389,11 +397,8 @@ onMounted(load)
               </div>
             </div>
           </n-form-item>
-          <n-form-item label="凭证状态">
-            <n-select v-model:value="form.status" :options="activeStatuses.map(s => ({ label: statusLabel(s), value: s }))" />
-          </n-form-item>
-          <n-form-item label="优先级">
-            <n-input-number v-model:value="form.priority" />
+          <n-form-item label="路由权重">
+            <n-input-number v-model:value="form.priority" :min="1" :precision="0" />
           </n-form-item>
           <n-form-item label="启用渠道">
             <n-switch v-model:value="form.enabled" />

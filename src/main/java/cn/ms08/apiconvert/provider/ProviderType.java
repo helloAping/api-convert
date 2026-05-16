@@ -3,7 +3,7 @@ package cn.ms08.apiconvert.provider;
 public enum ProviderType {
     OPENAI_COMPATIBLE,
     ANTHROPIC,
-    OPENAI,
+    OPENAI_RESPONSES,
     GEMINI,
     LOCAL
 }

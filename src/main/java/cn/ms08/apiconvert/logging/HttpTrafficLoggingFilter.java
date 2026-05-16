@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,7 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 /**
  * 在控制器处理完成后记录入站 HTTP 请求和响应。
@@ -32,6 +34,10 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
      * 请求体日志缓存的最大字节数；响应体仍由 LogSanitizer 负责截断。
      */
     private static final int BODY_CACHE_LIMIT = 16 * 1024;
+    /**
+     * 全链路追踪 ID 的请求属性键名。
+     */
+    private static final String TRACE_ID_ATTR = "cn.ms08.apiconvert.traceId";
 
     /**
      * 包装请求和响应，确保记录日志后控制器和客户端仍能读取正文。
@@ -44,9 +50,16 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
+        String traceId = UUID.randomUUID().toString();
+        MDC.put("traceId", traceId);
+        request.setAttribute(TRACE_ID_ATTR, traceId);
         ContentCachingRequestWrapper wrappedRequest = new ContentCachingRequestWrapper(request, BODY_CACHE_LIMIT);
         if (shouldSkipResponseCache(request)) {
-            logStreamingRequest(request, response, filterChain, wrappedRequest);
+            try {
+                logStreamingRequest(request, response, filterChain, wrappedRequest);
+            } finally {
+                MDC.remove("traceId");
+            }
             return;
         }
         ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(response);
@@ -68,6 +81,7 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
                     requestBody.length(),
                     responseBody.length());
             wrappedResponse.copyBodyToResponse();
+            MDC.remove("traceId");
         }
     }
 

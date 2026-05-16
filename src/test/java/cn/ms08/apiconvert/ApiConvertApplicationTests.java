@@ -1,6 +1,12 @@
 package cn.ms08.apiconvert;
 
-import cn.ms08.apiconvert.adapter.OpenAiResponseAdapter;
+import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
+import cn.ms08.apiconvert.dao.GatewayApiKeyMapper;
+import cn.ms08.apiconvert.dao.RequestLogMapper;
+import cn.ms08.apiconvert.dto.ModelRoute;
+import cn.ms08.apiconvert.dto.UnifiedChatRequest;
+import cn.ms08.apiconvert.entity.GatewayApiKeyEntity;
+import cn.ms08.apiconvert.entity.RequestLogEntity;
 import cn.ms08.apiconvert.service.RoutingService;
 import cn.ms08.apiconvert.vo.OpenAiChatCompletionResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -17,6 +23,8 @@ import java.net.InetSocketAddress;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.Set;
 
@@ -47,6 +55,18 @@ class ApiConvertApplicationTests {
      */
     @Autowired
     private RoutingService routingService;
+
+    /**
+     * 用于构造仪表盘聚合统计所需的请求日志夹具。
+     */
+    @Autowired
+    private RequestLogMapper requestLogMapper;
+
+    /**
+     * 用于构造仪表盘密钥名称展示所需的密钥夹具。
+     */
+    @Autowired
+    private GatewayApiKeyMapper gatewayApiKeyMapper;
 
     /**
      * 解析管理端接口返回的 JSON 响应。
@@ -97,6 +117,49 @@ class ApiConvertApplicationTests {
         assertThat(data.path("baseUrl").asText()).isEqualTo("https://gateway.example.com");
         assertThat(data.path("endpoints").toString())
                 .contains("/health", "/v1/models", "/v1/chat/completions", "/v1/messages");
+    }
+
+    @Test
+    void dashboardStatsAggregatesTokenUsageByTimeAndDimensions() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String model = "dashboard-model-" + suffix;
+        String channel = "dashboard-channel-" + suffix;
+        String apiKeyName = "dashboard-key-" + suffix;
+        GatewayApiKeyEntity apiKey = dashboardApiKey(apiKeyName, suffix);
+        gatewayApiKeyMapper.insert(apiKey);
+        long apiKeyId = apiKey.getId();
+        RequestLogEntity first = dashboardLog("dashboard-" + suffix + "-1", apiKeyId, model, channel,
+                LocalDateTime.now(ZoneId.of("Asia/Shanghai")).minusHours(1), 1_000_000, 200_000, 1_200_000);
+        RequestLogEntity second = dashboardLog("dashboard-" + suffix + "-2", apiKeyId, model, channel,
+                LocalDateTime.now(ZoneId.of("Asia/Shanghai")).minusDays(1), 2_000_000, 300_000, 2_300_000);
+        requestLogMapper.insert(first);
+        requestLogMapper.insert(second);
+
+        try {
+            String response = mockMvc.perform(get("/api/admin/dashboard/stats")
+                            .header("Authorization", "Bearer " + token)
+                            .param("days", "3")
+                            .param("hours", "24")
+                            .param("topN", "10"))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            JsonNode data = objectMapper.readTree(response).path("data");
+            assertThat(data.path("summary").path("totalTokens").asLong()).isGreaterThanOrEqualTo(3_500_000L);
+            assertDashboardDimension(data.path("modelDistribution"), model, 3_500_000L);
+            assertDashboardDimension(data.path("channelDistribution"), channel, 3_500_000L);
+            assertDashboardDimension(data.path("apiKeyDistribution"), String.valueOf(apiKeyId), 3_500_000L, apiKeyName);
+            assertThat(data.path("dailyTokenUsage")).isNotEmpty();
+            assertThat(data.path("hourlyTokenUsage")).isNotEmpty();
+            assertThat(data.path("modelSeries").toString()).contains(model);
+        } finally {
+            requestLogMapper.deleteById(first.getId());
+            requestLogMapper.deleteById(second.getId());
+            gatewayApiKeyMapper.deleteById(apiKey.getId());
+        }
     }
 
     /**
@@ -359,6 +422,177 @@ class ApiConvertApplicationTests {
         }
     }
 
+    @Test
+    void toolRequestsPreferToolCapableChannelForSharedPublicModel() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String noToolCode = "shared-no-tool-" + suffix;
+        String toolCode = "shared-tool-" + suffix;
+        String sharedModel = "shared-tool-model-" + suffix;
+        long noToolId = createChannel(token, noToolCode, sharedModel, false);
+        long toolId = createChannel(token, toolCode, sharedModel, true);
+
+        try {
+            UnifiedChatRequest request = new UnifiedChatRequest(sharedModel, List.of(), false, null, null, null,
+                    Map.of("tools", List.of(Map.of("type", "function", "name", "shell"))));
+
+            for (int i = 0; i < 10; i++) {
+                assertThat(routingService.resolve(request, Set.of()).providerCode()).isEqualTo(toolCode);
+            }
+            assertThat(routingService.resolve(request, Set.of(noToolCode)).providerCode()).isEqualTo(noToolCode);
+        } finally {
+            mockMvc.perform(delete("/api/admin/channels/" + noToolId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+            mockMvc.perform(delete("/api/admin/channels/" + toolId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void adminCanUpdateRoutingConfig() throws Exception {
+        String token = loginAsAdmin();
+
+        try {
+            String response = mockMvc.perform(put("/api/admin/system-config/routing")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "mode": "ROUND_ROBIN",
+                                      "failureThreshold": 2,
+                                      "failureCooldownMinutes": 3,
+                                      "stickyTtlMinutes": 60
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            JsonNode data = objectMapper.readTree(response).path("data");
+            assertThat(data.path("mode").asText()).isEqualTo("ROUND_ROBIN");
+            assertThat(data.path("failureThreshold").asInt()).isEqualTo(2);
+            assertThat(data.path("failureCooldownMinutes").asInt()).isEqualTo(3);
+            assertThat(data.path("stickyTtlMinutes").asInt()).isEqualTo(60);
+
+            String getResponse = mockMvc.perform(get("/api/admin/system-config/routing")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            assertThat(objectMapper.readTree(getResponse).path("data").path("mode").asText()).isEqualTo("ROUND_ROBIN");
+        } finally {
+            restoreDefaultRoutingConfig(token);
+        }
+    }
+
+    @Test
+    void routingServiceSupportsRoundRobinMode() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String firstCode = "rr-a-" + suffix;
+        String secondCode = "rr-b-" + suffix;
+        String model = "rr-model-" + suffix;
+        long firstId = createChannel(token, firstCode, model);
+        long secondId = createChannel(token, secondCode, model);
+
+        try {
+            updateRoutingConfig(token, "ROUND_ROBIN", 0, 0, 1440);
+            UnifiedChatRequest request = new UnifiedChatRequest(model, List.of(), false, null, null, null, Map.of());
+
+            assertThat(routingService.resolve(request, 1001L, Set.of(), null).providerCode()).isEqualTo(firstCode);
+            assertThat(routingService.resolve(request, 1001L, Set.of(), null).providerCode()).isEqualTo(secondCode);
+            assertThat(routingService.resolve(request, 1001L, Set.of(), null).providerCode()).isEqualTo(firstCode);
+            assertThat(routingService.resolve(request, 1001L, Set.of(), null).providerCode()).isEqualTo(secondCode);
+        } finally {
+            restoreDefaultRoutingConfig(token);
+            mockMvc.perform(delete("/api/admin/channels/" + firstId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+            mockMvc.perform(delete("/api/admin/channels/" + secondId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void routingServiceSupportsWeightedModeByChannelPriority() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String lightCode = "weight-a-" + suffix;
+        String heavyCode = "weight-b-" + suffix;
+        String model = "weight-model-" + suffix;
+        long lightId = createChannel(token, lightCode, model, false, 1);
+        long heavyId = createChannel(token, heavyCode, model, false, 3);
+
+        try {
+            updateRoutingConfig(token, "WEIGHTED", 0, 0, 1440);
+            UnifiedChatRequest request = new UnifiedChatRequest(model, List.of(), false, null, null, null, Map.of());
+            int lightCount = 0;
+            int heavyCount = 0;
+
+            for (int i = 0; i < 8; i++) {
+                String providerCode = routingService.resolve(request, 1002L, Set.of(), null).providerCode();
+                if (lightCode.equals(providerCode)) {
+                    lightCount++;
+                } else if (heavyCode.equals(providerCode)) {
+                    heavyCount++;
+                }
+            }
+
+            assertThat(lightCount).isEqualTo(2);
+            assertThat(heavyCount).isEqualTo(6);
+        } finally {
+            restoreDefaultRoutingConfig(token);
+            mockMvc.perform(delete("/api/admin/channels/" + lightId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+            mockMvc.perform(delete("/api/admin/channels/" + heavyId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void stickyRoutingKeepsSessionAndFailureCooldownSwitchesChannelForSameApiKey() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String firstCode = "sticky-a-" + suffix;
+        String secondCode = "sticky-b-" + suffix;
+        String model = "sticky-model-" + suffix;
+        long firstId = createChannel(token, firstCode, model);
+        long secondId = createChannel(token, secondCode, model);
+
+        try {
+            updateRoutingConfig(token, "SESSION_STICKY", 1, 5, 60);
+            UnifiedChatRequest request = new UnifiedChatRequest(model, List.of(), false, null, null, null, Map.of());
+            Long apiKeyId = 1003L;
+            String sessionKey = "session-" + suffix;
+
+            ModelRoute firstRoute = routingService.resolve(request, apiKeyId, Set.of(), sessionKey);
+            ModelRoute stickyRoute = routingService.resolve(request, apiKeyId, Set.of(), sessionKey);
+            assertThat(stickyRoute.providerCode()).isEqualTo(firstRoute.providerCode());
+
+            routingService.recordFailure(apiKeyId, request, firstRoute, sessionKey);
+            ModelRoute switchedRoute = routingService.resolve(request, apiKeyId, Set.of(), sessionKey);
+            assertThat(switchedRoute.providerCode()).isNotEqualTo(firstRoute.providerCode());
+
+            ModelRoute otherKeyRoute = routingService.resolve(request, 1004L, Set.of(firstRoute.providerCode()), "other-" + suffix);
+            assertThat(otherKeyRoute.providerCode()).isEqualTo(firstRoute.providerCode());
+        } finally {
+            restoreDefaultRoutingConfig(token);
+            mockMvc.perform(delete("/api/admin/channels/" + firstId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+            mockMvc.perform(delete("/api/admin/channels/" + secondId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+        }
+    }
+
     /**
      * 验证模型额度单价和密钥余额会在请求上游前参与预检，余额不足时直接返回额度不足。
      */
@@ -543,21 +777,24 @@ class ApiConvertApplicationTests {
     void streamingChatRoutingFailureIsRecordedInRequestLog() throws Exception {
         String token = loginAsAdmin();
         String model = "stream-test-" + UUID.randomUUID();
+        String apiKeyName = "stream-routing-failure-key";
         long apiKeyId = 0;
+        String apiKeyPreview = null;
 
         try {
             String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"name": "stream-routing-failure-key"}
-                                    """))
+                                    {"name": "%s"}
+                                    """.formatted(apiKeyName)))
                     .andExpect(status().isOk())
                     .andReturn()
                     .getResponse()
                     .getContentAsString();
             JsonNode keyData = objectMapper.readTree(keyResponse).path("data");
             apiKeyId = keyData.path("id").asLong();
+            apiKeyPreview = keyData.path("keyPreview").asText();
             String rawKey = keyData.path("rawKey").asText();
 
             mockMvc.perform(post("/v1/chat/completions")
@@ -588,6 +825,9 @@ class ApiConvertApplicationTests {
                     .getContentAsString();
 
             JsonNode record = objectMapper.readTree(logsResponse).path("data").path("records").get(0);
+            assertThat(record.path("gatewayApiKeyId").asLong()).isEqualTo(apiKeyId);
+            assertThat(record.path("gatewayApiKeyName").asText()).isEqualTo(apiKeyName);
+            assertThat(record.path("gatewayApiKeyPreview").asText()).isEqualTo(apiKeyPreview);
             assertThat(record.path("publicModel").asText()).isEqualTo(model);
             assertThat(record.path("sourceProtocol").asText()).isEqualTo("openai");
             assertThat(record.path("requestType").asText()).isEqualTo("chat_completions");
@@ -628,10 +868,89 @@ class ApiConvertApplicationTests {
         return root.path("data").path("token").asText();
     }
 
+    private void restoreDefaultRoutingConfig(String token) throws Exception {
+        updateRoutingConfig(token, "RANDOM", 0, 0, 1440);
+    }
+
+    private void updateRoutingConfig(String token, String mode, int failureThreshold,
+                                     int failureCooldownMinutes, int stickyTtlMinutes) throws Exception {
+        mockMvc.perform(put("/api/admin/system-config/routing")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "mode": "%s",
+                                  "failureThreshold": %d,
+                                  "failureCooldownMinutes": %d,
+                                  "stickyTtlMinutes": %d
+                                }
+                                """.formatted(mode, failureThreshold, failureCooldownMinutes, stickyTtlMinutes)))
+                .andExpect(status().isOk());
+    }
+
+    private RequestLogEntity dashboardLog(String requestId, Long apiKeyId, String model, String channel,
+                                          LocalDateTime createdAt, int inputTokens, int outputTokens, int totalTokens) {
+        RequestLogEntity entity = new RequestLogEntity();
+        entity.setRequestId(requestId);
+        entity.setGatewayApiKeyId(apiKeyId);
+        entity.setSourceProtocol("openai");
+        entity.setRequestType("chat_completions");
+        entity.setProviderCode(channel);
+        entity.setProviderType("OPENAI_COMPATIBLE");
+        entity.setPublicModel(model);
+        entity.setProviderModel(model);
+        entity.setStream(false);
+        entity.setSuccess(true);
+        entity.setHttpStatus(200);
+        entity.setLatencyMs(123L);
+        entity.setInputTokens(inputTokens);
+        entity.setCacheReadInputTokens(0);
+        entity.setOutputTokens(outputTokens);
+        entity.setTotalTokens(totalTokens);
+        entity.setCreatedAt(createdAt);
+        return entity;
+    }
+
+    private GatewayApiKeyEntity dashboardApiKey(String name, String suffix) {
+        GatewayApiKeyEntity entity = new GatewayApiKeyEntity();
+        entity.setName(name);
+        entity.setRawKey("sk-dashboard-" + suffix);
+        entity.setApiKeyHash("dashboard-hash-" + suffix);
+        entity.setKeyPreview("sk-****" + suffix.substring(0, 4));
+        entity.setStatus("ACTIVE");
+        return entity;
+    }
+
+    private void assertDashboardDimension(JsonNode distribution, String key, long expectedTotalTokens) {
+        assertDashboardDimension(distribution, key, expectedTotalTokens, null);
+    }
+
+    private void assertDashboardDimension(JsonNode distribution, String key, long expectedTotalTokens, String expectedName) {
+        for (JsonNode item : distribution) {
+            if (key.equals(item.path("key").asText())) {
+                assertThat(item.path("totalTokens").asLong()).isEqualTo(expectedTotalTokens);
+                assertThat(item.path("requestCount").asLong()).isEqualTo(2);
+                if (expectedName != null) {
+                    assertThat(item.path("name").asText()).isEqualTo(expectedName);
+                }
+                return;
+            }
+        }
+        throw new AssertionError("dashboard dimension not found: " + key);
+    }
+
     /**
      * 创建只包含一个默认模型名的测试渠道，返回渠道主键以便清理。
      */
     private long createChannel(String token, String code, String providerModel) throws Exception {
+        return createChannel(token, code, providerModel, false, 100);
+    }
+
+    private long createChannel(String token, String code, String providerModel, boolean toolsSupport) throws Exception {
+        return createChannel(token, code, providerModel, toolsSupport, 100);
+    }
+
+    private long createChannel(String token, String code, String providerModel, boolean toolsSupport, int priority) throws Exception {
         String createResponse = mockMvc.perform(post("/api/admin/channels")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -644,12 +963,13 @@ class ApiConvertApplicationTests {
                                   "chatPath": "/v1/chat/completions",
                                   "modelsPath": "/v1/models",
                                   "apiKey": "sk-test-channel-key",
+                                  "priority": %d,
                                   "models": [
-                                    {"providerModel": "%s"}
+                                    {"providerModel": "%s", "toolsSupport": %s}
                                   ],
                                   "enabled": true
                                 }
-                                """.formatted(code, code, providerModel)))
+                                """.formatted(code, code, priority, providerModel, toolsSupport)))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
