@@ -2,7 +2,7 @@ import request from './request'
 import type { ApiResponse, ModelCapabilitiesForm, ModelEnabledForm, ModelQuotaForm, ModelVO } from '@/types'
 
 /** 加载由后端按对外模型名聚合后的模型列表。 */
-export const getModels = () => request.get<ApiResponse<ModelVO[]>>('/admin/models')
+export const getModels = () => request.get<ApiResponse<ModelVO[]>>('/api/admin/models')
 
 /** 更新模型按百万 token 计费的额度单价。 */
 export const updateModelQuota = (id: number, data: ModelQuotaForm) =>

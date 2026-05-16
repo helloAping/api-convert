@@ -15,7 +15,7 @@ import java.util.List;
  * 管理端渠道接口，用一个逻辑渠道替代分散暴露供应商、端点和凭证表。
  */
 @RestController
-@RequestMapping("/admin/channels")
+@RequestMapping("/api/admin/channels")
 public class AdminChannelController {
 
     /**

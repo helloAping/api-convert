@@ -9,6 +9,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -43,6 +44,11 @@ public class GlobalExceptionHandler {
                 .body(error("Not authenticated", "unauthorized", "authentication_error"));
     }
 
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<?> handleNoResource(NoResourceFoundException e, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(404, "Not found: " + e.getResourcePath()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()
@@ -66,7 +72,7 @@ public class GlobalExceptionHandler {
     }
 
     private boolean isAdminRequest(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/admin/");
+        return request.getRequestURI().startsWith("/api/admin/");
     }
 
     /**

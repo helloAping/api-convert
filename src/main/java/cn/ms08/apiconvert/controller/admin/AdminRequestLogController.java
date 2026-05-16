@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
  * 管理端请求日志接口，提供对话调用审计记录查询。
  */
 @RestController
-@RequestMapping("/admin/request-logs")
+@RequestMapping("/api/admin/request-logs")
 public class AdminRequestLogController {
 
     /**

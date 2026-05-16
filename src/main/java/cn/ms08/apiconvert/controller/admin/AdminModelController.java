@@ -19,7 +19,7 @@ import java.util.List;
  * 管理端模型接口，仅用于聚合展示各渠道已经保存的模型。
  */
 @RestController
-@RequestMapping("/admin/models")
+@RequestMapping("/api/admin/models")
 public class AdminModelController {
 
     /**

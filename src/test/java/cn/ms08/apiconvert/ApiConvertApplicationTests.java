@@ -72,7 +72,7 @@ class ApiConvertApplicationTests {
     void adminTokenWorksWithBearerAuthorizationHeader() throws Exception {
         String token = loginAsAdmin();
 
-        mockMvc.perform(get("/admin/me")
+        mockMvc.perform(get("/api/admin/me")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
     }
@@ -84,7 +84,7 @@ class ApiConvertApplicationTests {
     void adminGatewayInfoShowsBaseUrlAndSupportedEndpoints() throws Exception {
         String token = loginAsAdmin();
 
-        String response = mockMvc.perform(get("/admin/gateway-info")
+        String response = mockMvc.perform(get("/api/admin/gateway-info")
                         .header("Authorization", "Bearer " + token)
                         .header("X-Forwarded-Proto", "https")
                         .header("X-Forwarded-Host", "gateway.example.com"))
@@ -137,7 +137,7 @@ class ApiConvertApplicationTests {
         String code = "test-channel-" + UUID.randomUUID();
         String alias = code + "-alias";
 
-        String createResponse = mockMvc.perform(post("/admin/channels")
+        String createResponse = mockMvc.perform(post("/api/admin/channels")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -168,7 +168,7 @@ class ApiConvertApplicationTests {
         long channelId = created.path("id").asLong();
 
         try {
-            String listResponse = mockMvc.perform(get("/admin/channels")
+            String listResponse = mockMvc.perform(get("/api/admin/channels")
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
                     .andReturn()
@@ -178,7 +178,7 @@ class ApiConvertApplicationTests {
             assertThat(listResponse).contains(code, "https://api.example.com", "/v1/chat/completions");
             assertThat(listResponse).contains(code + "/deepseek-chat", alias, "\"modelCount\":2");
 
-            String modelsResponse = mockMvc.perform(get("/admin/models")
+            String modelsResponse = mockMvc.perform(get("/api/admin/models")
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
                     .andReturn()
@@ -187,7 +187,7 @@ class ApiConvertApplicationTests {
 
             assertThat(modelsResponse).contains(code + "/deepseek-chat", alias);
 
-            mockMvc.perform(post("/admin/channels")
+            mockMvc.perform(post("/api/admin/channels")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -207,7 +207,7 @@ class ApiConvertApplicationTests {
                                     """.formatted(code, alias)))
                     .andExpect(status().isBadRequest());
         } finally {
-            mockMvc.perform(delete("/admin/channels/" + channelId)
+            mockMvc.perform(delete("/api/admin/channels/" + channelId)
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk());
         }
@@ -242,7 +242,7 @@ class ApiConvertApplicationTests {
 
         try {
             String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-            String createResponse = mockMvc.perform(post("/admin/channels")
+            String createResponse = mockMvc.perform(post("/api/admin/channels")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -264,7 +264,7 @@ class ApiConvertApplicationTests {
                     .getContentAsString();
             channelId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
 
-            String modelsResponse = mockMvc.perform(post("/admin/channels/models")
+            String modelsResponse = mockMvc.perform(post("/api/admin/channels/models")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -284,7 +284,7 @@ class ApiConvertApplicationTests {
             assertThat(modelsResponse).contains("saved-key-model", "test-upstream");
         } finally {
             if (channelId > 0) {
-                mockMvc.perform(delete("/admin/channels/" + channelId)
+                mockMvc.perform(delete("/api/admin/channels/" + channelId)
                                 .header("Authorization", "Bearer " + token))
                         .andExpect(status().isOk());
             }
@@ -307,7 +307,7 @@ class ApiConvertApplicationTests {
         final long[] scopedKeyId = {0};
 
         try {
-            String keyResponse = mockMvc.perform(post("/admin/api-keys")
+            String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -324,7 +324,7 @@ class ApiConvertApplicationTests {
             scopedKeyId[0] = keyData.path("id").asLong();
             assertThat(keyData.path("channelCodes").toString()).contains(firstCode);
 
-            String modelsResponse = mockMvc.perform(get("/admin/models")
+            String modelsResponse = mockMvc.perform(get("/api/admin/models")
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
                     .andReturn()
@@ -346,14 +346,14 @@ class ApiConvertApplicationTests {
             assertThat(routingService.resolve(sharedModel, Set.of(secondCode)).providerCode()).isEqualTo(secondCode);
         } finally {
             if (scopedKeyId[0] > 0) {
-                mockMvc.perform(delete("/admin/api-keys/" + scopedKeyId[0])
+                mockMvc.perform(delete("/api/admin/api-keys/" + scopedKeyId[0])
                                 .header("Authorization", "Bearer " + token))
                         .andExpect(status().isOk());
             }
-            mockMvc.perform(delete("/admin/channels/" + firstId)
+            mockMvc.perform(delete("/api/admin/channels/" + firstId)
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk());
-            mockMvc.perform(delete("/admin/channels/" + secondId)
+            mockMvc.perform(delete("/api/admin/channels/" + secondId)
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk());
         }
@@ -372,7 +372,7 @@ class ApiConvertApplicationTests {
         long apiKeyId = 0;
 
         try {
-            String channelResponse = mockMvc.perform(post("/admin/channels")
+            String channelResponse = mockMvc.perform(post("/api/admin/channels")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -400,7 +400,7 @@ class ApiConvertApplicationTests {
                     .getContentAsString();
             channelId = objectMapper.readTree(channelResponse).path("data").path("id").asLong();
 
-            String keyResponse = mockMvc.perform(post("/admin/api-keys")
+            String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -436,12 +436,12 @@ class ApiConvertApplicationTests {
             assertThat(response).contains("quota_insufficient");
         } finally {
             if (apiKeyId > 0) {
-                mockMvc.perform(delete("/admin/api-keys/" + apiKeyId)
+                mockMvc.perform(delete("/api/admin/api-keys/" + apiKeyId)
                                 .header("Authorization", "Bearer " + token))
                         .andExpect(status().isOk());
             }
             if (channelId > 0) {
-                mockMvc.perform(delete("/admin/channels/" + channelId)
+                mockMvc.perform(delete("/api/admin/channels/" + channelId)
                                 .header("Authorization", "Bearer " + token))
                         .andExpect(status().isOk());
             }
@@ -459,7 +459,7 @@ class ApiConvertApplicationTests {
         long channelId = createChannel(token, code, model);
 
         try {
-            String modelsResponse = mockMvc.perform(get("/admin/models")
+            String modelsResponse = mockMvc.perform(get("/api/admin/models")
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
                     .andReturn()
@@ -475,7 +475,7 @@ class ApiConvertApplicationTests {
             assertThat(modelRow).isNotNull();
             long modelId = modelRow.path("id").asLong();
 
-            String updateResponse = mockMvc.perform(put("/admin/models/" + modelId + "/quota")
+            String updateResponse = mockMvc.perform(put("/api/admin/models/" + modelId + "/quota")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -495,7 +495,7 @@ class ApiConvertApplicationTests {
             assertThat(updated.path("outputQuotaPerMillion").decimalValue()).isEqualByComparingTo("10");
             assertThat(updated.path("cacheReadQuotaPerMillion").decimalValue()).isEqualByComparingTo("1");
         } finally {
-            mockMvc.perform(delete("/admin/channels/" + channelId)
+            mockMvc.perform(delete("/api/admin/channels/" + channelId)
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk());
         }
@@ -514,7 +514,7 @@ class ApiConvertApplicationTests {
         try {
             long modelId = findAdminModelId(token, model);
 
-            String updateResponse = mockMvc.perform(put("/admin/models/" + modelId + "/enabled")
+            String updateResponse = mockMvc.perform(put("/api/admin/models/" + modelId + "/enabled")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -530,7 +530,7 @@ class ApiConvertApplicationTests {
             assertThatThrownBy(() -> routingService.resolve(model, Set.of(code)))
                     .hasMessageContaining("Model not found or no active channel");
         } finally {
-            mockMvc.perform(delete("/admin/channels/" + channelId)
+            mockMvc.perform(delete("/api/admin/channels/" + channelId)
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk());
         }
@@ -546,7 +546,7 @@ class ApiConvertApplicationTests {
         long apiKeyId = 0;
 
         try {
-            String keyResponse = mockMvc.perform(post("/admin/api-keys")
+            String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
@@ -575,7 +575,7 @@ class ApiConvertApplicationTests {
                     .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
                     .andExpect(content().string(org.hamcrest.Matchers.containsString("model_not_found")));
 
-            String logsResponse = mockMvc.perform(get("/admin/request-logs")
+            String logsResponse = mockMvc.perform(get("/api/admin/request-logs")
                             .header("Authorization", "Bearer " + token)
                             .param("publicModel", model)
                             .param("sourceProtocol", "openai")
@@ -603,7 +603,7 @@ class ApiConvertApplicationTests {
                     .isBetween(shanghaiNow.minusMinutes(1), shanghaiNow.plusMinutes(1));
         } finally {
             if (apiKeyId > 0) {
-                mockMvc.perform(delete("/admin/api-keys/" + apiKeyId)
+                mockMvc.perform(delete("/api/admin/api-keys/" + apiKeyId)
                                 .header("Authorization", "Bearer " + token))
                         .andExpect(status().isOk());
             }
@@ -614,7 +614,7 @@ class ApiConvertApplicationTests {
      * 使用初始化管理员账号登录，并只返回测试所需的 token。
      */
     private String loginAsAdmin() throws Exception {
-        String loginResponse = mockMvc.perform(post("/admin/login")
+        String loginResponse = mockMvc.perform(post("/api/admin/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"username":"admin","password":"admin123"}
@@ -632,7 +632,7 @@ class ApiConvertApplicationTests {
      * 创建只包含一个默认模型名的测试渠道，返回渠道主键以便清理。
      */
     private long createChannel(String token, String code, String providerModel) throws Exception {
-        String createResponse = mockMvc.perform(post("/admin/channels")
+        String createResponse = mockMvc.perform(post("/api/admin/channels")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -661,7 +661,7 @@ class ApiConvertApplicationTests {
      * 从管理端聚合模型列表里查找指定对外模型名对应的模型记录 ID。
      */
     private long findAdminModelId(String token, String publicModel) throws Exception {
-        String modelsResponse = mockMvc.perform(get("/admin/models")
+        String modelsResponse = mockMvc.perform(get("/api/admin/models")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn()

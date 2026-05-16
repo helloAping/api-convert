@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/admin/api-keys")
+@RequestMapping("/api/admin/api-keys")
 public class AdminApiKeyController {
 
     private final AdminApiKeyService adminApiKeyService;

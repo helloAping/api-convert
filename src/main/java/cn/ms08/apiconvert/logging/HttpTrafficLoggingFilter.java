@@ -35,10 +35,15 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
 
     /**
      * 包装请求和响应，确保记录日志后控制器和客户端仍能读取正文。
+     * 静态资源路径不记录日志，避免前端构建产物请求污染日志。
      */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+        if (isStaticResource(request)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
         ContentCachingRequestWrapper wrappedRequest = new ContentCachingRequestWrapper(request, BODY_CACHE_LIMIT);
         if (shouldSkipResponseCache(request)) {
             logStreamingRequest(request, response, filterChain, wrappedRequest);
@@ -155,5 +160,15 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
         } catch (Exception ignored) {
             return StandardCharsets.UTF_8;
         }
+    }
+
+    /**
+     * 判断是否为前端静态资源请求，不记录日志避免污染。
+     */
+    private boolean isStaticResource(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        return uri.equals("/") || uri.equals("/index.html")
+                || uri.equals("/favicon.ico") || uri.equals("/favicon.svg") || uri.equals("/icons.svg")
+                || uri.startsWith("/assets/");
     }
 }

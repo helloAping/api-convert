@@ -57,7 +57,7 @@ public class SaTokenWebConfig {
                 HttpServletRequest req = (HttpServletRequest) request;
                 HttpServletResponse res = (HttpServletResponse) response;
                 String path = req.getRequestURI();
-                if (path.startsWith("/admin/") && !path.equals("/admin/login")) {
+                if (path.startsWith("/api/admin/") && !path.equals("/api/admin/login")) {
                     try {
                         StpUtil.checkLogin();
                     } catch (Exception e) {
@@ -70,7 +70,7 @@ public class SaTokenWebConfig {
                 chain.doFilter(request, response);
             }
         });
-        registration.addUrlPatterns("/admin/*");
+        registration.addUrlPatterns("/api/admin/*");
         registration.setOrder(1);
         return registration;
     }

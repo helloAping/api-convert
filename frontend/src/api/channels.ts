@@ -2,10 +2,10 @@ import request from './request'
 import type { ApiResponse, ChannelForm, ChannelModelFetchRequest, ChannelQuotaVO, ChannelVO, UpstreamModelVO } from '@/types'
 
 /** 获取管理表格中的所有自定义上游渠道。 */
-export const getChannels = () => request.get<ApiResponse<ChannelVO[]>>('/admin/channels')
+export const getChannels = () => request.get<ApiResponse<ChannelVO[]>>('/api/admin/channels')
 
 /** 创建渠道聚合记录，包括供应商、端点、可选凭证和可选模型映射。 */
-export const createChannel = (data: ChannelForm) => request.post<ApiResponse<ChannelVO>>('/admin/channels', data)
+export const createChannel = (data: ChannelForm) => request.post<ApiResponse<ChannelVO>>('/api/admin/channels', data)
 
 /** 更新渠道配置；apiKey 为空表示保留现有凭证。 */
 export const updateChannel = (id: number, data: ChannelForm) => request.put<ApiResponse<ChannelVO>>(`/admin/channels/${id}`, data)

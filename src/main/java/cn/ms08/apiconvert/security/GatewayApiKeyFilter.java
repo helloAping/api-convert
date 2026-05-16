@@ -27,7 +27,7 @@ public class GatewayApiKeyFilter extends OncePerRequestFilter {
     public static final String PRINCIPAL_ATTRIBUTE = "gatewayPrincipal";
 
     private static final Set<String> PUBLIC_PATHS = Set.of("/health");
-    private static final String ADMIN_PREFIX = "/admin/";
+    private static final String ADMIN_PREFIX = "/api/admin/";
     private static final String GATEWAY_API_PREFIX = "/v1/";
 
     private final GatewayProperties properties;

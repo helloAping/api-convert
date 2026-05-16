@@ -14,7 +14,7 @@ import java.util.List;
  * 管理端控制台元信息接口，用于展示外部客户端调用网关所需的基础地址和端点清单。
  */
 @RestController
-@RequestMapping("/admin/gateway-info")
+@RequestMapping("/api/admin/gateway-info")
 public class AdminGatewayInfoController {
 
     /**
