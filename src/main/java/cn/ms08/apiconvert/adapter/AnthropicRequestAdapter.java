@@ -16,15 +16,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Anthropic Messages 请求和网关统一请求之间的适配器。
- */
 @Component
 public class AnthropicRequestAdapter {
 
-    /**
-     * 将外部 Anthropic 请求转换为统一请求，系统提示和扩展字段会放入 rawOptions。
-     */
     public UnifiedChatRequest toUnified(AnthropicMessageRequest request) {
         if (request == null) {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "request body is required");
@@ -45,28 +39,30 @@ public class AnthropicRequestAdapter {
                 request.getStream(),
                 request.getTemperature(),
                 request.getMaxTokens(),
+                null,
                 rawOptions
         );
     }
 
-    /**
-     * 将统一请求转回 Anthropic 上游请求，并替换为渠道真实模型名。
-     */
     public AnthropicMessageRequest toProviderRequest(UnifiedChatRequest request, String providerModel) {
+        return toProviderRequest(request, providerModel, false);
+    }
+
+    public AnthropicMessageRequest toProviderRequest(UnifiedChatRequest request, String providerModel, boolean stream) {
         AnthropicMessageRequest providerRequest = new AnthropicMessageRequest();
         providerRequest.setModel(providerModel);
         providerRequest.setMessages(request.messages().stream()
                 .filter(message -> !"system".equals(message.role()))
                 .map(this::toAnthropicMessage)
                 .toList());
-        providerRequest.setStream(false);
+        providerRequest.setStream(stream);
         providerRequest.setTemperature(request.temperature());
         providerRequest.setMaxTokens(request.maxTokens());
         if (request.rawOptions() != null) {
             request.rawOptions().forEach((key, value) -> {
                 if ("system".equals(key)) {
                     providerRequest.setSystem(value);
-                } else {
+                } else if (!"response_format".equals(key)) {
                     providerRequest.setAdditionalProperty(key, value);
                 }
             });
@@ -84,16 +80,10 @@ public class AnthropicRequestAdapter {
         return providerRequest;
     }
 
-    /**
-     * 转换单条 Anthropic 消息为统一消息。
-     */
     private UnifiedMessage toUnifiedMessage(AnthropicMessage message) {
         return new UnifiedMessage(message.getRole(), message.getContent(), null);
     }
 
-    /**
-     * 转换统一消息为 Anthropic 消息。
-     */
     private AnthropicMessage toAnthropicMessage(UnifiedMessage message) {
         AnthropicMessage anthropicMessage = new AnthropicMessage();
         anthropicMessage.setRole(message.role());

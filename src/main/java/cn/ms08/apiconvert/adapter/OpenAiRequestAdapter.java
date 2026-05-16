@@ -2,6 +2,7 @@ package cn.ms08.apiconvert.adapter;
 
 import cn.ms08.apiconvert.dto.OpenAiChatCompletionRequest;
 import cn.ms08.apiconvert.dto.OpenAiMessage;
+import cn.ms08.apiconvert.dto.ResponseFormat;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedMessage;
 import cn.ms08.apiconvert.exception.ErrorCode;
@@ -28,13 +29,27 @@ public class OpenAiRequestAdapter {
         if (CollectionUtils.isEmpty(request.getMessages())) {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "messages is required");
         }
+        ResponseFormat responseFormat = request.getResponseFormat();
+        Map<String, Object> rawOptions = new LinkedHashMap<>(request.getAdditionalProperties());
+        if (responseFormat == null && rawOptions.containsKey("response_format")) {
+            Object raw = rawOptions.remove("response_format");
+            if (raw instanceof Map<?, ?> map) {
+                String type = map.containsKey("type") ? String.valueOf(map.get("type")) : null;
+                @SuppressWarnings("unchecked")
+                Map<String, Object> jsonSchema = map.get("json_schema") instanceof Map
+                        ? (Map<String, Object>) map.get("json_schema") : null;
+                responseFormat = new ResponseFormat(type, jsonSchema);
+            }
+        }
+        rawOptions.remove("response_format");
         return new UnifiedChatRequest(
                 request.getModel(),
                 request.getMessages().stream().map(this::toUnifiedMessage).toList(),
                 request.getStream(),
                 request.getTemperature(),
                 request.getMaxTokens(),
-                request.getAdditionalProperties()
+                responseFormat,
+                rawOptions
         );
     }
 
@@ -56,8 +71,13 @@ public class OpenAiRequestAdapter {
         providerRequest.setStream(stream);
         providerRequest.setTemperature(request.temperature());
         providerRequest.setMaxTokens(request.maxTokens());
+        providerRequest.setResponseFormat(request.responseFormat());
         if (request.rawOptions() != null) {
-            request.rawOptions().forEach(providerRequest::setAdditionalProperty);
+            request.rawOptions().forEach((key, value) -> {
+                if (!"response_format".equals(key)) {
+                    providerRequest.setAdditionalProperty(key, value);
+                }
+            });
         }
         if (stream) {
             includeStreamUsage(providerRequest);
@@ -80,7 +100,13 @@ public class OpenAiRequestAdapter {
 
     private OpenAiMessage toOpenAiMessage(UnifiedMessage message) {
         OpenAiMessage openAiMessage = new OpenAiMessage();
-        openAiMessage.setRole(message.role());
+        // 将 Responses API 的 developer 角色映射为 Chat Completions 的 system 角色，
+        // 因为大多数上游兼容 API 不支持 developer 角色。
+        String role = message.role();
+        if ("developer".equals(role)) {
+            role = "system";
+        }
+        openAiMessage.setRole(role);
         openAiMessage.setContent(message.content());
         openAiMessage.setName(message.name());
         return openAiMessage;

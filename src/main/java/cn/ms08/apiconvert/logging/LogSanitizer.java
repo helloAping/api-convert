@@ -19,8 +19,13 @@ public final class LogSanitizer {
 
     /**
      * 写入日志或暴露到供应商错误详情中的正文最大长度。
+     * 较长的正文会被截断并追加长度提示。
      */
-    private static final int MAX_BODY_LENGTH = 4096;
+    private static final int MAX_BODY_LENGTH = 2048;
+    /**
+     * JSON 数组中当元素超过此阈值时，替换为 [...] N items 摘要。
+     */
+    private static final int MAX_ARRAY_ITEMS = 16;
     /**
      * 可能包含凭证或 token 的值统一替换为该掩码。
      */
@@ -48,7 +53,7 @@ public final class LogSanitizer {
     }
 
     /**
-     * 对敏感字段脱敏，并截断过大的正文。
+     * 对敏感字段脱敏，压缩长 JSON 数组并截断过大的正文。
      */
     public static String sanitizeBody(String body) {
         if (!StringUtils.hasText(body)) {
@@ -58,8 +63,10 @@ public final class LogSanitizer {
         String sanitized = sanitizeJson(trimmed);
         if (sanitized == null) {
             sanitized = JSON_SECRET_PATTERN.matcher(trimmed).replaceAll("$1" + MASK + "$3");
+        } else {
+            sanitized = compressJson(sanitized);
         }
-        return truncate(sanitized);
+        return truncate(sanitized, body.length());
     }
 
     /**
@@ -137,12 +144,54 @@ public final class LogSanitizer {
     }
 
     /**
-     * 保持日志可读，避免超大的供应商响应刷屏应用日志。
+     * 压缩已脱敏的 JSON 正文：当数组元素超过 {@link #MAX_ARRAY_ITEMS} 个时，将数组替换为
+     * {@code ["... N items"]} 摘要，减少日志噪声。
      */
-    private static String truncate(String value) {
-        if (value.length() <= MAX_BODY_LENGTH) {
-            return value;
+    private static String compressJson(String body) {
+        if (body.length() <= MAX_BODY_LENGTH) {
+            return body;
         }
-        return value.substring(0, MAX_BODY_LENGTH) + "...(truncated)";
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(body);
+            compressNode(root);
+            return OBJECT_MAPPER.writeValueAsString(root);
+        } catch (Exception ignored) {
+            return body;
+        }
+    }
+
+    /**
+     * 递归压缩 JSON 节点中的大数组。
+     */
+    private static void compressNode(JsonNode node) {
+        if (node == null) {
+            return;
+        }
+        if (node.isObject()) {
+            ObjectNode object = (ObjectNode) node;
+            object.fieldNames().forEachRemaining(fieldName -> {
+                JsonNode child = object.get(fieldName);
+                if (child.isArray() && child.size() > MAX_ARRAY_ITEMS) {
+                    object.put(fieldName, "[... " + child.size() + " items]");
+                } else {
+                    compressNode(child);
+                }
+            });
+        } else if (node.isArray()) {
+            node.forEach(LogSanitizer::compressNode);
+        }
+    }
+
+    /**
+     * 保持日志可读，避免超大的正文刷屏应用日志。
+     *
+     * @param sanitizedBody 脱敏并压缩后的正文
+     * @param originalLength 脱敏前的原始长度（字符数）
+     */
+    private static String truncate(String sanitizedBody, int originalLength) {
+        if (sanitizedBody.length() <= MAX_BODY_LENGTH) {
+            return sanitizedBody;
+        }
+        return sanitizedBody.substring(0, MAX_BODY_LENGTH) + "...(truncated, original=" + originalLength + " chars)";
     }
 }

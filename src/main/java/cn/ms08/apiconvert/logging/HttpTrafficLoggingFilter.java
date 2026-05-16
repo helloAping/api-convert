@@ -50,20 +50,25 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
             filterChain.doFilter(wrappedRequest, wrappedResponse);
         } finally {
             long latencyMs = System.currentTimeMillis() - startedAt;
-            log.info("HTTP inbound {} {} status={} latencyMs={} requestHeaders={} requestBody={} responseBody={}",
+            String requestBody = readRequestBody(wrappedRequest);
+            String responseBody = readResponseBody(wrappedResponse);
+            log.info("请求：{} {}、状态：{}、耗时：{}ms、请求头：{}、请求体：{}、响应体：{}、请求体长度：{}、响应体长度：{}",
                     request.getMethod(),
                     requestUri(request),
                     wrappedResponse.getStatus(),
                     latencyMs,
                     LogSanitizer.sanitizeHeaders(toHeaders(wrappedRequest)),
-                    readRequestBody(wrappedRequest),
-                    readResponseBody(wrappedResponse));
+                    requestBody,
+                    responseBody,
+                    requestBody.length(),
+                    responseBody.length());
             wrappedResponse.copyBodyToResponse();
         }
     }
 
     /**
      * SSE 响应不能被 ContentCachingResponseWrapper 缓存，否则客户端无法实时收到增量数据。
+     * 日志中标记为 <stream> 并附带接口路径，便于区分协议类型。
      */
     private void logStreamingRequest(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain,
                                      ContentCachingRequestWrapper wrappedRequest) throws ServletException, IOException {
@@ -72,21 +77,27 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
             filterChain.doFilter(wrappedRequest, response);
         } finally {
             long latencyMs = System.currentTimeMillis() - startedAt;
-            log.info("HTTP inbound {} {} status={} latencyMs={} requestHeaders={} requestBody={} responseBody=<stream>",
+            String requestBody = readRequestBody(wrappedRequest);
+            log.info("请求：{} {}、状态：{}、耗时：{}ms、请求头：{}、请求体：{}、响应体：<stream>、请求体长度：{}",
                     request.getMethod(),
                     requestUri(request),
                     response.getStatus(),
                     latencyMs,
                     LogSanitizer.sanitizeHeaders(toHeaders(wrappedRequest)),
-                    readRequestBody(wrappedRequest));
+                    requestBody,
+                    requestBody.length());
         }
     }
 
     /**
-     * 对话接口可能由请求体 stream=true 决定 SSE 返回；不缓存响应，避免通配 Accept 客户端被阻塞。
+     * SSE 接口需要流式返回，不能缓存响应体逐一发送完毕后才能写出。
+     * /v1/chat/completions、/v1/responses 和 /v1/messages 的响应体标记为 <stream>。
      */
     private boolean shouldSkipResponseCache(HttpServletRequest request) {
-        if ("/v1/chat/completions".equals(request.getRequestURI())) {
+        String uri = request.getRequestURI();
+        if ("/v1/chat/completions".equals(uri)
+                || "/v1/responses".equals(uri)
+                || "/v1/messages".equals(uri)) {
             return true;
         }
         String accept = request.getHeader("Accept");

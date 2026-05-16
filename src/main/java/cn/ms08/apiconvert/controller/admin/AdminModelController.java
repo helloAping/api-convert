@@ -1,5 +1,6 @@
 package cn.ms08.apiconvert.controller.admin;
 
+import cn.ms08.apiconvert.dto.admin.ModelCapabilitiesForm;
 import cn.ms08.apiconvert.dto.admin.ModelEnabledForm;
 import cn.ms08.apiconvert.dto.admin.ModelQuotaForm;
 import cn.ms08.apiconvert.service.admin.AdminModelService;
@@ -63,5 +64,13 @@ public class AdminModelController {
     @PutMapping("/{id}/enabled")
     public ApiResponse<ModelVO> updateEnabled(@PathVariable Long id, @RequestBody ModelEnabledForm form) {
         return ApiResponse.success(adminModelService.updateEnabled(id, form));
+    }
+
+    /**
+     * 更新模型能力配置；同一对外模型名下的渠道映射会同步更新，确保随机路由时能力表现一致。
+     */
+    @PutMapping("/{id}/capabilities")
+    public ApiResponse<ModelVO> updateCapabilities(@PathVariable Long id, @RequestBody ModelCapabilitiesForm form) {
+        return ApiResponse.success(adminModelService.updateCapabilities(id, form));
     }
 }

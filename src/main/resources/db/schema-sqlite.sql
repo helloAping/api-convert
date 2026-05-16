@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS ai_channel (
 );
 
 -- 表注释：渠道模型映射表，同一对外模型名可以由多个渠道承载。
--- 字段注释：id=模型映射主键；public_name=网关对外模型名；model_alias=用户手动别名；channel_code=所属渠道编码；provider_model=上游真实模型名；capabilities_json=能力配置 JSON；input_quota_per_million=每 100 万普通输入 token 消耗额度；output_quota_per_million=每 100 万输出 token 消耗额度；cache_read_quota_per_million=每 100 万缓存读取输入 token 消耗额度；enabled=是否启用；created_at=创建时间；updated_at=更新时间。
+-- 字段注释：id=模型映射主键；public_name=网关对外模型名；model_alias=用户手动别名；channel_code=所属渠道编码；provider_model=上游真实模型名；capabilities_json=能力配置 JSON（已弃用）；vision=是否支持视觉输入；tools_support=是否支持工具调用；json_mode_support=是否支持 JSON 模式输出；context_length=最大上下文窗口（token 数）；input_quota_per_million=每 100 万普通输入 token 消耗额度；output_quota_per_million=每 100 万输出 token 消耗额度；cache_read_quota_per_million=每 100 万缓存读取输入 token 消耗额度；enabled=是否启用；created_at=创建时间；updated_at=更新时间。
 CREATE TABLE IF NOT EXISTS ai_channel_model (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   public_name TEXT NOT NULL,
@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS ai_channel_model (
   channel_code TEXT NOT NULL,
   provider_model TEXT NOT NULL,
   capabilities_json TEXT,
+  vision INTEGER,
+  tools_support INTEGER,
+  json_mode_support INTEGER,
+  context_length BIGINT,
   input_quota_per_million NUMERIC,
   output_quota_per_million NUMERIC,
   cache_read_quota_per_million NUMERIC,
@@ -110,4 +114,4 @@ CREATE INDEX IF NOT EXISTS idx_request_log_created_at ON request_log(created_at)
 CREATE INDEX IF NOT EXISTS idx_request_log_request_type ON request_log(source_protocol, request_type);
 CREATE INDEX IF NOT EXISTS idx_request_log_provider_code ON request_log(provider_code);
 
-INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (9, 'Add API key quota and model quota pricing');
+INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (10, 'Add structured capability columns');
