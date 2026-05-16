@@ -40,7 +40,8 @@ public class SaTokenWebConfig {
     }
 
     /**
-     * 注册轻量级 Servlet 过滤器，为未登录的管理端请求返回 JSON 格式 401。
+     * 注册轻量级 Servlet 过滤器，只在 /admin/* 路径下检查登录状态。
+     * 静态资源（/assets/*、/favicon.svg、/index.html 等）不受此过滤器影响。
      */
     @Bean
     public FilterRegistrationBean<Filter> saTokenFilter() {
@@ -48,6 +49,7 @@ public class SaTokenWebConfig {
         registration.setFilter(new Filter() {
             /**
              * 检查管理端登录状态，不在日志或响应中暴露 token 值。
+             * 静态资源路径已通过 addUrlPatterns("/admin/*") 排除。
              */
             @Override
             public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)

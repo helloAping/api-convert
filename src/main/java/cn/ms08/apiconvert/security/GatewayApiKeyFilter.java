@@ -44,6 +44,7 @@ public class GatewayApiKeyFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         String requestUri = request.getRequestURI();
+        // 安全关闭时放行所有请求；公开路径、管理端接口和静态资源（非 /v1/）均跳过网关鉴权
         if (!properties.getSecurity().isEnabled() || PUBLIC_PATHS.contains(requestUri)
                 || requestUri.startsWith(ADMIN_PREFIX) || !requestUri.startsWith(GATEWAY_API_PREFIX)) {
             filterChain.doFilter(request, response);
