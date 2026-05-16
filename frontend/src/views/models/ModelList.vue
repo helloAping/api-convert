@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { h, onMounted, ref } from 'vue'
-import { useMessage, NButton, NTag } from 'naive-ui'
+import { useMessage, NButton, NInputNumber, NSwitch, NTag } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
 import { getModels, updateModelCapabilities, updateModelEnabled, updateModelQuota } from '@/api/models'
 import type { ModelCapabilitiesForm, ModelQuotaForm, ModelVO } from '@/types'
@@ -49,11 +49,14 @@ const columns: DataTableColumn<ModelVO>[] = [
     key: 'capabilities',
     width: 220,
     render: (row) => {
-      const tags = []
+      const tags: ReturnType<typeof h>[] = []
       if (row.vision) tags.push(h(NTag, { size: 'small', type: 'info' }, { default: () => '视觉' }))
       if (row.toolsSupport) tags.push(h(NTag, { size: 'small', type: 'warning' }, { default: () => '工具调用' }))
       if (row.jsonModeSupport) tags.push(h(NTag, { size: 'small', type: 'success' }, { default: () => 'JSON 模式' }))
-      if (row.contextLength) tags.push(h(NTag, { size: 'small', type: 'default' }, { default: () => `${(row.contextLength / 1000).toFixed(0)}K` }))
+      if (row.contextLength) {
+        const len = row.contextLength
+        tags.push(h(NTag, { size: 'small', type: 'default' }, { default: () => `${(len / 1000).toFixed(0)}K` }))
+      }
       if (tags.length === 0) return h('span', '-')
       return h('div', { style: 'display:flex;gap:4px;flex-wrap:wrap' }, tags)
     },
@@ -201,13 +204,13 @@ onMounted(load)
       <n-card style="width: 520px">
         <n-form :model="capabilitiesForm" label-placement="left" label-width="150">
           <n-form-item label="视觉/图片输入">
-            <n-switch v-model:value="capabilitiesForm.vision" />
+            <n-switch :value="capabilitiesForm.vision ?? false" @update:value="capabilitiesForm.vision = $event" />
           </n-form-item>
           <n-form-item label="工具/函数调用">
-            <n-switch v-model:value="capabilitiesForm.toolsSupport" />
+            <n-switch :value="capabilitiesForm.toolsSupport ?? false" @update:value="capabilitiesForm.toolsSupport = $event" />
           </n-form-item>
           <n-form-item label="JSON 输出模式">
-            <n-switch v-model:value="capabilitiesForm.jsonModeSupport" />
+            <n-switch :value="capabilitiesForm.jsonModeSupport ?? false" @update:value="capabilitiesForm.jsonModeSupport = $event" />
           </n-form-item>
           <n-form-item label="上下文窗口(token)">
             <n-input-number v-model:value="capabilitiesForm.contextLength" :min="0" clearable placeholder="例如 128000" style="width: 100%" />

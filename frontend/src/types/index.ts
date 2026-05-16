@@ -64,9 +64,13 @@ export interface ModelVO {
   publicName: string
   providerCode: string
   providerModel: string
+  /** 是否支持图片/视觉输入。 */
   vision: boolean | null
+  /** 是否支持工具/函数调用。 */
   toolsSupport: boolean | null
+  /** 是否支持 JSON 输出模式。 */
   jsonModeSupport: boolean | null
+  /** 最大上下文窗口（token 数）。 */
   contextLength: number | null
   enabled: boolean
   channelCount: number
@@ -220,14 +224,6 @@ export interface ChannelModelMappingVO {
   providerModel: string
   /** 用户手动设置的模型别名；为空时使用默认对外模型名。 */
   modelAlias: string | null
-  /** 是否支持图片/视觉输入。 */
-  vision: boolean | null
-  /** 是否支持工具/函数调用。 */
-  toolsSupport: boolean | null
-  /** 是否支持 JSON 输出模式。 */
-  jsonModeSupport: boolean | null
-  /** 最大上下文窗口（token 数）。 */
-  contextLength: number | null
   /** 该模型映射是否启用。 */
   enabled: boolean
   /** 每 100 万普通输入 token 消耗的额度。 */
@@ -236,6 +232,14 @@ export interface ChannelModelMappingVO {
   outputQuotaPerMillion: number | null
   /** 每 100 万缓存读取输入 token 消耗的额度。 */
   cacheReadQuotaPerMillion: number | null
+  /** 是否支持图片/视觉输入。 */
+  vision: boolean | null
+  /** 是否支持工具/函数调用。 */
+  toolsSupport: boolean | null
+  /** 是否支持 JSON 输出模式。 */
+  jsonModeSupport: boolean | null
+  /** 最大上下文窗口（token 数）。 */
+  contextLength: number | null
 }
 
 /** 后端获取上游模型选项所需的未保存表单值。 */
