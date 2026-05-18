@@ -269,6 +269,31 @@ jdbc:mysql://127.0.0.1:3306/api_convert?useUnicode=true&characterEncoding=utf8&s
 docker build -t api-convert:local .
 ```
 
+发布镜像地址：
+
+```text
+crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:{版本号}
+```
+
+例如发布 `v1.0.2` 时：
+
+```bash
+docker pull crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.2
+```
+
+直接使用发布镜像部署：
+
+```bash
+docker run -d --name api-convert \
+  -p 8080:8080 \
+  -v api-convert-data:/app/data \
+  -e JAVA_OPTS='-XX:+UnlockExperimentalVMOptions -XX:+UseCompactObjectHeaders' \
+  -e LOG_PATH=/app/data/logs \
+  -e API_CONVERT_ADMIN_USERNAME=admin \
+  -e API_CONVERT_ADMIN_PASSWORD='change-me' \
+  crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.2
+```
+
 使用 SQLite 运行：
 
 ```bash
