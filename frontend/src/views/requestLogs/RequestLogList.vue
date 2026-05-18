@@ -40,10 +40,27 @@ function inputTokenView(row: RequestLogVO) {
   ])
 }
 
+// 密钥列展示管理端名称和稳定 ID，不展示明文密钥。
+function apiKeyView(row: RequestLogVO) {
+  if (!row.gatewayApiKeyId && !row.gatewayApiKeyName) return '-'
+  const name = row.gatewayApiKeyName || `Key #${row.gatewayApiKeyId}`
+  const detail = [
+    row.gatewayApiKeyId ? `ID:${row.gatewayApiKeyId}` : '',
+    row.gatewayApiKeyPreview || '',
+  ].filter(Boolean).join(' · ')
+  return h('div', [
+    h('div', { style: 'font-weight:500;' }, name),
+    detail
+      ? h('div', { style: 'font-size:12px;color:#666;line-height:1.3;' }, detail)
+      : null,
+  ])
+}
+
 const columns: DataTableColumn<RequestLogVO>[] = [
   { title: '编号', key: 'id', width: 70 },
   { title: '时间', key: 'createdAt', width: 170, render: (row) => textOrDash(row.createdAt) },
   { title: '请求编号', key: 'requestId', width: 150, ellipsis: { tooltip: true } },
+  { title: '密钥', key: 'gatewayApiKeyName', width: 170, ellipsis: { tooltip: true }, render: apiKeyView },
   { title: '协议', key: 'sourceProtocol', width: 90, render: (row) => protocolLabel(row.sourceProtocol) },
   { title: '接口类型', key: 'requestType', width: 110, render: (row) => requestTypeLabel(row.requestType) },
   { title: '渠道', key: 'providerCode', width: 120, render: (row) => textOrDash(row.providerCode) },
@@ -89,6 +106,7 @@ onMounted(load)
       <n-h2>请求日志</n-h2>
       <n-space>
         <n-input v-model:value="search.requestId" placeholder="请求编号" style="width:160px" />
+        <n-input-number v-model:value="search.gatewayApiKeyId" placeholder="密钥ID" :show-button="false" clearable style="width:120px" />
         <n-select v-model:value="search.sourceProtocol" clearable :options="[{ label: 'OpenAI', value: 'openai' }, { label: 'Anthropic', value: 'anthropic' }]" placeholder="协议" style="width:130px" />
         <n-select v-model:value="search.requestType" clearable :options="[{ label: '对话补全', value: 'chat_completions' }, { label: '消息接口', value: 'messages' }]" placeholder="接口类型" style="width:140px" />
         <n-input v-model:value="search.providerCode" placeholder="渠道" style="width:120px" />
@@ -97,7 +115,7 @@ onMounted(load)
         <n-date-picker v-model:formatted-value="dateRange" type="datetimerange" value-format="yyyy-MM-dd HH:mm:ss" clearable style="width:360px" />
         <n-button type="primary" @click="handleSearch">查询</n-button>
       </n-space>
-      <n-data-table :columns="columns" :data="data" :loading="loading" :pagination="false" :scroll-x="1730" />
+      <n-data-table :columns="columns" :data="data" :loading="loading" :pagination="false" :scroll-x="1900" />
       <n-pagination v-model:page="page" :page-size="pageSize" :item-count="total" @update:page="handlePageChange" />
     </n-space>
   </div>

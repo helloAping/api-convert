@@ -1,4 +1,4 @@
-package cn.ms08.apiconvert.adapter;
+package cn.ms08.apiconvert.adapter.protocol;
 
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
 import cn.ms08.apiconvert.dto.UnifiedMessage;

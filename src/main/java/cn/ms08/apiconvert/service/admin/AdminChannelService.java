@@ -35,7 +35,7 @@ import java.util.Map;
 public class AdminChannelService {
 
     /**
-     * OpenAI 兼容渠道的默认协议类型。
+     * 默认供应商策略。
      */
     private static final String DEFAULT_TYPE = "OPENAI_COMPATIBLE";
     /**
@@ -55,7 +55,7 @@ public class AdminChannelService {
      */
     private static final String DEFAULT_STATUS = "ACTIVE";
     /**
-     * 默认路由优先级，预留给后续加权路由。
+     * 默认路由权重，加权模式下数值越高分配流量越多。
      */
     private static final int DEFAULT_PRIORITY = 100;
 
@@ -380,11 +380,17 @@ public class AdminChannelService {
     }
 
     /**
-     * 当管理员未填写路径时，选择协议特定的默认请求路径。
+     * 当管理员未填写路径时，选择供应商特定的默认请求路径。
+     * GEMINI 的对话路径会由客户端按 /v1beta/models/{model}:generateContent 动态构造，这里仅设基础路径。
      */
     private String defaultPath(String type, String path) {
         if (StringUtils.hasText(path)) return path;
-        return "ANTHROPIC".equals(type) ? DEFAULT_ANTHROPIC_PATH : DEFAULT_CHAT_PATH;
+        return switch (type) {
+            case "ANTHROPIC" -> DEFAULT_ANTHROPIC_PATH;
+            case "OPENAI_RESPONSES" -> "/v1/responses";
+            case "GEMINI" -> "/v1beta/models";
+            default -> DEFAULT_CHAT_PATH;
+        };
     }
 
     /**

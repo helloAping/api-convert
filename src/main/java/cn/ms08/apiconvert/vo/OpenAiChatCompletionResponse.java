@@ -17,65 +17,36 @@ public class OpenAiChatCompletionResponse {
     private String model;
     private List<Choice> choices;
     private Usage usage;
+    @JsonProperty("system_fingerprint")
+    private String systemFingerprint;
     private final Map<String, Object> additionalProperties = new LinkedHashMap<>();
 
-    public String getId() {
-        return id;
-    }
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
 
-    public void setId(String id) {
-        this.id = id;
-    }
+    public String getObject() { return object; }
+    public void setObject(String object) { this.object = object; }
 
-    public String getObject() {
-        return object;
-    }
+    public Long getCreated() { return created; }
+    public void setCreated(Long created) { this.created = created; }
 
-    public void setObject(String object) {
-        this.object = object;
-    }
+    public String getModel() { return model; }
+    public void setModel(String model) { this.model = model; }
 
-    public Long getCreated() {
-        return created;
-    }
+    public List<Choice> getChoices() { return choices; }
+    public void setChoices(List<Choice> choices) { this.choices = choices; }
 
-    public void setCreated(Long created) {
-        this.created = created;
-    }
+    public Usage getUsage() { return usage; }
+    public void setUsage(Usage usage) { this.usage = usage; }
 
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public List<Choice> getChoices() {
-        return choices;
-    }
-
-    public void setChoices(List<Choice> choices) {
-        this.choices = choices;
-    }
-
-    public Usage getUsage() {
-        return usage;
-    }
-
-    public void setUsage(Usage usage) {
-        this.usage = usage;
-    }
+    public String getSystemFingerprint() { return systemFingerprint; }
+    public void setSystemFingerprint(String systemFingerprint) { this.systemFingerprint = systemFingerprint; }
 
     @JsonAnyGetter
-    public Map<String, Object> getAdditionalProperties() {
-        return additionalProperties;
-    }
+    public Map<String, Object> getAdditionalProperties() { return additionalProperties; }
 
     @JsonAnySetter
-    public void setAdditionalProperty(String name, Object value) {
-        additionalProperties.put(name, value);
-    }
+    public void setAdditionalProperty(String name, Object value) { additionalProperties.put(name, value); }
 
     public static class Choice {
         private Integer index;
@@ -108,6 +79,22 @@ public class OpenAiChatCompletionResponse {
         }
     }
 
+    public static class CompletionTokensDetails {
+        @JsonProperty("text_tokens")
+        private Integer textTokens;
+        @JsonProperty("audio_tokens")
+        private Integer audioTokens;
+        @JsonProperty("reasoning_tokens")
+        private Integer reasoningTokens;
+
+        public Integer getTextTokens() { return textTokens; }
+        public void setTextTokens(Integer textTokens) { this.textTokens = textTokens; }
+        public Integer getAudioTokens() { return audioTokens; }
+        public void setAudioTokens(Integer audioTokens) { this.audioTokens = audioTokens; }
+        public Integer getReasoningTokens() { return reasoningTokens; }
+        public void setReasoningTokens(Integer reasoningTokens) { this.reasoningTokens = reasoningTokens; }
+    }
+
     public static class Usage {
         @JsonProperty("prompt_tokens")
         private Integer promptTokens;
@@ -121,6 +108,8 @@ public class OpenAiChatCompletionResponse {
         private Integer cachedTokens;
         @JsonProperty("cache_read_input_tokens")
         private Integer cacheReadInputTokens;
+        @JsonProperty("completion_tokens_details")
+        private CompletionTokensDetails completionTokensDetails;
         @JsonProperty("prompt_cache_hit_tokens")
         private Integer promptCacheHitTokens;
         private final Map<String, Object> additionalProperties = new LinkedHashMap<>();
@@ -180,6 +169,9 @@ public class OpenAiChatCompletionResponse {
         public void setPromptCacheHitTokens(Integer promptCacheHitTokens) {
             this.promptCacheHitTokens = promptCacheHitTokens;
         }
+
+        public CompletionTokensDetails getCompletionTokensDetails() { return completionTokensDetails; }
+        public void setCompletionTokensDetails(CompletionTokensDetails completionTokensDetails) { this.completionTokensDetails = completionTokensDetails; }
 
         /**
          * 保留未识别的供应商用量扩展字段，便于后续补充更多 token 统计。

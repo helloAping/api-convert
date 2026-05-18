@@ -17,6 +17,7 @@ const router = createRouter({
         { path: 'channels', name: 'Channels', component: () => import('@/views/channels/ChannelList.vue') },
         { path: 'models', name: 'Models', component: () => import('@/views/models/ModelList.vue') },
         { path: 'api-keys', name: 'ApiKeys', component: () => import('@/views/apiKeys/ApiKeyList.vue') },
+        { path: 'system-config', name: 'SystemConfig', component: () => import('@/views/system/SystemConfigView.vue') },
         { path: 'request-logs', name: 'RequestLogs', component: () => import('@/views/requestLogs/RequestLogList.vue') },
       ],
     },

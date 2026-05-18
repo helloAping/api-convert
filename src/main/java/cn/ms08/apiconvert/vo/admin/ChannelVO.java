@@ -8,7 +8,7 @@ import java.util.List;
  * @param id 管理端接口使用的渠道 ID，即供应商表行 ID
  * @param code 稳定的渠道编码，也是 provider_code
  * @param name 管理后台展示名称
- * @param type 供应商协议类型，例如 OPENAI_COMPATIBLE 或 ANTHROPIC
+ * @param type 供应商类型（ProviderType），例如 OPENAI_COMPATIBLE、ANTHROPIC、OPENAI_RESPONSES、GEMINI
  * @param enabled 渠道是否可用于路由
  * @param baseUrl 上游 Base URL
  * @param chatPath 供应商特定的对话或消息路径
@@ -16,7 +16,7 @@ import java.util.List;
  * @param credentialId 当前选中凭证行 ID，没有凭证时为空
  * @param credentialName 当前选中凭证展示名，没有凭证时为空
  * @param apiKey 已脱敏的供应商 API Key，绝不返回原始密钥
- * @param priority 当前选中凭证优先级
+ * @param priority 路由权重，加权模式下数值越高分配流量越多
  * @param status 当前选中凭证状态
  * @param modelCount 绑定到该渠道的模型映射数量
  * @param models 绑定到该渠道的模型映射列表

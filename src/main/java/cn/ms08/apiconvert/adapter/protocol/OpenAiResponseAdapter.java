@@ -1,4 +1,4 @@
-package cn.ms08.apiconvert.adapter;
+package cn.ms08.apiconvert.adapter.protocol;
 
 import cn.ms08.apiconvert.vo.OpenAiChatCompletionResponse;
 import cn.ms08.apiconvert.dto.OpenAiMessage;
@@ -7,9 +7,14 @@ import cn.ms08.apiconvert.dto.UnifiedMessage;
 import cn.ms08.apiconvert.dto.UnifiedUsage;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+/**
+ * OpenAI Chat Completions 响应和网关统一响应之间的适配器。
+ */
 @Component
 public class OpenAiResponseAdapter {
 
@@ -24,17 +29,29 @@ public class OpenAiResponseAdapter {
             );
         }
         List<UnifiedMessage> messages = response.getChoices() == null ? List.of() : response.getChoices().stream()
-                .map(OpenAiChatCompletionResponse.Choice::getMessage)
-                .map(this::toUnifiedMessage)
+                .map(choice -> toUnifiedMessage(choice.getMessage(), choice.getFinishReason()))
                 .toList();
-        return new UnifiedChatResponse(response.getId(), response.getModel(), messages, usage, response);
+        String systemFingerprint = response.getSystemFingerprint();
+        UnifiedChatResponse unified = new UnifiedChatResponse(response.getId(), response.getModel(), messages, usage, response);
+        if (systemFingerprint != null) {
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("system_fingerprint", systemFingerprint);
+            // store as additional info on the unified response
+        }
+        return unified;
     }
 
-    private UnifiedMessage toUnifiedMessage(OpenAiMessage message) {
+    private UnifiedMessage toUnifiedMessage(OpenAiMessage message, String finishReason) {
         if (message == null) {
-            return new UnifiedMessage("assistant", null, null);
+            return new UnifiedMessage("assistant", null, null, finishReason);
         }
-        return new UnifiedMessage(message.getRole(), message.getContent(), message.getName());
+        Map<String, Object> options = new LinkedHashMap<>();
+        if (message.getToolCalls() != null) options.put("tool_calls", message.getToolCalls());
+        if (message.getToolCallId() != null) options.put("tool_call_id", message.getToolCallId());
+        if (message.getReasoningContent() != null) options.put("reasoning_content", message.getReasoningContent());
+        options.putAll(message.getAdditionalProperties());
+        return new UnifiedMessage(message.getRole(), message.getContent(), message.getName(), finishReason,
+                options.isEmpty() ? null : options);
     }
 
     public OpenAiChatCompletionResponse toOpenAi(UnifiedChatResponse response, String publicModel) {
@@ -76,30 +93,46 @@ public class OpenAiResponseAdapter {
     }
 
     /**
-     * 跨协议路由时把统一消息合成为 OpenAI choices。
+     * 跨协议路由时把统一消息合成为 OpenAI choices，保留实际的 finish_reason 和 tool_calls。
      */
     private List<OpenAiChatCompletionResponse.Choice> toChoices(List<UnifiedMessage> messages) {
         if (messages == null || messages.isEmpty()) {
-            messages = List.of(new UnifiedMessage("assistant", "", null));
+            messages = List.of(new UnifiedMessage("assistant", "", null, "stop"));
         }
         final int[] index = {0};
         return messages.stream().map(message -> {
             OpenAiChatCompletionResponse.Choice choice = new OpenAiChatCompletionResponse.Choice();
             choice.setIndex(index[0]++);
             choice.setMessage(toOpenAiMessage(message));
-            choice.setFinishReason("stop");
+            // 使用实际 finish_reason，未设置时默认 "stop"
+            choice.setFinishReason(message.finishReason() != null ? message.finishReason() : "stop");
             return choice;
         }).toList();
     }
 
     /**
-     * 将统一消息转换为 OpenAI 消息对象。
+     * 将统一消息转换为 OpenAI 消息对象，携带 tool_calls、reasoning_content 等元数据。
      */
+    @SuppressWarnings("unchecked")
     private OpenAiMessage toOpenAiMessage(UnifiedMessage message) {
         OpenAiMessage openAiMessage = new OpenAiMessage();
         openAiMessage.setRole(message.role() == null ? "assistant" : message.role());
         openAiMessage.setContent(message.content());
         openAiMessage.setName(message.name());
+        if (message.options() != null) {
+            Object toolCalls = message.options().get("tool_calls");
+            if (toolCalls instanceof List<?> tcList) {
+                openAiMessage.setToolCalls((List<Map<String, Object>>) tcList);
+            }
+            Object toolCallId = message.options().get("tool_call_id");
+            if (toolCallId instanceof String tci) {
+                openAiMessage.setToolCallId(tci);
+            }
+            Object reasoningContent = message.options().get("reasoning_content");
+            if (reasoningContent instanceof String rc) {
+                openAiMessage.setReasoningContent(rc);
+            }
+        }
         return openAiMessage;
     }
 }

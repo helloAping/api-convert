@@ -1,4 +1,4 @@
-package cn.ms08.apiconvert.controller;
+package cn.ms08.apiconvert.endpoint;
 
 import cn.ms08.apiconvert.dao.AiChannelMapper;
 import cn.ms08.apiconvert.dao.AiChannelModelMapper;
@@ -6,40 +6,38 @@ import cn.ms08.apiconvert.entity.AiChannelEntity;
 import cn.ms08.apiconvert.entity.AiChannelModelEntity;
 import cn.ms08.apiconvert.vo.OpenAiModelListResponse;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 
 /**
- * OpenAI 兼容模型列表接口，返回至少有一个可用渠道承载的网关对外模型名。
+ * OpenAI 兼容模型列表端点处理器，处理 GET /v1/models。
  */
-@RestController
-public class OpenAiModelController {
+@Component
+public class OpenAiModelsEndpointHandler implements EndpointHandler {
 
-    /**
-     * 渠道模型映射 Mapper。
-     */
     private final AiChannelModelMapper modelMapper;
-    /**
-     * 渠道主表 Mapper，用于过滤不可用渠道。
-     */
     private final AiChannelMapper channelMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /**
-     * 注入模型映射和渠道 Mapper。
-     */
-    public OpenAiModelController(AiChannelModelMapper modelMapper, AiChannelMapper channelMapper) {
+    public OpenAiModelsEndpointHandler(AiChannelModelMapper modelMapper, AiChannelMapper channelMapper) {
         this.modelMapper = modelMapper;
         this.channelMapper = channelMapper;
     }
 
-    /**
-     * 返回启用且可路由的对外模型列表，同名模型只展示一次。
-     */
-    @GetMapping("/v1/models")
-    public OpenAiModelListResponse models() {
+    @Override
+    public EndpointType endpointType() {
+        return EndpointType.OPENAI_MODELS;
+    }
+
+    @Override
+    public void handle(HttpServletRequest request, HttpServletResponse response) throws IOException {
         LinkedHashMap<String, OpenAiModelListResponse.Model> models = new LinkedHashMap<>();
         modelMapper.selectList(new LambdaQueryWrapper<AiChannelModelEntity>()
                         .eq(AiChannelModelEntity::getEnabled, true)
@@ -52,7 +50,11 @@ public class OpenAiModelController {
                                 new OpenAiModelListResponse.Model(model.getPublicName(), "model", model.getChannelCode()));
                     }
                 });
-        return new OpenAiModelListResponse("list", models.values().stream().toList());
+
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        objectMapper.writeValue(response.getOutputStream(),
+                new OpenAiModelListResponse("list", models.values().stream().toList()));
     }
 
     /**

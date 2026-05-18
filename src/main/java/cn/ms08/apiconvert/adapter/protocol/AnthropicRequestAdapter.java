@@ -1,4 +1,4 @@
-package cn.ms08.apiconvert.adapter;
+package cn.ms08.apiconvert.adapter.protocol;
 
 import cn.ms08.apiconvert.dto.AnthropicMessage;
 import cn.ms08.apiconvert.dto.AnthropicMessageRequest;
@@ -16,6 +16,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Anthropic Messages 请求和网关统一请求之间的适配器。
+ */
 @Component
 public class AnthropicRequestAdapter {
 

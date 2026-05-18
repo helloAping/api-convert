@@ -1,4 +1,4 @@
-package cn.ms08.apiconvert.adapter;
+package cn.ms08.apiconvert.adapter.stream;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
