@@ -786,6 +786,7 @@ JAVA_HOME="$JAVA_HOME_25" PATH="$JAVA_HOME_25/bin":$PATH mvn spring-boot:run
 - 通过 `JAVA_OPTS='-XX:+UnlockExperimentalVMOptions -XX:+UseCompactObjectHeaders'` 开启紧凑对象头
 - 通过 `-v api-convert-data:/app/data` 挂载统一数据目录，并设置 `LOG_PATH=/app/data/logs`
 - README Docker 段落已补充阿里云发布镜像地址和直接部署命令：`crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:{版本号}`
+- README Docker 段落已补充 Nginx 反向代理说明：必须配置 `proxy_set_header Authorization $http_authorization;` 显式透传鉴权头，否则反代后端无法读取 Bearer token，网关接口和管理端接口会鉴权失败
 
 ```bash
 # 健康检查（无需鉴权）
