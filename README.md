@@ -308,6 +308,23 @@ docker run --rm -p 8080:8080 \
 
 容器内默认 SQLite 路径为 `/app/data/api-convert.db`，日志输出目录为 `/app/data/logs`。上例通过 `JAVA_OPTS` 开启 JDK 25 紧凑对象头，并将数据和日志统一映射到 `api-convert-data` volume。镜像构建时会编译前端并放入后端静态资源，启动后可直接访问 `http://localhost:8080` 使用管理端。
 
+使用 Nginx 反向代理到容器端口时，必须显式透传 `Authorization` 请求头，否则后端网关无法读取 `Authorization: Bearer <gateway-api-key>` 或管理端登录 token，会导致反代后接口鉴权失败：
+
+```nginx
+location ^~ / {
+    proxy_pass 替换为自己服务的地址;
+
+    proxy_set_header Host $host;
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port $server_port;
+
+    proxy_http_version 1.1;
+}
+```
+
 使用 MySQL 运行时示例：
 
 ```bash
