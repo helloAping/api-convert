@@ -191,7 +191,7 @@ public class RoutingService {
             if (channel != null
                     && Boolean.TRUE.equals(channel.getEnabled())
                     && "ACTIVE".equals(channel.getStatus())
-                    && StringUtils.hasText(channel.getApiKey())) {
+                    && hasUsableCredential(channel)) {
                 candidates.add(new RouteCandidate(model, channel));
             }
         }
@@ -324,7 +324,16 @@ public class RoutingService {
         AiChannelEntity channel = selected.channel();
         return new ModelRoute(model.getPublicName(), channel.getCode(), ProviderType.valueOf(channel.getType()),
                 model.getProviderModel(), channel.getBaseUrl(), channel.getChatPath(), channel.getApiKey(),
+                channel.getAuthMode(), channel.getAuthFilePath(),
                 model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion());
+    }
+
+    private boolean hasUsableCredential(AiChannelEntity channel) {
+        ProviderType type = ProviderType.valueOf(channel.getType());
+        if (type == ProviderType.GPT_AUTH || type == ProviderType.CLAUDE_AUTH) {
+            return "AUTHORIZED".equals(channel.getAuthStatus()) && StringUtils.hasText(channel.getAuthFilePath());
+        }
+        return StringUtils.hasText(channel.getApiKey());
     }
 
     private String routeStateKey(String requestedModel, List<RouteCandidate> candidates) {

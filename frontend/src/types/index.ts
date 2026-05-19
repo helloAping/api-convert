@@ -35,6 +35,16 @@ export interface ChannelVO {
   credentialName: string
   /** 已脱敏的 API Key，不要把该值当作真实密钥提交回后端。 */
   apiKey: string
+  /** 渠道鉴权模式：API_KEY、AUTH_FILE 或 OAUTH。 */
+  authMode: string
+  /** auth.json/OAuth 授权状态。 */
+  authStatus: string
+  /** 脱敏后的授权身份摘要。 */
+  authSubject: string | null
+  /** access token 过期时间。 */
+  authExpiresAt: string | null
+  /** 是否已经绑定授权文件。 */
+  hasAuthFile: boolean
   /** 渠道路由权重，加权模式下数值越高分配流量越多。 */
   priority: number
   /** 渠道状态，例如 ACTIVE 或 DISABLED。 */
@@ -244,6 +254,8 @@ export interface ChannelForm {
   modelsPath: string
   /** 原始供应商密钥；更新时为空表示保留现有密钥。 */
   apiKey: string
+  /** 渠道鉴权模式，AUTH 类型默认为 AUTH_FILE。 */
+  authMode?: string
   /** 渠道路由权重，加权模式下数值越高分配流量越多。 */
   priority: number
   /** 渠道状态，例如 ACTIVE 或 DISABLED。 */
@@ -334,6 +346,23 @@ export interface UpstreamModelVO {
   ownedBy: string
 }
 
+export interface ChannelAuthStartVO {
+  channelId: number
+  providerType: string
+  authorizationUrl: string
+  state: string
+}
+
+export interface ChannelAuthStatusVO {
+  channelId: number
+  providerType: string
+  authMode: string
+  authStatus: string
+  authSubject: string | null
+  authExpiresAt: string | null
+  hasAuthFile: boolean
+}
+
 export interface ApiKeyForm {
   name: string
   channelCodes: string[]
@@ -393,7 +422,7 @@ export interface RequestLogSearchParam {
 }
 
 /** 渠道聚合表单当前支持的供应商策略类型。 */
-export const channelTypes = ['OPENAI_COMPATIBLE', 'ANTHROPIC', 'OPENAI_RESPONSES', 'DEEPSEEK_CHAT', 'DEEPSEEK_ANTHROPIC', 'GEMINI']
+export const channelTypes = ['OPENAI_COMPATIBLE', 'ANTHROPIC', 'OPENAI_RESPONSES', 'GPT_AUTH', 'CLAUDE_AUTH', 'DEEPSEEK_CHAT', 'DEEPSEEK_ANTHROPIC', 'GEMINI']
 export const activeStatuses = ['ACTIVE', 'DISABLED', 'EXPIRED']
 export const quotaWindowUnits = ['HOUR', 'DAY', 'MONTH']
 export const routeModes = ['RANDOM', 'ROUND_ROBIN', 'WEIGHTED', 'SESSION_STICKY']

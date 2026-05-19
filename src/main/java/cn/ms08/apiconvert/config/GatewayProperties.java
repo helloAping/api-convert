@@ -16,6 +16,10 @@ public class GatewayProperties {
      * 网关鉴权和管理端登录配置。
      */
     private Security security = new Security();
+    /**
+     * OAuth/auth.json 凭据文件存储与授权端点配置。
+     */
+    private Auth auth = new Auth();
 
     public Database getDatabase() {
         return database;
@@ -31,6 +35,14 @@ public class GatewayProperties {
 
     public void setSecurity(Security security) {
         this.security = security;
+    }
+
+    public Auth getAuth() {
+        return auth;
+    }
+
+    public void setAuth(Auth auth) {
+        this.auth = auth;
     }
 
     /**
@@ -93,6 +105,108 @@ public class GatewayProperties {
 
         public void setAdmin(Admin admin) {
             this.admin = admin;
+        }
+    }
+
+    public static class Auth {
+        /**
+         * auth-dir 根目录；为空时 SQLite 使用数据库同级目录，MySQL 使用 /opt/data/auth-dir。
+         */
+        private String storageDir;
+        private OAuth oauth = new OAuth();
+
+        public String getStorageDir() {
+            return storageDir;
+        }
+
+        public void setStorageDir(String storageDir) {
+            this.storageDir = storageDir;
+        }
+
+        public OAuth getOauth() {
+            return oauth;
+        }
+
+        public void setOauth(OAuth oauth) {
+            this.oauth = oauth;
+        }
+    }
+
+    public static class OAuth {
+        private OAuthProvider gptAuth = new OAuthProvider();
+        private OAuthProvider claudeAuth = new OAuthProvider();
+
+        public OAuthProvider getGptAuth() {
+            return gptAuth;
+        }
+
+        public void setGptAuth(OAuthProvider gptAuth) {
+            this.gptAuth = gptAuth;
+        }
+
+        public OAuthProvider getClaudeAuth() {
+            return claudeAuth;
+        }
+
+        public void setClaudeAuth(OAuthProvider claudeAuth) {
+            this.claudeAuth = claudeAuth;
+        }
+    }
+
+    public static class OAuthProvider {
+        private String authorizationUri;
+        private String tokenUri;
+        private String clientId;
+        private String clientSecret;
+        private String scope;
+        private String redirectUri;
+
+        public String getAuthorizationUri() {
+            return authorizationUri;
+        }
+
+        public void setAuthorizationUri(String authorizationUri) {
+            this.authorizationUri = authorizationUri;
+        }
+
+        public String getTokenUri() {
+            return tokenUri;
+        }
+
+        public void setTokenUri(String tokenUri) {
+            this.tokenUri = tokenUri;
+        }
+
+        public String getClientId() {
+            return clientId;
+        }
+
+        public void setClientId(String clientId) {
+            this.clientId = clientId;
+        }
+
+        public String getClientSecret() {
+            return clientSecret;
+        }
+
+        public void setClientSecret(String clientSecret) {
+            this.clientSecret = clientSecret;
+        }
+
+        public String getScope() {
+            return scope;
+        }
+
+        public void setScope(String scope) {
+            this.scope = scope;
+        }
+
+        public String getRedirectUri() {
+            return redirectUri;
+        }
+
+        public void setRedirectUri(String redirectUri) {
+            this.redirectUri = redirectUri;
         }
     }
 

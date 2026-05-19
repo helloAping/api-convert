@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.net.InetSocketAddress;
 import java.time.LocalDateTime;
@@ -32,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -327,6 +329,88 @@ class ApiConvertApplicationTests {
     /**
      * 验证编辑渠道时 API Key 留空，模型发现接口会使用数据库中已保存的供应商密钥。
      */
+    @Test
+    void gptAuthChannelCanUploadAuthJsonAndRoute() throws Exception {
+        String token = loginAsAdmin();
+        String code = "gpt-auth-" + UUID.randomUUID();
+        String model = "gpt-auth-model-" + UUID.randomUUID();
+        long channelId = 0;
+
+        try {
+            String createResponse = mockMvc.perform(post("/api/admin/channels")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "code": "%s",
+                                      "name": "GPT Auth",
+                                      "type": "GPT_AUTH",
+                                      "models": [
+                                        {"publicName": "%s", "providerModel": "%s"}
+                                      ],
+                                      "enabled": true
+                                    }
+                                    """.formatted(code, model, model)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            channelId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+            String oauthStartResponse = mockMvc.perform(post("/api/admin/channels/" + channelId + "/auth/start")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode oauthStart = objectMapper.readTree(oauthStartResponse).path("data");
+            assertThat(oauthStart.path("authorizationUrl").asText())
+                    .contains("https://auth.openai.com/oauth/authorize")
+                    .contains("client_id=app_EMoamEEZ73f0CkXaXp7hrann")
+                    .contains("redirect_uri=http://localhost:1455/auth/callback")
+                    .contains("code_challenge=")
+                    .contains("codex_cli_simplified_flow=true");
+
+            MockMultipartFile authFile = new MockMultipartFile(
+                    "file",
+                    "auth.json",
+                    "application/json",
+                    """
+                            {
+                              "access_token": "oauth-access-token-secret",
+                              "refresh_token": "oauth-refresh-token-secret",
+                              "email": "owner@example.com",
+                              "expires_at": "2099-01-01 00:00:00"
+                            }
+                            """.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            String uploadResponse = mockMvc.perform(multipart("/api/admin/channels/" + channelId + "/auth/upload")
+                            .file(authFile)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            JsonNode authStatus = objectMapper.readTree(uploadResponse).path("data");
+            assertThat(authStatus.path("authStatus").asText()).isEqualTo("AUTHORIZED");
+            assertThat(authStatus.path("hasAuthFile").asBoolean()).isTrue();
+            assertThat(uploadResponse).doesNotContain("oauth-access-token-secret", "oauth-refresh-token-secret");
+
+            ModelRoute route = routingService.resolve(model, Set.of(code));
+            assertThat(route.providerType()).isEqualTo(cn.ms08.apiconvert.provider.ProviderType.GPT_AUTH);
+            assertThat(route.baseUrl()).isEqualTo("https://api.openai.com");
+            assertThat(route.chatPath()).isEqualTo("/v1/chat/completions");
+            assertThat(route.authFilePath()).contains("GPT_AUTH");
+        } finally {
+            if (channelId > 0) {
+                mockMvc.perform(delete("/api/admin/channels/" + channelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+        }
+    }
+
     @Test
     void editingChannelCanFetchModelsWithSavedApiKeyWhenFormKeyIsBlank() throws Exception {
         String token = loginAsAdmin();

@@ -222,6 +222,9 @@ public class ChatGatewayService {
             OutputStream targetStream = outputStream;
             if (endpointType != null) {
                 StreamResponseTransformer transformer = streamTransformerRegistry.get(endpointType, route.providerType());
+                if (transformer == null) {
+                    transformer = streamTransformerRegistry.get(endpointType, adapterProvider(route.providerType()));
+                }
                 if (transformer != null) {
                     long createdAt = java.time.Instant.now().getEpochSecond();
                     wrappedStream = transformer.wrap(outputStream, requestId, route.publicModel(), createdAt);
@@ -416,11 +419,16 @@ public class ChatGatewayService {
             return response;
         }
         EndpointProviderAdapter adapter = adapterRegistry.get(endpointType, route.providerType());
+        if (adapter == null) {
+            adapter = adapterRegistry.get(endpointType, adapterProvider(route.providerType()));
+        }
         if (adapter != null) {
             return adapter.adaptResponse(response, route.publicModel());
         }
         ProviderType resolvedProvider = route.providerType();
-        if (endpointType.defaultProvider() != null && resolvedProvider == endpointType.defaultProvider()) {
+        if (endpointType.defaultProvider() != null
+                && (resolvedProvider == endpointType.defaultProvider()
+                || adapterProvider(resolvedProvider) == endpointType.defaultProvider())) {
             // 同协议透传：修正 model 为公共模型名
             Object raw = response.rawResponse();
             if (raw instanceof OpenAiResponsesResponse rr) {
@@ -447,9 +455,20 @@ public class ChatGatewayService {
         }
         EndpointProviderAdapter adapter = adapterRegistry.get(endpointType, route.providerType());
         if (adapter == null) {
+            adapter = adapterRegistry.get(endpointType, adapterProvider(route.providerType()));
+        }
+        if (adapter == null) {
             return request;
         }
         return adapter.adaptRequest(request);
+    }
+
+    private ProviderType adapterProvider(ProviderType providerType) {
+        return switch (providerType) {
+            case GPT_AUTH -> ProviderType.OPENAI_COMPATIBLE;
+            case CLAUDE_AUTH -> ProviderType.ANTHROPIC;
+            default -> providerType;
+        };
     }
 
     /**

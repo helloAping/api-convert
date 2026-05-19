@@ -53,6 +53,27 @@ public class AiChannelEntity {
      */
     private String apiKey;
     /**
+     * 鉴权模式：API_KEY 使用 apiKey，AUTH_FILE/OAUTH 使用 auth-dir 中的授权文件。
+     */
+    private String authMode;
+    /**
+     * 相对 auth-dir 的授权文件路径，接口响应和日志中不得包含文件内容。
+     */
+    private String authFilePath;
+    /**
+     * 授权状态：NOT_CONFIGURED、AUTHORIZED、EXPIRED、ERROR。
+     */
+    private String authStatus;
+    /**
+     * 脱敏后的授权身份摘要，例如邮箱或账号 ID。
+     */
+    private String authSubject;
+    /**
+     * access token 过期时间，用于管理端展示和路由前快速判断。
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime authExpiresAt;
+    /**
      * 路由权重，加权模式下数值越高分配流量越多。
      */
     private Integer priority;

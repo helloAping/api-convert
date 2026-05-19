@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS ai_channel (
   chat_path TEXT NOT NULL DEFAULT '/v1/chat/completions',
   models_path TEXT NOT NULL DEFAULT '/v1/models',
   api_key TEXT,
+  auth_mode TEXT NOT NULL DEFAULT 'API_KEY',
+  auth_file_path TEXT,
+  auth_status TEXT NOT NULL DEFAULT 'NOT_CONFIGURED',
+  auth_subject TEXT,
+  auth_expires_at TIMESTAMP,
   priority INTEGER NOT NULL DEFAULT 100,
   status TEXT NOT NULL DEFAULT 'ACTIVE',
   enabled INTEGER NOT NULL DEFAULT 1,
@@ -131,4 +136,4 @@ VALUES
   ('routing.failure_cooldown_minutes', '0', '失败阈值触发后的避让分钟数；0 表示关闭'),
   ('routing.sticky_ttl_minutes', '1440', '会话粘性绑定保留分钟数');
 
-INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (11, 'Add routing system configuration');
+INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (12, 'Add auth file provider support');
