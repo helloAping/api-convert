@@ -3,10 +3,13 @@ package cn.ms08.apiconvert.adapter.endpoint;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
+import cn.ms08.apiconvert.dto.UnifiedMessage;
 import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.provider.ProviderType;
 import cn.ms08.apiconvert.vo.OpenAiChatCompletionResponse;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * Chat Completions endpoint -> DeepSeek Chat upstream, same protocol response adapter.
@@ -32,7 +35,10 @@ public class ChatCompletionsToDeepSeekChatAdapter implements EndpointProviderAda
 
     @Override
     public UnifiedChatRequest adaptRequest(UnifiedChatRequest request) {
-        return request;
+        List<UnifiedMessage> messages = ChatToolSequenceNormalizer.normalizeForStrictChat(request.messages());
+        return new UnifiedChatRequest(
+                request.model(), messages, request.stream(), request.temperature(), request.maxTokens(),
+                request.responseFormat(), request.rawOptions());
     }
 
     @Override

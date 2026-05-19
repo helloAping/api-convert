@@ -72,7 +72,7 @@ public class ResponsesToDeepSeekChatAdapter extends ResponsesToOpenAiCompatibleA
             }
         }
         reorderToolSequence(result);
-        return result;
+        return ChatToolSequenceNormalizer.normalizeForStrictChat(result);
     }
 
     private UnifiedMessage withReasoningForChat(UnifiedMessage message, ReasoningParts parts, String pendingReasoningContent) {

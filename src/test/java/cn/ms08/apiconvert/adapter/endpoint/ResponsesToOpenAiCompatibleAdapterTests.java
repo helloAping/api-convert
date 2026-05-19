@@ -1,6 +1,7 @@
 package cn.ms08.apiconvert.adapter.endpoint;
 
 import cn.ms08.apiconvert.adapter.protocol.OpenAiRequestAdapter;
+import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesResponseAdapter;
 import cn.ms08.apiconvert.dto.OpenAiChatCompletionRequest;
@@ -23,6 +24,8 @@ class ResponsesToOpenAiCompatibleAdapterTests {
     private final OpenAiResponsesResponseAdapter responseAdapter = new OpenAiResponsesResponseAdapter();
     private final ResponsesToOpenAiCompatibleAdapter adapter = new ResponsesToOpenAiCompatibleAdapter(responseAdapter);
     private final ResponsesToDeepSeekChatAdapter deepSeekAdapter = new ResponsesToDeepSeekChatAdapter(responseAdapter);
+    private final ChatCompletionsToDeepSeekChatAdapter chatDeepSeekAdapter =
+            new ChatCompletionsToDeepSeekChatAdapter(new OpenAiResponseAdapter());
     private final OpenAiRequestAdapter openAiRequestAdapter = new OpenAiRequestAdapter();
     private final OpenAiResponsesRequestAdapter responsesRequestAdapter = new OpenAiResponsesRequestAdapter();
 
@@ -242,5 +245,71 @@ class ResponsesToOpenAiCompatibleAdapterTests {
         // 文本消息应被移到 tool 块之后
         assertThat(providerRequest.getMessages().get(4).getRole()).isEqualTo("assistant");
         assertThat(providerRequest.getMessages().get(4).getContent()).isEqualTo("I will process the results.");
+    }
+
+    /**
+     * DeepSeek Chat 比部分兼容上游更严格：assistant 的每个 tool_call 都必须紧跟对应 tool 结果。
+     * 当客户端历史被截断导致只有部分结果时，只保留可配对调用，避免整次请求被 400 拒绝。
+     */
+    @Test
+    void deepSeekResponsesAdapterTrimsUnansweredToolCalls() {
+        OpenAiResponsesRequest request = new OpenAiResponsesRequest();
+        request.setModel("deepseek-model");
+        request.setInput(List.of(
+                Map.of("id", "fc_1", "type", "function_call", "call_id", "call_1",
+                        "name", "lookupA", "arguments", "{}"),
+                Map.of("id", "fc_2", "type", "function_call", "call_id", "call_2",
+                        "name", "lookupB", "arguments", "{}"),
+                Map.of("role", "assistant", "content", "intervening text"),
+                Map.of("type", "function_call_output", "call_id", "call_1", "output", "result_a")
+        ));
+
+        UnifiedChatRequest unified = responsesRequestAdapter.toUnified(request);
+        UnifiedChatRequest adapted = deepSeekAdapter.adaptRequest(unified);
+        OpenAiChatCompletionRequest providerRequest = openAiRequestAdapter.toProviderRequest(adapted, "deepseek-model");
+
+        OpenAiMessage assistantMsg = providerRequest.getMessages().get(0);
+        assertThat(assistantMsg.getRole()).isEqualTo("assistant");
+        assertThat(assistantMsg.getToolCalls()).hasSize(1);
+        assertThat(assistantMsg.getToolCalls().getFirst()).containsEntry("id", "call_1");
+        assertThat(providerRequest.getMessages().get(1).getRole()).isEqualTo("tool");
+        assertThat(providerRequest.getMessages().get(1).getToolCallId()).isEqualTo("call_1");
+        assertThat(providerRequest.getMessages().get(2).getContent()).isEqualTo("intervening text");
+    }
+
+    /**
+     * OpenAI Chat 入口直连 DeepSeek 时也要修复历史序列，不能只覆盖 Responses 入口。
+     */
+    @Test
+    void deepSeekChatAdapterRepairsDirectChatToolSequence() {
+        UnifiedChatRequest chatRequest = new UnifiedChatRequest(
+                "deepseek-model",
+                List.of(
+                        new UnifiedMessage("assistant", null, null, "tool_calls",
+                                Map.of("tool_calls", List.of(
+                                        Map.of("id", "call_1", "type", "function",
+                                                "function", Map.of("name", "lookupA", "arguments", "{}")),
+                                        Map.of("id", "call_2", "type", "function",
+                                                "function", Map.of("name", "lookupB", "arguments", "{}"))
+                                ))),
+                        new UnifiedMessage("assistant", "text between call and result", null),
+                        new UnifiedMessage("tool", "result_a", null, null, Map.of("tool_call_id", "call_1"))
+                ),
+                true,
+                null,
+                256,
+                null,
+                new LinkedHashMap<>()
+        );
+
+        UnifiedChatRequest adapted = chatDeepSeekAdapter.adaptRequest(chatRequest);
+        OpenAiChatCompletionRequest providerRequest = openAiRequestAdapter.toProviderRequest(adapted, "deepseek-model", true);
+
+        assertThat(providerRequest.getMessages()).hasSize(3);
+        assertThat(providerRequest.getMessages().get(0).getToolCalls()).hasSize(1);
+        assertThat(providerRequest.getMessages().get(0).getToolCalls().getFirst()).containsEntry("id", "call_1");
+        assertThat(providerRequest.getMessages().get(1).getRole()).isEqualTo("tool");
+        assertThat(providerRequest.getMessages().get(1).getToolCallId()).isEqualTo("call_1");
+        assertThat(providerRequest.getMessages().get(2).getContent()).isEqualTo("text between call and result");
     }
 }
