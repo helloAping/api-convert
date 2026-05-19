@@ -67,7 +67,7 @@ public class ResponsesToOpenAiCompatibleAdapter implements EndpointProviderAdapt
         return new UnifiedChatResponse(response.id(), publicModel, response.messages(), response.usage(), adapted);
     }
 
-    private Map<String, Object> cleanRawOptions(Map<String, Object> rawOptions) {
+    protected Map<String, Object> cleanRawOptions(Map<String, Object> rawOptions) {
         if (rawOptions == null || rawOptions.isEmpty()) {
             return rawOptions;
         }
@@ -96,10 +96,144 @@ public class ResponsesToOpenAiCompatibleAdapter implements EndpointProviderAdapt
         }
         for (UnifiedMessage message : messages) {
             String role = "developer".equals(message.role()) ? "system" : message.role();
-            result.add(new UnifiedMessage(role, normalizeContentForChat(message.content()), message.name(),
-                    message.finishReason(), message.options()));
+            // Responses API 允许连续多个 function_call 输入项，但 Chat Completions 要求
+            // 所有 tool_calls 合并到同一条 assistant 消息中，否则上游会报
+            // "assistant message with tool_calls must be followed by tool messages responding to each tool_call_id"
+            if ("assistant".equals(role) && hasToolCalls(message)) {
+                mergeToolCallsIntoLastAssistant(result, message);
+            } else {
+                result.add(new UnifiedMessage(role, normalizeContentForChat(message.content()), message.name(),
+                        message.finishReason(), message.options()));
+            }
         }
+        // Chat Completions 要求 tool 结果消息紧跟在 tool_calls assistant 之后，
+        // 不能存在其他角色消息。将插在 tool_calls 和 tool 结果之间的消息移到 tool 块之后。
+        reorderToolSequence(result);
         return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    protected static boolean hasToolCalls(UnifiedMessage message) {
+        return message.options() != null
+                && message.options().get("tool_calls") instanceof List<?> list
+                && !list.isEmpty();
+    }
+
+    @SuppressWarnings("unchecked")
+    protected void mergeToolCallsIntoLastAssistant(List<UnifiedMessage> result, UnifiedMessage current) {
+        if (!result.isEmpty()) {
+            UnifiedMessage last = result.getLast();
+            if ("assistant".equals(last.role()) && hasToolCalls(last)) {
+                // 合并 tool_calls 到上一条 assistant 消息
+                List<Object> existingCalls = (List<Object>) last.options().get("tool_calls");
+                List<Object> newCalls = (List<Object>) current.options().get("tool_calls");
+                List<Object> merged = new ArrayList<>(existingCalls);
+                merged.addAll(newCalls);
+                Map<String, Object> mergedOptions = new LinkedHashMap<>(last.options());
+                mergedOptions.put("tool_calls", merged);
+                copyAbsentMessageOptions(mergedOptions, current.options());
+                result.removeLast();
+                result.add(new UnifiedMessage("assistant", last.content(), last.name(), "tool_calls", mergedOptions));
+                return;
+            }
+        }
+        result.add(new UnifiedMessage("assistant", normalizeContentForChat(current.content()), current.name(),
+                current.finishReason(), current.options()));
+    }
+
+    protected static void copyAbsentMessageOptions(Map<String, Object> target, Map<String, Object> source) {
+        if (source == null) {
+            return;
+        }
+        source.forEach((key, value) -> {
+            if (!"tool_calls".equals(key)) {
+                target.putIfAbsent(key, value);
+            }
+        });
+    }
+
+    /**
+     * 从 assistant 消息内容中提取 reasoning 类型块，供特定上游适配器决定如何使用。
+     *
+     * @return ReasoningParts 或 null（无 reasoning 内容时）
+     */
+    @SuppressWarnings("unchecked")
+    protected static ReasoningParts extractReasoningParts(Object content) {
+        if (!(content instanceof List<?> contentList)) {
+            return null;
+        }
+        String reasoningText = null;
+        List<Object> filtered = new ArrayList<>();
+        for (Object part : contentList) {
+            if (part instanceof Map<?, ?> m && "reasoning".equals(String.valueOf(m.get("type")))) {
+                Object text = m.get("text");
+                if (text != null && reasoningText == null) {
+                    reasoningText = String.valueOf(text);
+                }
+                continue;
+            }
+            filtered.add(part);
+        }
+        if (reasoningText == null) {
+            return null;
+        }
+        return new ReasoningParts(filtered, reasoningText);
+    }
+
+    protected record ReasoningParts(List<?> filtered, String text) {
+        boolean hasOnlyReasoning() {
+            return filtered == null || filtered.isEmpty();
+        }
+
+        Map<String, Object> toOptions(Map<String, Object> original) {
+            Map<String, Object> opts = original != null ? new LinkedHashMap<>(original) : new LinkedHashMap<>();
+            opts.put("reasoning_content", text);
+            return opts;
+        }
+    }
+
+    /**
+     * 判断消息是否为 tool 角色（function_call_output）。
+     */
+    private static boolean isToolMessage(UnifiedMessage message) {
+        return "tool".equals(message.role());
+    }
+
+    /**
+     * 调整消息顺序：将 tool_calls assistant 与后续 tool 结果消息之间的非 tool 消息
+     * 移到 tool 块之后。Chat Completions 不允许在 tool_calls 和 tool 结果之间存在
+     * 其他角色消息。
+     */
+    protected static void reorderToolSequence(List<UnifiedMessage> messages) {
+        int i = 0;
+        while (i < messages.size()) {
+            UnifiedMessage msg = messages.get(i);
+            if (!"assistant".equals(msg.role()) || !hasToolCalls(msg)) {
+                i++;
+                continue;
+            }
+            // 查找第一个 tool 结果消息的位置
+            int j = i + 1;
+            while (j < messages.size() && !isToolMessage(messages.get(j))) {
+                j++;
+            }
+            if (j >= messages.size() || j == i + 1) {
+                i++;
+                continue; // 无 intervening 消息或没有 tool 结果
+            }
+            // 查找连续 tool 结果块的结束位置
+            int k = j;
+            while (k < messages.size() && isToolMessage(messages.get(k))) {
+                k++;
+            }
+            // 收集并移除 tool_calls 与首个 tool 之间的非 tool 消息
+            List<UnifiedMessage> nonToolBlock = new ArrayList<>(messages.subList(i + 1, j));
+            messages.subList(i + 1, j).clear();
+            // 插入到 tool 块之后
+            int toolBlockEnd = i + 1 + (k - j);
+            messages.addAll(toolBlockEnd, nonToolBlock);
+            i = toolBlockEnd + nonToolBlock.size();
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -154,7 +288,7 @@ public class ResponsesToOpenAiCompatibleAdapter implements EndpointProviderAdapt
         }
     }
 
-    private Object normalizeContentForChat(Object content) {
+    protected Object normalizeContentForChat(Object content) {
         if (!(content instanceof List<?> contentList)) {
             return content;
         }

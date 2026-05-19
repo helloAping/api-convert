@@ -103,6 +103,8 @@ function channelTypeLabel(type: string) {
     OPENAI_COMPATIBLE: 'OpenAI 兼容',
     ANTHROPIC: 'Anthropic',
     OPENAI_RESPONSES: 'OpenAI Responses',
+    DEEPSEEK_CHAT: 'DeepSeek Chat',
+    DEEPSEEK_ANTHROPIC: 'DeepSeek Anthropic',
     GEMINI: 'Google Gemini',
   }[type] || type
 }
@@ -113,6 +115,8 @@ function handleTypeChange(type: string) {
     OPENAI_COMPATIBLE: { chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
     ANTHROPIC: { chatPath: '/v1/messages', modelsPath: '/v1/models' },
     OPENAI_RESPONSES: { chatPath: '/v1/responses', modelsPath: '/v1/models' },
+    DEEPSEEK_CHAT: { chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
+    DEEPSEEK_ANTHROPIC: { chatPath: '/v1/messages', modelsPath: '/v1/models' },
     GEMINI: { chatPath: '/v1beta/models', modelsPath: '/v1beta/models' },
   }
   // 收集所有默认路径，用于判断用户是否手动修改过

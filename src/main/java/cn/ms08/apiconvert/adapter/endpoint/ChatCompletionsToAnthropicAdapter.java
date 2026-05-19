@@ -120,7 +120,7 @@ public class ChatCompletionsToAnthropicAdapter implements EndpointProviderAdapte
         // 转换 tools 格式
         Object tools = cleaned.get("tools");
         if (tools instanceof List<?> toolsList) {
-            List<Map<String, Object>> anthropicTools = convertToolsToAnthropic((List<Object>) toolsList);
+            List<Map<String, Object>> anthropicTools = AnthropicTools.convertToolsToAnthropic((List<Object>) toolsList);
             if (anthropicTools.isEmpty()) {
                 cleaned.remove("tools");
             } else {
@@ -129,73 +129,12 @@ public class ChatCompletionsToAnthropicAdapter implements EndpointProviderAdapte
         }
 
         // 转换 tool_choice 格式
-        convertToolChoice(cleaned);
+        AnthropicTools.convertToolChoice(cleaned);
 
         return cleaned;
     }
 
-    /**
-     * 将 OpenAI 格式的 tools 转为 Anthropic 格式。
-     */
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> convertToolsToAnthropic(List<Object> openaiTools) {
-        List<Map<String, Object>> result = new java.util.ArrayList<>();
-        for (Object tool : openaiTools) {
-            if (!(tool instanceof Map<?, ?> toolMap)) {
-                continue;
-            }
-            String type = String.valueOf(toolMap.get("type"));
-            if (!"function".equals(type)) {
-                continue;
-            }
-            Object function = toolMap.get("function");
-            if (!(function instanceof Map<?, ?> funcMap)) {
-                continue;
-            }
-            Map<String, Object> anthropicTool = new LinkedHashMap<>();
-            anthropicTool.put("name", String.valueOf(funcMap.get("name")));
-            if (funcMap.get("description") != null) {
-                anthropicTool.put("description", String.valueOf(funcMap.get("description")));
-            }
-            Object params = funcMap.get("parameters");
-            anthropicTool.put("input_schema", params != null ? params : Map.of("type", "object", "properties", Map.of()));
-            if (funcMap.get("strict") instanceof Boolean strict) {
-                anthropicTool.put("strict", strict);
-            }
-            result.add(anthropicTool);
-        }
-        return result;
-    }
-
-    /**
-     * 将 tool_choice 从 OpenAI 格式转为 Anthropic 格式。
-     */
-    @SuppressWarnings("unchecked")
-    private void convertToolChoice(Map<String, Object> rawOptions) {
-        Object toolChoice = rawOptions.get("tool_choice");
-        if (toolChoice == null) {
-            return;
-        }
-        if (toolChoice instanceof Map<?, ?> tcMap) {
-            String type = tcMap.containsKey("type") ? String.valueOf(tcMap.get("type")) : "auto";
-            if (!"function".equals(type) && !"tool".equals(type)) {
-                return;
-            }
-            String name = tcMap.containsKey("name") ? String.valueOf(tcMap.get("name")) : null;
-            if (name == null && tcMap.get("function") instanceof Map<?, ?> funcMap) {
-                name = String.valueOf(funcMap.get("name"));
-            }
-            rawOptions.put("tool_choice", Map.of("type", "tool", "name", name != null ? name : ""));
-            return;
-        }
-        String tc = String.valueOf(toolChoice);
-        String type = switch (tc) {
-            case "required" -> "any";
-            case "none" -> "none";
-            default -> "auto";
-        };
-        rawOptions.put("tool_choice", Map.of("type", type));
-    }
+    // convertToolsToAnthropic / convertToolChoice 已提取到 AnthropicTools 共享工具类
 
     /**
      * 响应适配：将 Anthropic Messages 风格统一响应转为 Chat Completions 格式。

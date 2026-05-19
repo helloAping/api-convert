@@ -114,6 +114,10 @@ public class OpenAiResponsesRequestAdapter {
 
     private UnifiedMessage toUnifiedInputItem(Map<?, ?> map) {
         String type = map.get("type") == null ? null : String.valueOf(map.get("type"));
+        if ("reasoning".equals(type)) {
+            return new UnifiedMessage("assistant",
+                    List.of(Map.of("type", "reasoning", "text", extractReasoningText(map))), null);
+        }
         if ("function_call_output".equals(type)) {
             Map<String, Object> options = new LinkedHashMap<>();
             Object callId = map.get("call_id");
@@ -143,6 +147,29 @@ public class OpenAiResponsesRequestAdapter {
         String role = map.containsKey("role") ? String.valueOf(map.get("role")) : "user";
         Object content = map.containsKey("content") ? map.get("content") : map;
         return new UnifiedMessage(role, content, null);
+    }
+
+    /**
+     * 提取 Responses API 独立 reasoning item 中的 summary 文本，交给目标供应商适配器决定如何使用。
+     */
+    private String extractReasoningText(Map<?, ?> map) {
+        Object summary = map.get("summary");
+        if (summary instanceof List<?> summaryList) {
+            StringBuilder builder = new StringBuilder();
+            for (Object item : summaryList) {
+                if (item instanceof Map<?, ?> summaryMap) {
+                    Object text = summaryMap.get("text");
+                    if (text != null) {
+                        builder.append(text);
+                    }
+                } else if (item != null) {
+                    builder.append(item);
+                }
+            }
+            return builder.toString();
+        }
+        Object text = map.get("text");
+        return text == null ? "" : String.valueOf(text);
     }
 
     /**

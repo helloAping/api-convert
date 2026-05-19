@@ -96,22 +96,45 @@ public class OpenAiRequestAdapter {
         providerRequest.setResponseFormat(request.responseFormat());
         if (request.rawOptions() != null) {
             request.rawOptions().forEach((key, value) -> {
-                if ("response_format".equals(key)) {
-                    return;
-                }
-                if ("stream_options".equals(key)) {
-                    // stream_options 有独立字段，使用 setStreamOptions() 处理
-                    return;
-                }
-                if ("tools".equals(key)) {
-                    // Chat Completions 仅支持 function 类型工具，过滤掉 code_interpreter 等其他类型
-                    Object filtered = filterNonFunctionTools(value);
-                    if (filtered != null) {
-                        providerRequest.setAdditionalProperty(key, filtered);
+                switch (key) {
+                    case "response_format" -> {}
+                    case "stream_options" -> {
+                        // stream_options 有独立字段，使用 setStreamOptions() 处理
                     }
-                    return;
+                    case "tools" -> {
+                        // Chat Completions 仅支持 function 类型工具
+                        Object filtered = filterNonFunctionTools(value);
+                        if (filtered != null) {
+                            @SuppressWarnings("unchecked")
+                            List<Map<String, Object>> toolsList = (List<Map<String, Object>>) filtered;
+                            providerRequest.setTools(toolsList);
+                        }
+                    }
+                    case "tool_choice" -> providerRequest.setToolChoice(value);
+                    case "top_p" -> {
+                        if (value instanceof Number n) providerRequest.setTopP(n.doubleValue());
+                    }
+                    case "max_completion_tokens" -> {
+                        if (value instanceof Number n) providerRequest.setMaxCompletionTokens(n.intValue());
+                    }
+                    case "stop" -> {
+                        @SuppressWarnings("unchecked")
+                        List<String> stopList = (value instanceof List<?> l) ? l.stream().map(String::valueOf).toList() : null;
+                        if (stopList != null) providerRequest.setStop(stopList);
+                    }
+                    case "user" -> providerRequest.setUser(String.valueOf(value));
+                    case "reasoning_effort" -> providerRequest.setReasoningEffort(String.valueOf(value));
+                    case "seed" -> {
+                        if (value instanceof Number n) providerRequest.setSeed(n.longValue());
+                    }
+                    case "presence_penalty" -> {
+                        if (value instanceof Number n) providerRequest.setPresencePenalty(n.doubleValue());
+                    }
+                    case "frequency_penalty" -> {
+                        if (value instanceof Number n) providerRequest.setFrequencyPenalty(n.doubleValue());
+                    }
+                    default -> providerRequest.setAdditionalProperty(key, value);
                 }
-                providerRequest.setAdditionalProperty(key, value);
             });
         }
         if (stream) {

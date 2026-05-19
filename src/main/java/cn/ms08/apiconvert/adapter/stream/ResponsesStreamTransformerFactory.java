@@ -33,7 +33,10 @@ public class ResponsesStreamTransformerFactory implements StreamResponseTransfor
     @Override
     public boolean supports(EndpointType endpoint, ProviderType provider) {
         return endpoint == SOURCE
-                && (provider == ProviderType.OPENAI_COMPATIBLE || provider == ProviderType.ANTHROPIC);
+                && (provider == ProviderType.OPENAI_COMPATIBLE
+                || provider == ProviderType.ANTHROPIC
+                || provider == ProviderType.DEEPSEEK_CHAT
+                || provider == ProviderType.DEEPSEEK_ANTHROPIC);
     }
 
     @Override

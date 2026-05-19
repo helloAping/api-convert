@@ -82,7 +82,8 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
      */
     @Override
     public UnifiedChatResponse chat(ModelRoute route, UnifiedChatRequest request) {
-        OpenAiChatCompletionRequest providerRequest = requestAdapter.toProviderRequest(request, route.providerModel());
+        OpenAiChatCompletionRequest providerRequest = prepareRequestBody(
+                route, requestAdapter.toProviderRequest(request, route.providerModel()));
         try {
             OpenAiChatCompletionResponse response = restClientBuilder.clone()
                     .baseUrl(route.baseUrl())
@@ -121,7 +122,8 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
      */
     @Override
     public UnifiedUsage streamChat(ModelRoute route, UnifiedChatRequest request, OutputStream outputStream) {
-        OpenAiChatCompletionRequest providerRequest = requestAdapter.toProviderRequest(request, route.providerModel(), true);
+        OpenAiChatCompletionRequest providerRequest = prepareRequestBody(
+                route, requestAdapter.toProviderRequest(request, route.providerModel(), true));
         try {
             UnifiedUsage usage = RestClient.builder()
                     .baseUrl(route.baseUrl())
@@ -150,6 +152,10 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
             throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
                     "Provider stream request failed: " + exception.getMessage());
         }
+    }
+
+    protected OpenAiChatCompletionRequest prepareRequestBody(ModelRoute route, OpenAiChatCompletionRequest request) {
+        return request;
     }
 
     /**

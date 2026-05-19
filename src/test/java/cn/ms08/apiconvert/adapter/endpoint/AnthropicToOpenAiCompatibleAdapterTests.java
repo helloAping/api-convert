@@ -58,16 +58,18 @@ class AnthropicToOpenAiCompatibleAdapterTests {
         OpenAiChatCompletionRequest providerRequest = openAiRequestAdapter.toProviderRequest(adapted, "provider-model");
 
         assertThat(providerRequest.getAdditionalProperties()).doesNotContainKeys("system", "metadata", "stop_sequences");
-        assertThat(providerRequest.getAdditionalProperties()).containsEntry("stop", List.of("</stop>"));
+        // stop_sequences 已转为显式 stop 字段
+        assertThat(providerRequest.getStop()).contains("</stop>");
 
-        List<Map<String, Object>> tools = (List<Map<String, Object>>) providerRequest.getAdditionalProperties().get("tools");
+        List<Map<String, Object>> tools = providerRequest.getTools();
         assertThat(tools).hasSize(1);
         assertThat(tools.getFirst()).containsEntry("type", "function");
         assertThat((Map<String, Object>) tools.getFirst().get("function")).containsEntry("name", "lookup");
 
-        Map<String, Object> toolChoice = (Map<String, Object>) providerRequest.getAdditionalProperties().get("tool_choice");
-        assertThat(toolChoice).containsEntry("type", "function");
-        assertThat((Map<String, Object>) toolChoice.get("function")).containsEntry("name", "lookup");
+        assertThat(providerRequest.getToolChoice()).isInstanceOfSatisfying(Map.class, tc -> {
+            assertThat((Map<String, Object>) tc).containsEntry("type", "function");
+            assertThat((Map<String, Object>) ((Map<?, ?>) tc).get("function")).containsEntry("name", "lookup");
+        });
 
         assertThat(providerRequest.getMessages()).hasSize(3);
         assertThat(providerRequest.getMessages().get(0).getRole()).isEqualTo("system");

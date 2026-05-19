@@ -33,9 +33,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 @Component
 public class AnthropicProviderClient implements AiProviderClient {
@@ -128,52 +126,8 @@ public class AnthropicProviderClient implements AiProviderClient {
         }
     }
 
-    /**
-     * DeepSeek 的 Anthropic 兼容接口要求 thinking 模式下历史消息里的 thinking 块继续携带 thinking 字段。
-     */
-    AnthropicMessageRequest prepareRequestBody(ModelRoute route, AnthropicMessageRequest request) {
-        if (!isDeepSeekAnthropicRoute(route) || request == null || request.getMessages() == null) {
-            return request;
-        }
-        for (cn.ms08.apiconvert.dto.AnthropicMessage message : request.getMessages()) {
-            message.setContent(normalizeDeepSeekThinkingContent(message.getContent()));
-        }
+    protected AnthropicMessageRequest prepareRequestBody(ModelRoute route, AnthropicMessageRequest request) {
         return request;
-    }
-
-    private boolean isDeepSeekAnthropicRoute(ModelRoute route) {
-        if (route == null || route.baseUrl() == null) {
-            return false;
-        }
-        String upstreamUrl = (route.baseUrl() + (route.chatPath() == null ? "" : route.chatPath())).toLowerCase();
-        return upstreamUrl.contains("api.deepseek.com") && upstreamUrl.contains("/anthropic");
-    }
-
-    private Object normalizeDeepSeekThinkingContent(Object content) {
-        if (!(content instanceof List<?> contentList)) {
-            return content;
-        }
-        List<Object> normalized = new ArrayList<>(contentList.size());
-        for (Object block : contentList) {
-            if (!(block instanceof Map<?, ?> blockMap)) {
-                normalized.add(block);
-                continue;
-            }
-            String type = blockMap.containsKey("type") ? String.valueOf(blockMap.get("type")) : "";
-            if (!"thinking".equals(type)) {
-                normalized.add(block);
-                continue;
-            }
-            Map<String, Object> normalizedBlock = new LinkedHashMap<>();
-            blockMap.forEach((key, value) -> normalizedBlock.put(String.valueOf(key), value));
-            Object thinking = normalizedBlock.get("thinking");
-            if (thinking == null) {
-                Object text = normalizedBlock.get("text");
-                normalizedBlock.put("thinking", text == null ? "" : String.valueOf(text));
-            }
-            normalized.add(normalizedBlock);
-        }
-        return normalized;
     }
 
     UnifiedUsage copyAnthropicStream(InputStream inputStream, OutputStream outputStream) {
@@ -183,6 +137,7 @@ public class AnthropicProviderClient implements AiProviderClient {
             String line;
             while ((line = reader.readLine()) != null) {
                 outputStream.write((line + "\n").getBytes(StandardCharsets.UTF_8));
+                outputStream.flush();
                 if (line.startsWith("data:")) {
                     lastData = line.substring(5).stripLeading();
                 } else if (line.isEmpty() && lastData != null) {

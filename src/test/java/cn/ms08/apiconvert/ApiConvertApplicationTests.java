@@ -163,6 +163,54 @@ class ApiConvertApplicationTests {
     }
 
     /**
+     * 验证请求日志分页查询会正确拼接 LIMIT/OFFSET 并返回指定页数据。
+     */
+    @Test
+    void requestLogSearchSupportsPagination() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String model = "request-log-page-model-" + suffix;
+        String channel = "request-log-page-channel-" + suffix;
+        GatewayApiKeyEntity apiKey = dashboardApiKey("request-log-page-key-" + suffix, suffix);
+        gatewayApiKeyMapper.insert(apiKey);
+        RequestLogEntity first = dashboardLog("request-log-page-" + suffix + "-1", apiKey.getId(), model, channel,
+                LocalDateTime.now(ZoneId.of("Asia/Shanghai")).minusMinutes(3), 10, 20, 30);
+        RequestLogEntity second = dashboardLog("request-log-page-" + suffix + "-2", apiKey.getId(), model, channel,
+                LocalDateTime.now(ZoneId.of("Asia/Shanghai")).minusMinutes(2), 11, 21, 32);
+        RequestLogEntity third = dashboardLog("request-log-page-" + suffix + "-3", apiKey.getId(), model, channel,
+                LocalDateTime.now(ZoneId.of("Asia/Shanghai")).minusMinutes(1), 12, 22, 34);
+        requestLogMapper.insert(first);
+        requestLogMapper.insert(second);
+        requestLogMapper.insert(third);
+
+        try {
+            String response = mockMvc.perform(get("/api/admin/request-logs")
+                            .header("Authorization", "Bearer " + token)
+                            .param("publicModel", model)
+                            .param("page", "2")
+                            .param("pageSize", "1"))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            JsonNode data = objectMapper.readTree(response).path("data");
+            assertThat(data.path("total").asLong()).isEqualTo(3);
+            assertThat(data.path("page").asInt()).isEqualTo(2);
+            assertThat(data.path("pageSize").asInt()).isEqualTo(1);
+            assertThat(data.path("records")).hasSize(1);
+            assertThat(data.path("records").get(0).path("requestId").asText()).isEqualTo(second.getRequestId());
+        } finally {
+            for (RequestLogEntity log : List.of(first, second, third)) {
+                if (log.getId() != null) {
+                    requestLogMapper.deleteById(log.getId());
+                }
+            }
+            gatewayApiKeyMapper.deleteById(apiKey.getId());
+        }
+    }
+
+    /**
      * 验证 OpenAI 兼容响应中的缓存读取 token 能进入统一用量统计。
      */
     @Test

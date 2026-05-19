@@ -386,8 +386,9 @@ public class AdminChannelService {
     private String defaultPath(String type, String path) {
         if (StringUtils.hasText(path)) return path;
         return switch (type) {
-            case "ANTHROPIC" -> DEFAULT_ANTHROPIC_PATH;
+            case "ANTHROPIC", "DEEPSEEK_ANTHROPIC" -> DEFAULT_ANTHROPIC_PATH;
             case "OPENAI_RESPONSES" -> "/v1/responses";
+            case "DEEPSEEK_CHAT" -> DEFAULT_CHAT_PATH;
             case "GEMINI" -> "/v1beta/models";
             default -> DEFAULT_CHAT_PATH;
         };

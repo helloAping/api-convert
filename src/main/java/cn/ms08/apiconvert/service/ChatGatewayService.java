@@ -32,6 +32,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -259,24 +260,28 @@ public class ChatGatewayService {
             usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, true,
                     HttpStatus.OK.value(), latencyMs, usage);
         } catch (GatewayException exception) {
-            recordProviderFailure(principal, request, route, sessionKey, exception);
-            log.warn("流式转发失败：{}", exception.getMessage(), exception);
+            if (isClientDisconnect(exception)) {
+                log.debug("SSE 客户端断开：模型={}、请求ID：{}", request.model(), requestId);
+            } else {
+                recordProviderFailure(principal, request, route, sessionKey, exception);
+                log.warn("流式转发失败：{}", exception.getMessage(), exception);
+            }
             usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), true,
                     exception.status().value(), System.currentTimeMillis() - start, exception.code().name(), exception.getMessage());
-            if (wrappedStream != null) {
-                wrappedStream.writeErrorEvent(exception.getMessage());
-            } else {
-                writeOpenAiStreamError(outputStream, exception.getMessage(), exception.code().name().toLowerCase(), openAiType(exception.status()));
+            if (!isClientDisconnect(exception)) {
+                writeStreamErrorSafely(wrappedStream, outputStream, exception.getMessage(), exception.code().name().toLowerCase(), openAiType(exception.status()));
             }
         } catch (Exception exception) {
-            log.error("流式转发异常：{}", exception.getMessage(), exception);
+            if (isClientDisconnect(exception)) {
+                log.debug("SSE 客户端断开：模型={}、请求ID：{}", request.model(), requestId);
+            } else {
+                log.error("流式转发异常：{}", exception.getMessage(), exception);
+            }
             usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), true,
                     HttpStatus.INTERNAL_SERVER_ERROR.value(), System.currentTimeMillis() - start,
                     ErrorCode.INTERNAL_ERROR.name(), "Internal server error");
-            if (wrappedStream != null) {
-                wrappedStream.writeErrorEvent("Internal server error");
-            } else {
-                writeOpenAiStreamError(outputStream, "Internal server error", ErrorCode.INTERNAL_ERROR.name().toLowerCase(), "server_error");
+            if (!isClientDisconnect(exception)) {
+                writeStreamErrorSafely(wrappedStream, outputStream, "Internal server error", ErrorCode.INTERNAL_ERROR.name().toLowerCase(), "server_error");
             }
         } finally {
             MDC.remove("traceId");
@@ -476,5 +481,48 @@ public class ChatGatewayService {
             return gatewayPrincipal;
         }
         return new GatewayPrincipal(null, "anonymous", java.util.Set.of());
+    }
+
+    /**
+     * 检查异常链中是否包含客户端主动断开连接（AsyncRequestNotUsableException）。
+     * 客户端断开是流式请求的正常现象，应降级为 DEBUG 日志并跳过错误写入。
+     */
+    private static boolean isClientDisconnect(Exception e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String cn = t.getClass().getName();
+            // Spring 异步请求处理路径
+            if ("org.springframework.web.context.request.async.AsyncRequestNotUsableException".equals(cn)) {
+                return true;
+            }
+            // Tomcat NIO 同步 I/O 路径（ClientAbortException extends IOException）
+            if ("org.apache.catalina.connector.ClientAbortException".equals(cn)) {
+                return true;
+            }
+            // 通用网络断开（非 Tomcat 环境）
+            if (t instanceof java.io.IOException ioe) {
+                String msg = ioe.getMessage();
+                if (msg != null && (msg.contains("Broken pipe") || msg.contains("Connection reset") || msg.contains("connection was forcibly closed"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 安全地写出流式错误事件，忽略因响应已提交或客户端断开导致的写入失败。
+     */
+    private void writeStreamErrorSafely(StreamResponseTransformer.WrappedStream wrappedStream,
+                                         OutputStream outputStream, String message, String code, String type) {
+        try {
+            if (wrappedStream != null) {
+                wrappedStream.writeErrorEvent(message);
+            } else {
+                writeOpenAiStreamError(outputStream, message, code, type);
+            }
+        } catch (Exception ignored) {
+            // 响应已提交或客户端已断开，忽略写入失败
+            log.trace("写入 SSE 错误事件失败（可能客户端已断开）：{}", ignored.getMessage());
+        }
     }
 }

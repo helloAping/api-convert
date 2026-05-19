@@ -87,12 +87,12 @@ public class ResponsesToAnthropicAdapter implements EndpointProviderAdapter {
 
         Object tools = rawOptions == null ? null : rawOptions.get("tools");
         if (tools instanceof List<?> toolsList) {
-            List<Map<String, Object>> anthropicTools = convertToolsToAnthropic((List<Object>) toolsList);
+            List<Map<String, Object>> anthropicTools = AnthropicTools.convertToolsToAnthropic((List<Object>) toolsList);
             if (!anthropicTools.isEmpty()) {
                 cleaned.put("tools", anthropicTools);
             }
         }
-        convertToolChoice(cleaned);
+        AnthropicTools.convertToolChoice(cleaned);
         return cleaned;
     }
 
@@ -118,17 +118,135 @@ public class ResponsesToAnthropicAdapter implements EndpointProviderAdapter {
                 continue;
             }
             if ("tool".equals(message.role())) {
-                result.add(toAnthropicToolResultMessage(message));
+                mergeAnthropicToolResult(result, message);
                 continue;
             }
-            result.add(new UnifiedMessage(
-                    "developer".equals(message.role()) ? "user" : message.role(),
-                    toAnthropicContent(message),
-                    message.name(),
-                    message.finishReason(),
-                    message.options()));
+            String role = "developer".equals(message.role()) ? "user" : message.role();
+            Object content = toAnthropicContent(message);
+            if ("assistant".equals(role) && contentHasToolUse(content)) {
+                mergeAnthropicAssistant(result, content);
+            } else {
+                result.add(new UnifiedMessage(role, content, null));
+            }
         }
+        // Anthropic 要求 tool_result 紧跟在 tool_use assistant 之后，
+        // 将插在中间的其它消息移到 tool_result 块之后
+        reorderAnthropicToolSequence(result);
         return result;
+    }
+
+    /**
+     * 判断内容块列表是否包含 tool_use 块。
+     */
+    @SuppressWarnings("unchecked")
+    private static boolean contentHasToolUse(Object content) {
+        if (!(content instanceof List<?> list)) return false;
+        return list.stream().anyMatch(b -> b instanceof Map<?, ?> m && "tool_use".equals(m.get("type")));
+    }
+
+    /**
+     * 将 content 统一转为内容块列表，兼容字符串形式。
+     */
+    @SuppressWarnings("unchecked")
+    private static List<Object> toContentList(Object content) {
+        if (content instanceof List<?> list) {
+            return new ArrayList<>(list);
+        }
+        if (content instanceof String text && !text.isEmpty()) {
+            return new ArrayList<>(List.of(Map.of("type", "text", "text", text)));
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * 合并连续 tool_result 消息。Anthropic 要求所有 tool_result 在同一条 user 消息中。
+     */
+    private void mergeAnthropicToolResult(List<UnifiedMessage> result, UnifiedMessage message) {
+        UnifiedMessage toolResult = toAnthropicToolResultMessage(message);
+        if (!result.isEmpty()) {
+            UnifiedMessage last = result.getLast();
+            if ("user".equals(last.role()) && last.content() instanceof List<?> lastList
+                    && !lastList.isEmpty() && lastList.getLast() instanceof Map<?, ?> lastBlock
+                    && "tool_result".equals(lastBlock.get("type"))
+                    && toolResult.content() instanceof List<?> tc && !tc.isEmpty()) {
+                List<Object> merged = new ArrayList<>(lastList);
+                merged.addAll(tc);
+                result.removeLast();
+                result.add(new UnifiedMessage("user", merged, null));
+                return;
+            }
+        }
+        result.add(toolResult);
+    }
+
+    /**
+     * 将 tool_use 块合并到上一条 assistant 消息。Anthropic 要求所有 tool_use 在同一条 assistant 消息中。
+     */
+    private void mergeAnthropicAssistant(List<UnifiedMessage> result, Object content) {
+        if (!result.isEmpty()) {
+            UnifiedMessage last = result.getLast();
+            if ("assistant".equals(last.role())) {
+                List<Object> merged = toContentList(last.content());
+                List<Object> newBlocks = toContentList(content);
+                boolean addedAny = false;
+                for (Object block : newBlocks) {
+                    if (block instanceof Map<?, ?> m && "tool_use".equals(m.get("type"))) {
+                        merged.add(block);
+                        addedAny = true;
+                    }
+                }
+                if (addedAny) {
+                    result.removeLast();
+                    result.add(new UnifiedMessage("assistant", merged, null));
+                    return;
+                }
+            }
+        }
+        result.add(new UnifiedMessage("assistant", content, null));
+    }
+
+    /**
+     * 重排消息顺序：将 tool_use assistant 与 tool_result user 之间的非 tool_result 消息
+     * 移到 tool_result 块之后。
+     */
+    @SuppressWarnings("unchecked")
+    private static void reorderAnthropicToolSequence(List<UnifiedMessage> messages) {
+        int i = 0;
+        while (i < messages.size()) {
+            UnifiedMessage msg = messages.get(i);
+            if (!"assistant".equals(msg.role()) || !contentHasToolUse(msg.content())) {
+                i++;
+                continue;
+            }
+            int j = i + 1;
+            while (j < messages.size() && !isAnthropicToolResult(messages.get(j))) {
+                j++;
+            }
+            if (j >= messages.size() || j == i + 1) {
+                i++;
+                continue;
+            }
+            int k = j;
+            while (k < messages.size() && isAnthropicToolResult(messages.get(k))) {
+                k++;
+            }
+            List<UnifiedMessage> between = new ArrayList<>(messages.subList(i + 1, j));
+            messages.subList(i + 1, j).clear();
+            int toolBlockEnd = i + 1 + (k - j);
+            messages.addAll(toolBlockEnd, between);
+            i = toolBlockEnd + between.size();
+        }
+    }
+
+    /**
+     * 判断消息是否为 tool_result user 消息。
+     */
+    private static boolean isAnthropicToolResult(UnifiedMessage message) {
+        return "user".equals(message.role())
+                && message.content() instanceof List<?> list
+                && !list.isEmpty()
+                && list.getFirst() instanceof Map<?, ?> m
+                && "tool_result".equals(m.get("type"));
     }
 
     private UnifiedMessage toAnthropicToolResultMessage(UnifiedMessage message) {
@@ -184,9 +302,15 @@ public class ResponsesToAnthropicAdapter implements EndpointProviderAdapter {
     private void addResponsesContentPart(List<Object> blocks, Map<?, ?> part) {
         String type = part.get("type") == null ? "text" : String.valueOf(part.get("type"));
         if ("input_text".equals(type) || "output_text".equals(type) || "text".equals(type)
-                || "refusal".equals(type) || "reasoning".equals(type) || "thinking".equals(type)) {
+                || "refusal".equals(type)) {
             Object text = part.get("text");
             blocks.add(Map.of("type", "text", "text", text != null ? String.valueOf(text) : ""));
+            return;
+        }
+        // 保留 reasoning/thinking 类型，DeepSeek 的 thinking 模式下要求回传 thinking 块
+        if ("reasoning".equals(type) || "thinking".equals(type)) {
+            Object text = part.get("text");
+            blocks.add(Map.of("type", "thinking", "thinking", text != null ? String.valueOf(text) : ""));
             return;
         }
         if ("input_image".equals(type) || "image_url".equals(type)) {
@@ -204,59 +328,7 @@ public class ResponsesToAnthropicAdapter implements EndpointProviderAdapter {
         blocks.add(Map.of("type", "text", "text", part.toString()));
     }
 
-    private List<Map<String, Object>> convertToolsToAnthropic(List<Object> tools) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Object tool : tools) {
-            if (!(tool instanceof Map<?, ?> toolMap)) {
-                continue;
-            }
-            if (!"function".equals(String.valueOf(toolMap.get("type")))) {
-                continue;
-            }
-            Map<?, ?> function = toolMap.get("function") instanceof Map<?, ?> map ? map : toolMap;
-            Object name = function.get("name");
-            if (name == null) {
-                continue;
-            }
-            Map<String, Object> anthropicTool = new LinkedHashMap<>();
-            anthropicTool.put("name", String.valueOf(name));
-            if (function.get("description") != null) {
-                anthropicTool.put("description", String.valueOf(function.get("description")));
-            }
-            Object parameters = function.get("parameters");
-            anthropicTool.put("input_schema", parameters != null ? parameters : Map.of("type", "object", "properties", Map.of()));
-            if (function.get("strict") instanceof Boolean strict) {
-                anthropicTool.put("strict", strict);
-            }
-            result.add(anthropicTool);
-        }
-        return result;
-    }
-
-    private void convertToolChoice(Map<String, Object> rawOptions) {
-        Object toolChoice = rawOptions.get("tool_choice");
-        if (toolChoice == null) {
-            return;
-        }
-        if (toolChoice instanceof Map<?, ?> tcMap) {
-            String type = tcMap.containsKey("type") ? String.valueOf(tcMap.get("type")) : "auto";
-            if (!"function".equals(type) && !"tool".equals(type)) {
-                return;
-            }
-            String name = tcMap.containsKey("name") ? String.valueOf(tcMap.get("name")) : null;
-            if (name == null && tcMap.get("function") instanceof Map<?, ?> funcMap) {
-                name = String.valueOf(funcMap.get("name"));
-            }
-            rawOptions.put("tool_choice", Map.of("type", "tool", "name", name != null ? name : ""));
-            return;
-        }
-        String type = switch (String.valueOf(toolChoice)) {
-            case "required" -> "any";
-            case "none" -> "none";
-            default -> "auto";
-        };
-        rawOptions.put("tool_choice", Map.of("type", type));
-    }
+    // convertToolsToAnthropic / convertToolChoice 已提取到 AnthropicTools 共享工具类
 
     private Map<String, Object> toAnthropicToolUseBlock(Map<?, ?> toolCall) {
         Map<?, ?> function = toolCall.get("function") instanceof Map<?, ?> map ? map : Map.of();

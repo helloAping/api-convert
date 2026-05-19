@@ -21,7 +21,7 @@ class AnthropicProviderClientTests {
     @Test
     @SuppressWarnings("unchecked")
     void deepSeekAnthropicRequestFillsThinkingFieldFromText() {
-        AnthropicProviderClient client = new AnthropicProviderClient(
+        DeepSeekAnthropicProviderClient client = new DeepSeekAnthropicProviderClient(
                 null, new AnthropicRequestAdapter(), new AnthropicResponseAdapter());
         AnthropicMessageRequest request = new AnthropicMessageRequest();
         AnthropicMessage assistant = new AnthropicMessage();
@@ -45,7 +45,7 @@ class AnthropicProviderClientTests {
         return new ModelRoute(
                 "deepseek-v4-pro",
                 "deepseek",
-                ProviderType.ANTHROPIC,
+                ProviderType.DEEPSEEK_ANTHROPIC,
                 "deepseek-v4-pro",
                 "https://api.deepseek.com/anthropic",
                 "/v1/messages",

@@ -191,18 +191,20 @@
 
 | 组件 | 说明 |
 |---|---|
-| `ProviderType` 枚举 | `OPENAI_COMPATIBLE`, `ANTHROPIC`, `OPENAI_RESPONSES`, `GEMINI`, `LOCAL` |
+| `ProviderType` 枚举 | `OPENAI_COMPATIBLE`, `ANTHROPIC`, `OPENAI_RESPONSES`, `GEMINI`, `DEEPSEEK_CHAT`, `DEEPSEEK_ANTHROPIC`, `LOCAL` |
 | `AiProviderClient` 接口 | `type()`, `chat()`, `streamChat()`, `supportsStreaming()`, `models()`, `quota()` |
 | `ProviderClientRegistry` | Spring 组件，`EnumMap` 注册所有 `AiProviderClient` bean |
 | `OpenAiCompatibleProviderClient` | OpenAI 兼容 Client，`RestClient` 转发，支持流式 SSE 透传 |
 | `AnthropicProviderClient` | Anthropic 原生 Client，`RestClient` 转发，支持流式 SSE 透传 |
+| `DeepSeekChatProviderClient` | DeepSeek Chat Completions 风格 Client，复用 OpenAI Chat 传输实现，作为独立供应商类型路由 |
+| `DeepSeekAnthropicProviderClient` | DeepSeek Anthropic API 风格 Client，复用 Anthropic 传输实现，并隔离 thinking 块回传规则 |
 | `OpenAiResponsesProviderClient` | OpenAI Responses API Client，使用 `OpenAiResponsesRequestAdapter` 构建请求，Bearer 鉴权 |
 | `GeminiProviderClient` | Google Gemini Client，`x-goog-api-key` 鉴权，URL 格式 `{model}:generateContent`，支持模型列表查询 |
 
-**DeepSeek Anthropic 兼容处理**：
-- 当 `ANTHROPIC` 渠道的上游 URL 指向 `api.deepseek.com/anthropic` 时，`AnthropicProviderClient` 会在发送请求前规范化历史消息中的 `type="thinking"` 内容块。
-- 如果客户端回传的 thinking 块只有 `text` 字段或缺失 `thinking` 字段，会补齐 `thinking` 字段，避免 DeepSeek thinking 模式续轮/工具调用报错 `content[].thinking must be passed back`。
-- 该处理仅作用于 DeepSeek Anthropic 兼容渠道，不影响原生 Anthropic 或其他供应商。
+**DeepSeek 独立供应商处理**：
+- DeepSeek 不再通过 `OPENAI_COMPATIBLE` 或 `ANTHROPIC` 渠道的 URL 兼容逻辑处理，而是拆分为 `DEEPSEEK_CHAT` 与 `DEEPSEEK_ANTHROPIC` 两个独立供应商类型。
+- `DEEPSEEK_CHAT` 支持 Chat Completions 风格上游，并新增 `/v1/responses` 端点适配；该适配会把 Responses 历史中的 `reasoning` item 恢复为 DeepSeek Chat 续轮需要的 `reasoning_content`，且在客户端未回传 reasoning 时为历史 assistant 消息兜底携带空 `reasoning_content` 字段。
+- `DEEPSEEK_ANTHROPIC` 支持 Anthropic API 风格上游，并仅在该供应商 Client 内补齐 `type="thinking"` 内容块的 `thinking` 字段。
 
 **Provider 错误码细化**（P0 已实现）：
 - 401/403 → `PROVIDER_AUTH_FAILED`
@@ -754,14 +756,15 @@ cn.ms08.apiconvert
 
 | 测试类 | 用例数 | 说明 |
 |---|---|---|
-| `ApiConvertApplicationTests.java` | 17 | `@SpringBootTest` 验证 Spring 上下文加载、渠道 CRUD、模型管理、请求日志、统计仪表盘聚合、路由解析、工具请求优先路由到支持工具的渠道，以及系统路由配置、轮询、加权、会话粘性和失败避让 |
+| `ApiConvertApplicationTests.java` | 18 | `@SpringBootTest` 验证 Spring 上下文加载、渠道 CRUD、模型管理、请求日志分页、统计仪表盘聚合、路由解析、工具请求优先路由到支持工具的渠道，以及系统路由配置、轮询、加权、会话粘性和失败避让 |
 | `OpenAiCompatibleProviderClientTests.java` | 1 | Provider Client URL 构建逻辑 |
-| `AnthropicProviderClientTests.java` | 1 | DeepSeek Anthropic thinking 内容块兼容处理 |
+| `DeepSeekChatProviderClientTests.java` | 2 | DeepSeek Chat thinking 模式下 assistant 历史消息的 `reasoning_content` 字段兜底与保留 |
+| `AnthropicProviderClientTests.java` | 1 | DeepSeek Anthropic 独立供应商 thinking 内容块兼容处理 |
 | `AnthropicToOpenAiCompatibleAdapterTests.java` | 2 | Anthropic Messages 映射到 OpenAI Chat 上游时的工具参数、工具消息与响应工具块转换 |
 | `OpenAiResponsesRequestAdapterTests.java` | 2 | Responses 原生参数保留、`function_call/function_call_output` 与统一工具消息互转 |
-| `ResponsesToOpenAiCompatibleAdapterTests.java` | 2 | `/v1/responses` 映射到 OpenAI Chat 上游时的请求参数与工具调用响应转换 |
+| `ResponsesToOpenAiCompatibleAdapterTests.java` | 6 | `/v1/responses` 映射到 OpenAI Chat/DeepSeek Chat 上游时的请求参数、工具调用响应与 reasoning 续轮转换 |
 | `ResponsesToAnthropicAdapterTests.java` | 1 | `/v1/responses` 映射到 Anthropic Messages 上游时的 system/tools/tool_use/tool_result 转换 |
-| `RealTimeResponsesTransformerTests.java` | 3 | Codex Responses SSE 兼容：累计文本去重、原生 Responses SSE 解析、Chat `tool_calls` 转 Responses `function_call` 并保证 `response.completed` |
+| `RealTimeResponsesTransformerTests.java` | 4 | Codex Responses SSE 兼容：累计文本去重、原生 Responses SSE 解析、Chat `reasoning_content/tool_calls` 转 Responses `reasoning/function_call` 并保证 `response.completed` |
 
 验证命令：
 
@@ -840,3 +843,10 @@ curl -X POST http://localhost:8080/v1/messages \
 
 - Dashboard pie charts now render hoverable SVG segments. Hovering a pie slice or legend row shows the matched model/channel/API key name, total tokens, request count, and share percentage.
 - Frontend production build now uses Vite manual chunks for Vue, Naive UI/icon, and Axios dependencies, registers only the Naive UI components used by templates with explicit global names, and raises the chunk warning threshold to match the remaining cached vendor bundle size.
+
+## Recent backend updates
+
+- DeepSeek is modeled as independent provider types: `DEEPSEEK_CHAT` for Chat Completions-style upstreams and `DEEPSEEK_ANTHROPIC` for Anthropic API-style upstreams. The generic `ANTHROPIC` provider no longer contains DeepSeek URL compatibility logic.
+- Added endpoint adapters for the new DeepSeek providers, including `/v1/responses` -> `DEEPSEEK_CHAT`, which restores Responses `reasoning` items into DeepSeek Chat `reasoning_content` only on that dedicated provider path.
+- `DEEPSEEK_CHAT` now also ensures historical assistant messages include a `reasoning_content` field even when the downstream client did not return a reasoning item.
+- Fixed request-log pagination on MyBatis 3.5.19 by copying immutable `BoundSql` parameter mappings before adding `LIMIT/OFFSET` parameters; `/api/admin/request-logs` now has an integration test for page and pageSize behavior.

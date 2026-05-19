@@ -64,8 +64,16 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
         }
         ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(response);
         long startedAt = System.currentTimeMillis();
+        int responseStatus = HttpServletResponse.SC_OK;
         try {
             filterChain.doFilter(wrappedRequest, wrappedResponse);
+            responseStatus = wrappedResponse.getStatus();
+        } catch (ServletException | IOException e) {
+            responseStatus = resolveStatus(e);
+            throw e;
+        } catch (RuntimeException e) {
+            responseStatus = resolveStatus(e);
+            throw e;
         } finally {
             long latencyMs = System.currentTimeMillis() - startedAt;
             String requestBody = readRequestBody(wrappedRequest);
@@ -73,7 +81,7 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
             log.info("请求：{} {}、状态：{}、耗时：{}ms、请求头：{}、请求体：{}、响应体：{}、请求体长度：{}、响应体长度：{}",
                     request.getMethod(),
                     requestUri(request),
-                    wrappedResponse.getStatus(),
+                    responseStatus,
                     latencyMs,
                     LogSanitizer.sanitizeHeaders(toHeaders(wrappedRequest)),
                     requestBody,
@@ -92,20 +100,38 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
     private void logStreamingRequest(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain,
                                      ContentCachingRequestWrapper wrappedRequest) throws ServletException, IOException {
         long startedAt = System.currentTimeMillis();
+        int responseStatus = HttpServletResponse.SC_OK;
         try {
             filterChain.doFilter(wrappedRequest, response);
+            responseStatus = response.getStatus();
+        } catch (ServletException | IOException e) {
+            responseStatus = resolveStatus(e);
+            throw e;
+        } catch (RuntimeException e) {
+            responseStatus = resolveStatus(e);
+            throw e;
         } finally {
             long latencyMs = System.currentTimeMillis() - startedAt;
             String requestBody = readRequestBody(wrappedRequest);
             log.info("请求：{} {}、状态：{}、耗时：{}ms、请求头：{}、请求体：{}、响应体：<stream>、请求体长度：{}",
                     request.getMethod(),
                     requestUri(request),
-                    response.getStatus(),
+                    responseStatus,
                     latencyMs,
                     LogSanitizer.sanitizeHeaders(toHeaders(wrappedRequest)),
                     requestBody,
                     requestBody.length());
         }
+    }
+
+    /**
+     * 从异常中提取 HTTP 状态码，兜底返回 500。
+     */
+    private static int resolveStatus(Exception e) {
+        if (e instanceof cn.ms08.apiconvert.exception.GatewayException ge) {
+            return ge.status().value();
+        }
+        return HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
     }
 
     /**

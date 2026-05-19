@@ -51,9 +51,9 @@ public final class ProtocolFormat {
      */
     public static String fromProvider(cn.ms08.apiconvert.provider.ProviderType provider) {
         return switch (provider) {
-            case OPENAI_COMPATIBLE -> OPENAI;
+            case OPENAI_COMPATIBLE, DEEPSEEK_CHAT -> OPENAI;
             case OPENAI_RESPONSES -> OPENAI_RESPONSE;
-            case ANTHROPIC -> CLAUDE;
+            case ANTHROPIC, DEEPSEEK_ANTHROPIC -> CLAUDE;
             case GEMINI -> GEMINI;
             case LOCAL -> "local";
         };

@@ -273,14 +273,79 @@ public class RealTimeResponsesTransformer extends OutputStream {
     }
 
     /**
-     * 处理 Anthropic SSE 格式的数据行。
+     * 处理 Anthropic SSE 格式的数据行：支持 text_delta、thinking_delta、input_json_delta
+     * 以及 content_block_start（tool_use/thinking/text）。
      */
     private void processAnthropicData(JsonNode chunk, String type) throws IOException {
+        if (log.isDebugEnabled()) {
+            log.debug("Anthropic SSE 事件: type={}, 摘要={}", type,
+                    chunk.toString().substring(0, Math.min(chunk.toString().length(), 200)));
+        }
         switch (type) {
+            case "content_block_start" -> {
+                JsonNode contentBlock = chunk.path("content_block");
+                String blockType = contentBlock.path("type").asText("");
+                int blockIndex = chunk.path("index").asInt(0);
+                if (log.isDebugEnabled()) {
+                    log.debug("content_block_start: blockType={}, index={}, name={}", blockType, blockIndex,
+                            contentBlock.path("name").asText("(none)"));
+                }
+                if ("thinking".equals(blockType) || "reasoning".equals(blockType)) {
+                    ensureReasoningItemCreated();
+                    String initialText = contentBlock.path("thinking").asText(null);
+                    if (initialText != null && !initialText.isEmpty()) {
+                        reasoningText.append(initialText);
+                        writeReasoningDelta(initialText);
+                    }
+                } else if ("tool_use".equals(blockType)) {
+                    String toolUseId = contentBlock.path("id").asText("");
+                    String toolName = contentBlock.path("name").asText("");
+                    log.info("Anthropic 工具调用: id={}, name={}, blockIndex={}", toolUseId, toolName, blockIndex);
+                    ToolCallState state = toolCalls.computeIfAbsent(blockIndex,
+                            key -> new ToolCallState(key, nextOutputIndex++));
+                    state.callId = toolUseId.isBlank()
+                            ? "call_" + UUID.randomUUID().toString().replace("-", "") : toolUseId;
+                    state.name = toolName;
+                    // content_block_start 可能直接携带完整 input（非流式）
+                    JsonNode input = contentBlock.path("input");
+                    if (!input.isMissingNode() && !input.isNull()) {
+                        String inputStr = input.isTextual() ? input.asText() : input.toString();
+                        if (!inputStr.isEmpty() && !"{}".equals(inputStr)) {
+                            state.arguments.append(inputStr);
+                        }
+                    }
+                    ensureToolCallAdded(state);
+                }
+                // text 类型 content_block：首次 delta 到达时再由 ensureMessageOutputItemCreated 创建
+            }
             case "content_block_delta" -> {
                 JsonNode delta = chunk.path("delta");
-                String text = delta.path("text").asText(null);
-                appendAndWriteText(text);
+                String deltaType = delta.path("type").asText("");
+                if ("text_delta".equals(deltaType) || "text".equals(deltaType)) {
+                    appendAndWriteText(delta.path("text").asText(null));
+                } else if ("thinking_delta".equals(deltaType)) {
+                    String thinking = delta.path("thinking").asText(null);
+                    if (thinking != null && !thinking.isEmpty()) {
+                        ensureReasoningItemCreated();
+                        reasoningText.append(thinking);
+                        writeReasoningDelta(thinking);
+                    }
+                } else if ("input_json_delta".equals(deltaType)) {
+                    String partialJson = delta.path("partial_json").asText("");
+                    if (!partialJson.isEmpty()) {
+                        int blockIndex = chunk.path("index").asInt(0);
+                        ToolCallState state = toolCalls.get(blockIndex);
+                        if (state == null || !state.added) {
+                            state = toolCalls.computeIfAbsent(blockIndex,
+                                    key -> new ToolCallState(key, nextOutputIndex++));
+                            ensureToolCallAdded(state);
+                        }
+                        state.arguments.append(partialJson);
+                        writeSse("response.function_call_arguments.delta",
+                                "{\"type\":\"response.function_call_arguments.delta\",\"output_index\":%d,\"item_id\":\"%s\",\"delta\":\"%s\"}"
+                                        .formatted(state.outputIndex, esc(state.itemId), esc(partialJson)));
+                    }
+                }
             }
             case "message_delta" -> {
                 // 提取停止原因（对应 Chat Completions 的 finish_reason）
@@ -327,8 +392,15 @@ public class RealTimeResponsesTransformer extends OutputStream {
                 }
                 trySendCompleted();
             }
-            case "content_block_stop", "ping" -> {
-                // content_block_stop：单个内容块结束，消息可能还未结束，等待 message_delta/message_stop
+            case "content_block_stop" -> {
+                // content_block_stop：单个内容块结束，tool_use 块的 arguments 已完整。
+                // 注意不能在此设置 state.done=true，否则 writeToolCallDoneEvents() 会
+                // 跳过发出 function_call_arguments.done / output_item.done 事件，
+                // 导致客户端收不到工具调用完成信号而无法调用工具。
+                // done 事件统一由 writeToolCallDoneEvents() 在 message_delta 时发送。
+                // text/thinking 块的 stop 无需处理
+            }
+            case "ping" -> {
                 // ping：心跳，忽略
             }
             default -> log.trace("忽略未知 Anthropic 事件类型: {}", type);
@@ -753,8 +825,17 @@ public class RealTimeResponsesTransformer extends OutputStream {
             log.debug("写出 response.completed 事件: finishReasonSeen={}, completed={}, inputTokens={}, outputTokens={}",
                     finishReasonSeen, completed, inputTokens, outputTokens);
         }
-        String contentPart = "{\"type\":\"output_text\",\"text\":\"%s\",\"annotations\":[]}"
-                .formatted(esc(fullText.toString()));
+        String escapedText = esc(fullText.toString());
+        // 在 message 项的内容中包含 reasoning 块，保障 Codex 回传对话历史时
+        // DeepSeek 的 thinking 模式能得到完整的 thinking 块。
+        String contentPart;
+        if (reasoningSeen && reasoningDoneSent && reasoningText.length() > 0) {
+            contentPart = "{\"type\":\"reasoning\",\"text\":\"%s\"},{\"type\":\"output_text\",\"text\":\"%s\",\"annotations\":[]}"
+                    .formatted(esc(reasoningText.toString()), escapedText);
+        } else {
+            contentPart = "{\"type\":\"output_text\",\"text\":\"%s\",\"annotations\":[]}"
+                    .formatted(escapedText);
+        }
 
         // 构建带可选用量详情的 usage JSON
         String promptDetailsJson = cachedTokens != null

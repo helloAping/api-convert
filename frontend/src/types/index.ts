@@ -393,7 +393,7 @@ export interface RequestLogSearchParam {
 }
 
 /** 渠道聚合表单当前支持的供应商策略类型。 */
-export const channelTypes = ['OPENAI_COMPATIBLE', 'ANTHROPIC', 'OPENAI_RESPONSES', 'GEMINI']
+export const channelTypes = ['OPENAI_COMPATIBLE', 'ANTHROPIC', 'OPENAI_RESPONSES', 'DEEPSEEK_CHAT', 'DEEPSEEK_ANTHROPIC', 'GEMINI']
 export const activeStatuses = ['ACTIVE', 'DISABLED', 'EXPIRED']
 export const quotaWindowUnits = ['HOUR', 'DAY', 'MONTH']
 export const routeModes = ['RANDOM', 'ROUND_ROBIN', 'WEIGHTED', 'SESSION_STICKY']
