@@ -2,6 +2,36 @@
 
 `api-convert` 是一个 Java 25 + Spring Boot 4 的 AI API 网关，提供 OpenAI / Anthropic 兼容入口，并通过管理端维护上游渠道、模型映射、网关 API Key 和请求日志。
 
+[English README](README_EN.md)
+
+## 功能特性
+
+- 兼容 OpenAI Chat Completions：`/v1/chat/completions`
+- 兼容 OpenAI Responses API：`/v1/responses`
+- 兼容 Anthropic Messages：`/v1/messages`
+- 兼容 OpenAI 模型列表：`/v1/models`
+- 支持 OpenAI、Anthropic、OpenAI Responses、GPT_AUTH、CLAUDE_AUTH、DeepSeek、Gemini 等 Provider 类型
+- 支持跨协议适配：OpenAI Chat、Anthropic Messages、OpenAI Responses、DeepSeek、Gemini 风格协议可按路由自动转换
+- 支持 SSE 流式透传和 Responses API 实时流式转换
+- 支持多渠道路由：随机、轮询、加权、会话粘性
+- 支持工具请求优先路由和上游失败避让
+- 支持网关 API Key 鉴权、额度余额、滑动窗口限流和按 token 计费
+- 支持请求日志、Dashboard 统计、敏感信息脱敏
+- 提供管理端：渠道、模型、API Key、请求日志、路由配置、OAuth AUTH 渠道管理
+
+## 支持的 Provider 类型
+
+| 类型 | 协议 | 鉴权 | 流式 | 说明 |
+|---|---|---|---|---|
+| `OPENAI_COMPATIBLE` | Chat Completions | Bearer API Key | ✅ | 通用 OpenAI 兼容上游 |
+| `ANTHROPIC` | Messages | Bearer API Key + version | ✅ | Anthropic / Claude 官方风格 |
+| `OPENAI_RESPONSES` | Responses API | Bearer API Key | ✅ | OpenAI Responses 原生上游 |
+| `GPT_AUTH` | Chat Completions | `auth.json` / OAuth | ✅ | GPT 授权文件渠道 |
+| `CLAUDE_AUTH` | Messages | `auth.json` / OAuth | ✅ | Claude 授权文件渠道 |
+| `DEEPSEEK_CHAT` | Chat Completions + reasoning | Bearer API Key | ✅ | DeepSeek Chat 风格 |
+| `DEEPSEEK_ANTHROPIC` | Messages + thinking | Bearer API Key + version | ✅ | DeepSeek Anthropic 风格 |
+| `GEMINI` | Gemini `generateContent` | `x-goog-api-key` | ❌ | Google Gemini |
+
 ## 界面预览
 
 ![管理端预览 1](img/Snipaste_2026-05-15_18-24-48.png)
@@ -165,6 +195,25 @@ curl -X POST http://localhost:8080/v1/responses \
 5. 在“系统配置”中调整路由模式、失败避让和会话粘性参数。
 6. 在“控制台”查看按天、按小时以及按模型、渠道、密钥划分的 token 消耗趋势和分布。
 7. 在“请求日志”按请求维度排查调用结果、调用密钥、上游渠道、token 用量和错误信息。
+
+## GPT / Claude AUTH 渠道
+
+`GPT_AUTH` 和 `CLAUDE_AUTH` 适合使用授权文件访问上游的场景。管理端支持两种导入方式：
+
+- 上传 `auth.json`
+- 生成 OAuth 授权链接，授权完成后粘贴回调 URL 导入
+
+AUTH 渠道保存时会自动补齐官方默认上游地址和请求路径。授权文件默认保存到数据目录旁的 `auth-dir`，也可以通过 `API_CONVERT_AUTH_STORAGE_DIR` 指定存储目录。接口响应只展示授权状态、授权主体、过期时间等脱敏信息，不暴露 access token 或 refresh token。
+
+相关管理接口：
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/admin/channels/{id}/auth/upload` | 上传 `auth.json` |
+| `POST /api/admin/channels/{id}/auth/start` | 创建 OAuth 授权链接 |
+| `GET /api/admin/channels/auth/callback` | OAuth 回调入口 |
+| `POST /api/admin/channels/{id}/auth/callback-url` | 粘贴回调 URL 完成授权 |
+| `GET /api/admin/channels/{id}/auth/status` | 查询授权状态 |
 
 ## 控制台仪表盘
 
