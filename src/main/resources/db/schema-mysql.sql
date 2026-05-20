@@ -15,6 +15,11 @@ CREATE TABLE IF NOT EXISTS ai_channel (
   chat_path VARCHAR(512) NOT NULL DEFAULT '/v1/chat/completions' COMMENT '对话或消息请求路径',
   models_path VARCHAR(512) NOT NULL DEFAULT '/v1/models' COMMENT '模型列表请求路径',
   api_key TEXT COMMENT '上游 API Key，返回前和日志中必须脱敏',
+  auth_mode VARCHAR(32) NOT NULL DEFAULT 'API_KEY' COMMENT '鉴权模式：API_KEY、AUTH_FILE、OAUTH',
+  auth_file_path VARCHAR(1024) NULL COMMENT '相对 auth-dir 的授权文件路径',
+  auth_status VARCHAR(32) NOT NULL DEFAULT 'NOT_CONFIGURED' COMMENT '授权状态：NOT_CONFIGURED、AUTHORIZED、EXPIRED、ERROR',
+  auth_subject VARCHAR(255) NULL COMMENT '脱敏后的授权身份摘要',
+  auth_expires_at TIMESTAMP NULL COMMENT 'access token 过期时间',
   priority INT NOT NULL DEFAULT 100 COMMENT '路由优先级，预留给后续加权或故障转移',
   status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT '凭证状态，例如 ACTIVE 或 DISABLED',
   enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '渠道是否启用',
@@ -114,4 +119,4 @@ VALUES
   ('routing.failure_cooldown_minutes', '0', '失败阈值触发后的避让分钟数；0 表示关闭'),
   ('routing.sticky_ttl_minutes', '1440', '会话粘性绑定保留分钟数');
 
-INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (11, 'Add routing system configuration');
+INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (12, 'Add auth file provider support');

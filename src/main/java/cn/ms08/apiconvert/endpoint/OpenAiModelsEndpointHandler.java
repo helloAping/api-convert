@@ -64,6 +64,13 @@ public class OpenAiModelsEndpointHandler implements EndpointHandler {
         return channel != null
                 && Boolean.TRUE.equals(channel.getEnabled())
                 && "ACTIVE".equals(channel.getStatus())
-                && StringUtils.hasText(channel.getApiKey());
+                && hasUsableCredential(channel);
+    }
+
+    private boolean hasUsableCredential(AiChannelEntity channel) {
+        if ("GPT_AUTH".equals(channel.getType()) || "CLAUDE_AUTH".equals(channel.getType())) {
+            return "AUTHORIZED".equals(channel.getAuthStatus()) && StringUtils.hasText(channel.getAuthFilePath());
+        }
+        return StringUtils.hasText(channel.getApiKey());
     }
 }

@@ -24,6 +24,23 @@ api-convert:
     admin:
       username: ${API_CONVERT_ADMIN_USERNAME:admin}
       password: ${API_CONVERT_ADMIN_PASSWORD:admin123}
+  auth:
+    storage-dir: ${API_CONVERT_AUTH_STORAGE_DIR:}
+    oauth:
+      gpt-auth:
+        authorization-uri: ${GPT_AUTH_AUTHORIZATION_URI:}
+        token-uri: ${GPT_AUTH_TOKEN_URI:}
+        client-id: ${GPT_AUTH_CLIENT_ID:}
+        client-secret: ${GPT_AUTH_CLIENT_SECRET:}
+        scope: ${GPT_AUTH_SCOPE:}
+        redirect-uri: ${GPT_AUTH_REDIRECT_URI:}
+      claude-auth:
+        authorization-uri: ${CLAUDE_AUTH_AUTHORIZATION_URI:}
+        token-uri: ${CLAUDE_AUTH_TOKEN_URI:}
+        client-id: ${CLAUDE_AUTH_CLIENT_ID:}
+        client-secret: ${CLAUDE_AUTH_CLIENT_SECRET:}
+        scope: ${CLAUDE_AUTH_SCOPE:}
+        redirect-uri: ${CLAUDE_AUTH_REDIRECT_URI:}
 
 # 渠道、端点、上游密钥和模型不再通过配置文件维护；请通过管理端或数据库写入 ai_channel、ai_channel_model 等表。
 

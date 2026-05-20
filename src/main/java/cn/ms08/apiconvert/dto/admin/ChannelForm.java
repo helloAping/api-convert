@@ -28,6 +28,7 @@ public record ChannelForm(
     String chatPath,
     String modelsPath,
     String apiKey,
+    String authMode,
     Integer priority,
     String status,
     String publicModel,

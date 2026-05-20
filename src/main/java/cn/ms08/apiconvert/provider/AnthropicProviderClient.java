@@ -65,7 +65,7 @@ public class AnthropicProviderClient implements AiProviderClient {
                     .build()
                     .post()
                     .uri(route.chatPath())
-                    .header("x-api-key", route.apiKey())
+                    .header(authHeaderName(route), authHeaderValue(route))
                     .header("anthropic-version", ANTHROPIC_VERSION)
                     .body(prepareRequestBody(route, requestAdapter.toProviderRequest(request, route.providerModel())))
                     .retrieve()
@@ -101,7 +101,7 @@ public class AnthropicProviderClient implements AiProviderClient {
                     .post()
                     .uri(route.chatPath())
                     .accept(MediaType.TEXT_EVENT_STREAM)
-                    .header("x-api-key", route.apiKey())
+                    .header(authHeaderName(route), authHeaderValue(route))
                     .header("anthropic-version", ANTHROPIC_VERSION)
                     .body(providerBody)
                     .exchange((clientRequest, response) -> {
@@ -208,7 +208,7 @@ public class AnthropicProviderClient implements AiProviderClient {
                     .build()
                     .get()
                     .uri(request.modelsPath())
-                    .header("x-api-key", request.apiKey())
+                    .header(authHeaderName(), authHeaderValue(request.apiKey()))
                     .header("anthropic-version", ANTHROPIC_VERSION)
                     .retrieve()
                     .body(String.class);
@@ -225,6 +225,22 @@ public class AnthropicProviderClient implements AiProviderClient {
     @Override
     public ProviderQuota quota(ProviderQuotaFetchRequest request) {
         return new ProviderQuota(false, "Anthropic 当前没有通用额度查询接口，请在供应商控制台查看。", null, null, null, "", "");
+    }
+
+    protected String authHeaderName(ModelRoute route) {
+        return authHeaderName();
+    }
+
+    protected String authHeaderValue(ModelRoute route) {
+        return authHeaderValue(route.apiKey());
+    }
+
+    protected String authHeaderName() {
+        return "x-api-key";
+    }
+
+    protected String authHeaderValue(String credential) {
+        return credential;
     }
 
     private List<ProviderModel> parseAnthropicModelList(String body) {

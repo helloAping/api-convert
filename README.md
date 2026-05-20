@@ -18,7 +18,7 @@
 
 - 后端：Java 25、Spring Boot 4.0.6、Maven、MyBatis-Plus、Log4j2
 - 数据库：默认 SQLite，可通过环境变量切换 MySQL
-- 前端：Vue 3、Vite、TypeScript、Naive UI
+- 前端：Vue 3.5、Vite、TypeScript、Naive UI
 
 ## 本地启动
 
@@ -159,7 +159,7 @@ curl -X POST http://localhost:8080/v1/responses \
 ## 管理端配置流程
 
 1. 访问 `http://localhost:8080`，使用管理端账号登录。
-2. 在“渠道管理”中新增上游渠道，填写供应商类型、Base URL、请求路径、API Key，并选择或手动录入上游模型。
+2. 在“渠道管理”中新增上游渠道。普通渠道填写供应商类型、Base URL、请求路径、API Key，并选择或手动录入上游模型；`GPT_AUTH` / `CLAUDE_AUTH` 渠道通过 `auth.json` 上传或 OAuth 授权导入凭证。
 3. 在“模型管理”中按需调整对外模型的额度单价、能力标记和启用状态。
 4. 在“网关密钥”中创建调用方密钥，并按需限制可用渠道或配置额度。
 5. 在“系统配置”中调整路由模式、失败避让和会话粘性参数。
@@ -244,6 +244,7 @@ curl -X PUT http://localhost:8080/api/admin/system-config/routing \
 | `API_CONVERT_SECURITY_ENABLED` | `true` | 是否启用网关 API Key 鉴权 |
 | `API_CONVERT_ADMIN_USERNAME` | `admin` | 管理端账号 |
 | `API_CONVERT_ADMIN_PASSWORD` | `admin123` | 管理端密码 |
+| `API_CONVERT_AUTH_STORAGE_DIR` | 空 | AUTH 渠道授权文件存储目录；为空时按数据库类型使用默认目录 |
 | `LOG_PATH` | `logs` | 日志输出目录 |
 | `LOG_LEVEL` / `APP_LOG_LEVEL` | 见 Log4j2 配置 | 日志级别 |
 | `SQL_LOG_LEVEL` / `SQL_PARAM_LOG_LEVEL` | 见 Log4j2 配置 | SQL 日志级别 |
@@ -275,10 +276,10 @@ docker build -t api-convert:local .
 crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:{版本号}
 ```
 
-例如发布 `v1.0.2` 时：
+例如发布 `v1.0.3` 时：
 
 ```bash
-docker pull crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.2
+docker pull crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.3
 ```
 
 直接使用发布镜像部署：
@@ -291,7 +292,7 @@ docker run -d --name api-convert \
   -e LOG_PATH=/app/data/logs \
   -e API_CONVERT_ADMIN_USERNAME=admin \
   -e API_CONVERT_ADMIN_PASSWORD='change-me' \
-  crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.2
+  crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.3
 ```
 
 使用 SQLite 运行：

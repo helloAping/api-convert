@@ -1,6 +1,7 @@
 package cn.ms08.apiconvert.vo.admin;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 /**
  * 由供应商、端点、凭证和模型记录组装出的管理端渠道视图。
@@ -33,6 +34,11 @@ public record ChannelVO(
     Long credentialId,
     String credentialName,
     String apiKey,
+    String authMode,
+    String authStatus,
+    String authSubject,
+    LocalDateTime authExpiresAt,
+    Boolean hasAuthFile,
     Integer priority,
     String status,
     Long modelCount,

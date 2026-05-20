@@ -74,7 +74,7 @@ Key capabilities:
 - **Responses API**: OpenAI Responses API protocol (`/v1/responses`) with SSE streaming via `RealTimeResponsesTransformer`
 - **SSE streaming passthrough**: byte-level proxy with usage extraction at stream end
 - **Smart routing**: random channel selection per model, direct channel/model specification via `channel/model` format
-- **Cross-protocol adapters**: 6× `EndpointProviderAdapter` implementations automatically transforming requests/responses between OpenAI Chat, Anthropic Messages, GPT Responses API, and Gemini protocols
+- **Cross-protocol adapters**: 12× `EndpointProviderAdapter` implementations automatically transforming requests/responses between OpenAI Chat, Anthropic Messages, GPT Responses API, DeepSeek, and Gemini protocols
 - **Stream transformer**: pluggable `StreamResponseTransformer` abstraction for real-time SSE format conversion between endpoint types and provider protocols
 - **Endpoint strategy pattern**: `EndpointType` enum + `EndpointHandler` interface, each endpoint independently handles request parsing, adaptation, and response writing
 - **Provider strategy pattern**: `ProviderType` enum + `AiProviderClient` interface, supports OpenAI-compatible, Anthropic, OpenAI Responses API, Gemini upstreams
@@ -92,7 +92,7 @@ Key capabilities:
 | ORM | MyBatis-Plus 3.5.16 |
 | Database | SQLite (default dev) + MySQL |
 | Admin auth | Sa-Token 1.42 |
-| Frontend | Vue 5 + Naive UI + Vite |
+| Frontend | Vue 3.5 + Naive UI + Vite |
 
 ### Quick run
 
@@ -143,7 +143,7 @@ curl -X POST http://localhost:8080/v1/messages \
   -d '{"model": "claude-3-opus", "messages": [{"role": "user", "content": "hello"}]}'
 
 # Admin login
-curl -X POST http://localhost:8080/admin/login \
+curl -X POST http://localhost:8080/api/admin/login \
   -H 'Content-Type: application/json' \
   -d '{"username": "admin", "password": "admin123"}'
 ```
@@ -156,7 +156,7 @@ Full implementation progress is tracked in `.agent/docs/AI_GATEWAY_PROGRESS.md`.
 
 - Source code root: `src/main/java/cn/ms08/apiconvert/`
 - DB migration scripts: `src/main/resources/db/migration/{sqlite,mysql}/`
-- Management frontend: `frontend/` (Vue 5 + Naive UI)
+- Management frontend: `frontend/` (Vue 3.5 + Naive UI)
 - Follow naming conventions: `Entity` for DB tables, `DTO` for internal transfer, `VO` for API responses, `Request` for controller input
 - Never commit local credentials, API keys, or personal agent config
 - **文档强制同步**：新增、修改或删除功能时，必须同步更新 `.agent/docs/AI_GATEWAY_PROGRESS.md`，确保进度文档与实际功能一致后再提交代码

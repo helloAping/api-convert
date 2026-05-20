@@ -13,6 +13,7 @@ import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.GatewayException;
 import cn.ms08.apiconvert.provider.ProviderClientRegistry;
 import cn.ms08.apiconvert.provider.ProviderType;
+import cn.ms08.apiconvert.service.auth.AuthFileService;
 import cn.ms08.apiconvert.vo.admin.ChannelModelMappingVO;
 import cn.ms08.apiconvert.vo.admin.ChannelQuotaVO;
 import cn.ms08.apiconvert.vo.admin.ChannelVO;
@@ -51,6 +52,14 @@ public class AdminChannelService {
      */
     private static final String DEFAULT_MODELS_PATH = "/v1/models";
     /**
+     * GPT_AUTH 默认使用 OpenAI 官方 API 地址，前端选择该类型时无需展示输入项。
+     */
+    private static final String DEFAULT_GPT_AUTH_BASE_URL = "https://api.openai.com";
+    /**
+     * CLAUDE_AUTH 默认使用 Anthropic 官方 API 地址，前端选择该类型时无需展示输入项。
+     */
+    private static final String DEFAULT_CLAUDE_AUTH_BASE_URL = "https://api.anthropic.com";
+    /**
      * 默认凭证状态。
      */
     private static final String DEFAULT_STATUS = "ACTIVE";
@@ -58,6 +67,10 @@ public class AdminChannelService {
      * 默认路由权重，加权模式下数值越高分配流量越多。
      */
     private static final int DEFAULT_PRIORITY = 100;
+    private static final String AUTH_MODE_API_KEY = "API_KEY";
+    private static final String AUTH_MODE_AUTH_FILE = "AUTH_FILE";
+    private static final String AUTH_STATUS_AUTHORIZED = "AUTHORIZED";
+    private static final String AUTH_STATUS_NOT_CONFIGURED = "NOT_CONFIGURED";
 
     /**
      * 读写整合后的渠道主表。
@@ -71,6 +84,10 @@ public class AdminChannelService {
      * 将模型发现分派给供应商特定客户端实现。
      */
     private final ProviderClientRegistry providerClientRegistry;
+    /**
+     * AUTH 类型渠道从 auth.json 中读取访问令牌用于模型发现。
+     */
+    private final AuthFileService authFileService;
 
     /**
      * 注入渠道聚合操作所需的 Mapper 和供应商注册表。
@@ -78,11 +95,13 @@ public class AdminChannelService {
     public AdminChannelService(
             AiChannelMapper channelMapper,
             AiChannelModelMapper channelModelMapper,
-            ProviderClientRegistry providerClientRegistry
+            ProviderClientRegistry providerClientRegistry,
+            AuthFileService authFileService
     ) {
         this.channelMapper = channelMapper;
         this.channelModelMapper = channelModelMapper;
         this.providerClientRegistry = providerClientRegistry;
+        this.authFileService = authFileService;
     }
 
     /**
@@ -113,7 +132,7 @@ public class AdminChannelService {
         requireText(request.baseUrl(), "Base URL 不能为空");
         String modelsPath = StringUtils.hasText(request.modelsPath()) ? request.modelsPath() : DEFAULT_MODELS_PATH;
         ProviderType providerType = StringUtils.hasText(request.type()) ? ProviderType.valueOf(request.type()) : ProviderType.OPENAI_COMPATIBLE;
-        String apiKey = resolveModelFetchApiKey(request);
+        String apiKey = resolveModelFetchApiKey(request, providerType);
         return providerClientRegistry.get(providerType)
                 .models(new ProviderModelFetchRequest(request.baseUrl(), modelsPath, apiKey))
                 .stream()
@@ -124,16 +143,23 @@ public class AdminChannelService {
     /**
      * 编辑渠道发现模型时，前端不会回传已保存密钥；仅在本次输入为空时读取数据库密钥。
      */
-    private String resolveModelFetchApiKey(ChannelModelFetchRequest request) {
+    private String resolveModelFetchApiKey(ChannelModelFetchRequest request, ProviderType providerType) {
         if (StringUtils.hasText(request.apiKey())) {
             return request.apiKey();
         }
         if (request.channelId() == null) {
+            if (isAuthProvider(providerType)) {
+                throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "请先保存渠道并上传 auth.json");
+            }
             requireText(request.apiKey(), "渠道 API Key 不能为空");
         }
         var channel = channelMapper.selectById(request.channelId());
         if (channel == null) {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.NOT_FOUND, "渠道不存在");
+        }
+        if (isAuthProvider(providerType)) {
+            requireText(channel.getAuthFilePath(), "请先上传 auth.json");
+            return authFileService.read(channel.getAuthFilePath()).accessToken();
         }
         requireText(channel.getApiKey(), "渠道 API Key 不能为空");
         return channel.getApiKey();
@@ -148,8 +174,12 @@ public class AdminChannelService {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.NOT_FOUND, "渠道不存在");
         }
         requireText(channel.getBaseUrl(), "Base URL 不能为空");
-        requireText(channel.getApiKey(), "渠道 API Key 不能为空");
         ProviderType providerType = ProviderType.valueOf(channel.getType());
+        if (isAuthProvider(providerType)) {
+            return new ChannelQuotaVO(channel.getId(), channel.getCode(), false,
+                    "AUTH 类型渠道暂不支持通用余额查询，请在供应商控制台查看。", null, null, null, "", "");
+        }
+        requireText(channel.getApiKey(), "渠道 API Key 不能为空");
         var quota = providerClientRegistry.get(providerType)
                 .quota(new ProviderQuotaFetchRequest(channel.getBaseUrl(), channel.getApiKey()));
         return new ChannelQuotaVO(
@@ -172,7 +202,10 @@ public class AdminChannelService {
     public ChannelVO create(ChannelForm form) {
         requireText(form.code(), "渠道编码不能为空");
         requireText(form.name(), "渠道名称不能为空");
-        requireText(form.baseUrl(), "Base URL 不能为空");
+        String type = StringUtils.hasText(form.type()) ? form.type() : DEFAULT_TYPE;
+        if (!isAuthProvider(type)) {
+            requireText(form.baseUrl(), "Base URL 不能为空");
+        }
 
         var existing = channelMapper.selectOne(new LambdaQueryWrapper<AiChannelEntity>()
                 .eq(AiChannelEntity::getCode, form.code()));
@@ -218,6 +251,7 @@ public class AdminChannelService {
         }
         channelModelMapper.delete(new LambdaQueryWrapper<AiChannelModelEntity>()
                 .eq(AiChannelModelEntity::getChannelCode, channel.getCode()));
+        authFileService.delete(channel.getAuthFilePath());
         channelMapper.deleteById(id);
     }
 
@@ -231,9 +265,15 @@ public class AdminChannelService {
         if (StringUtils.hasText(form.name())) channel.setName(form.name());
         if (StringUtils.hasText(form.type())) channel.setType(form.type()); else if (creating) channel.setType(DEFAULT_TYPE);
         if (StringUtils.hasText(form.baseUrl())) channel.setBaseUrl(form.baseUrl());
+        else if (creating || isAuthProvider(channel.getType())) channel.setBaseUrl(defaultBaseUrl(channel.getType()));
         if (StringUtils.hasText(form.chatPath())) channel.setChatPath(form.chatPath()); else if (creating) channel.setChatPath(defaultPath(channel.getType(), null));
         if (StringUtils.hasText(form.modelsPath())) channel.setModelsPath(form.modelsPath()); else if (creating) channel.setModelsPath(DEFAULT_MODELS_PATH);
         if (StringUtils.hasText(form.apiKey())) channel.setApiKey(form.apiKey());
+        if (StringUtils.hasText(form.authMode())) channel.setAuthMode(form.authMode());
+        else if (creating) channel.setAuthMode(isAuthProvider(channel.getType()) ? AUTH_MODE_AUTH_FILE : AUTH_MODE_API_KEY);
+        if (creating) {
+            channel.setAuthStatus(StringUtils.hasText(channel.getApiKey()) ? AUTH_STATUS_AUTHORIZED : AUTH_STATUS_NOT_CONFIGURED);
+        }
         if (form.priority() != null) channel.setPriority(form.priority()); else if (creating) channel.setPriority(DEFAULT_PRIORITY);
         if (StringUtils.hasText(form.status())) channel.setStatus(form.status()); else if (creating) channel.setStatus(DEFAULT_STATUS);
         if (form.enabled() != null) channel.setEnabled(form.enabled()); else if (creating) channel.setEnabled(true);
@@ -256,6 +296,11 @@ public class AdminChannelService {
                 channel.getId(),
                 channel.getName() + " 密钥",
                 ChannelVO.maskApiKey(channel.getApiKey()),
+                channel.getAuthMode(),
+                channel.getAuthStatus(),
+                channel.getAuthSubject(),
+                channel.getAuthExpiresAt(),
+                StringUtils.hasText(channel.getAuthFilePath()),
                 channel.getPriority(),
                 channel.getStatus(),
                 (long) models.size(),
@@ -388,9 +433,19 @@ public class AdminChannelService {
         return switch (type) {
             case "ANTHROPIC", "DEEPSEEK_ANTHROPIC" -> DEFAULT_ANTHROPIC_PATH;
             case "OPENAI_RESPONSES" -> "/v1/responses";
+            case "GPT_AUTH" -> DEFAULT_CHAT_PATH;
+            case "CLAUDE_AUTH" -> DEFAULT_ANTHROPIC_PATH;
             case "DEEPSEEK_CHAT" -> DEFAULT_CHAT_PATH;
             case "GEMINI" -> "/v1beta/models";
             default -> DEFAULT_CHAT_PATH;
+        };
+    }
+
+    private String defaultBaseUrl(String type) {
+        return switch (type) {
+            case "GPT_AUTH" -> DEFAULT_GPT_AUTH_BASE_URL;
+            case "CLAUDE_AUTH" -> DEFAULT_CLAUDE_AUTH_BASE_URL;
+            default -> "";
         };
     }
 
@@ -401,5 +456,13 @@ public class AdminChannelService {
         if (!StringUtils.hasText(value)) {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, message);
         }
+    }
+
+    private boolean isAuthProvider(ProviderType providerType) {
+        return providerType == ProviderType.GPT_AUTH || providerType == ProviderType.CLAUDE_AUTH;
+    }
+
+    private boolean isAuthProvider(String providerType) {
+        return "GPT_AUTH".equals(providerType) || "CLAUDE_AUTH".equals(providerType);
     }
 }

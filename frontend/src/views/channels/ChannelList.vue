@@ -4,7 +4,7 @@ import { useMessage, NButton, NTag } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
 import { channelTypes } from '@/types'
 import type { ChannelForm, ChannelModelForm, ChannelQuotaVO, ChannelVO } from '@/types'
-import { createChannel, deleteChannel, fetchChannelModels, fetchChannelQuota, getChannels, updateChannel } from '@/api/channels'
+import { createChannel, deleteChannel, fetchChannelModels, fetchChannelQuota, getChannels, startChannelAuth, submitChannelAuthCallbackUrl, updateChannel, uploadChannelAuth } from '@/api/channels'
 
 const message = useMessage()
 // 跟踪渠道表格加载状态，刷新期间保留当前数据。
@@ -27,6 +27,10 @@ const quotaMap = ref<Record<number, ChannelQuotaVO>>({})
 const quotaLoading = ref<Record<number, boolean>>({})
 // 弹窗内创建/编辑表单共用的可变状态。
 const form = ref<ChannelForm>(emptyForm())
+const authUploading = ref(false)
+const authFileInput = ref<HTMLInputElement | null>(null)
+const oauthAuthorizationUrl = ref('')
+const oauthCallbackUrl = ref('')
 
 // 表格列通过渲染函数展示协议标签、状态标签和行操作。
 const columns: DataTableColumn<ChannelVO>[] = [
@@ -78,6 +82,7 @@ function emptyForm(): ChannelForm {
     chatPath: '/v1/chat/completions',
     modelsPath: '/v1/models',
     apiKey: '',
+    authMode: 'API_KEY',
     priority: 100,
     status: 'ACTIVE',
     publicModel: '',
@@ -103,6 +108,8 @@ function channelTypeLabel(type: string) {
     OPENAI_COMPATIBLE: 'OpenAI 兼容',
     ANTHROPIC: 'Anthropic',
     OPENAI_RESPONSES: 'OpenAI Responses',
+    GPT_AUTH: 'GPT-AUTH',
+    CLAUDE_AUTH: 'CLAUDE-AUTH',
     DEEPSEEK_CHAT: 'DeepSeek Chat',
     DEEPSEEK_ANTHROPIC: 'DeepSeek Anthropic',
     GEMINI: 'Google Gemini',
@@ -111,18 +118,23 @@ function channelTypeLabel(type: string) {
 
 // 供应商类型变化时切换默认请求路径和模型列表路径。
 function handleTypeChange(type: string) {
-  const defaults: Record<string, { chatPath: string; modelsPath: string }> = {
-    OPENAI_COMPATIBLE: { chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
-    ANTHROPIC: { chatPath: '/v1/messages', modelsPath: '/v1/models' },
-    OPENAI_RESPONSES: { chatPath: '/v1/responses', modelsPath: '/v1/models' },
-    DEEPSEEK_CHAT: { chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
-    DEEPSEEK_ANTHROPIC: { chatPath: '/v1/messages', modelsPath: '/v1/models' },
-    GEMINI: { chatPath: '/v1beta/models', modelsPath: '/v1beta/models' },
+  const defaults: Record<string, { baseUrl: string; chatPath: string; modelsPath: string }> = {
+    OPENAI_COMPATIBLE: { baseUrl: '', chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
+    ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', modelsPath: '/v1/models' },
+    OPENAI_RESPONSES: { baseUrl: '', chatPath: '/v1/responses', modelsPath: '/v1/models' },
+    GPT_AUTH: { baseUrl: 'https://api.openai.com', chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
+    CLAUDE_AUTH: { baseUrl: 'https://api.anthropic.com', chatPath: '/v1/messages', modelsPath: '/v1/models' },
+    DEEPSEEK_CHAT: { baseUrl: '', chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
+    DEEPSEEK_ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', modelsPath: '/v1/models' },
+    GEMINI: { baseUrl: '', chatPath: '/v1beta/models', modelsPath: '/v1beta/models' },
   }
   // 收集所有默认路径，用于判断用户是否手动修改过
   const defaultPaths = new Set(Object.values(defaults).flatMap(d => [d.chatPath, d.modelsPath]))
   const newDefault = defaults[type]
   if (!newDefault) return
+  if (isAuthType(type)) {
+    form.value.baseUrl = newDefault.baseUrl
+  }
   // 仅当当前路径仍然匹配任意默认值时自动切换，用户手动修改过的路径不会被覆盖
   if (defaultPaths.has(form.value.chatPath)) {
     form.value.chatPath = newDefault.chatPath
@@ -130,6 +142,11 @@ function handleTypeChange(type: string) {
   if (defaultPaths.has(form.value.modelsPath)) {
     form.value.modelsPath = newDefault.modelsPath
   }
+  form.value.authMode = isAuthType(type) ? 'AUTH_FILE' : 'API_KEY'
+}
+
+function isAuthType(type: string) {
+  return type === 'GPT_AUTH' || type === 'CLAUDE_AUTH'
 }
 
 // 多选模型变化时保留已有别名，新选中的模型默认不填别名，交给前缀生成默认展示名。
@@ -210,12 +227,16 @@ function showCreate() {
   form.value = emptyForm()
   selectedProviderModels.value = []
   modelOptions.value = []
+  oauthAuthorizationUrl.value = ''
+  oauthCallbackUrl.value = ''
   showModal.value = true
 }
 
 // 以编辑模式打开弹窗；apiKey 留空表示不替换现有密钥。
 function edit(item: ChannelVO) {
   editingId.value = item.id
+  oauthAuthorizationUrl.value = ''
+  oauthCallbackUrl.value = ''
   form.value = {
     code: item.code,
     name: item.name,
@@ -224,6 +245,7 @@ function edit(item: ChannelVO) {
     chatPath: item.chatPath,
     modelsPath: item.modelsPath,
     apiKey: '',
+    authMode: item.authMode || (isAuthType(item.type) ? 'AUTH_FILE' : 'API_KEY'),
     priority: item.priority,
     status: item.status,
     publicModel: '',
@@ -243,6 +265,81 @@ function edit(item: ChannelVO) {
   modelOptions.value = []
   ensureModelOptions(selectedProviderModels.value)
   showModal.value = true
+}
+
+function triggerAuthUpload() {
+  if (!editingId.value) {
+    message.warning('请先保存渠道后再上传 auth.json')
+    return
+  }
+  authFileInput.value?.click()
+}
+
+async function handleAuthFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !editingId.value) return
+  authUploading.value = true
+  try {
+    await uploadChannelAuth(editingId.value, file)
+    await load()
+    message.success('授权文件已上传')
+  } catch (error) {
+    message.error(errorMessage(error, '上传授权文件失败'))
+  } finally {
+    authUploading.value = false
+  }
+}
+
+async function startOauthLogin() {
+  if (!editingId.value) {
+    message.warning('请先保存渠道后再触发 OAuth 登录')
+    return
+  }
+  try {
+    const res = await startChannelAuth(editingId.value)
+    oauthAuthorizationUrl.value = res.data.data.authorizationUrl
+    oauthCallbackUrl.value = ''
+    message.success('授权链接已生成')
+  } catch (error) {
+    message.error(errorMessage(error, '触发 OAuth 登录失败'))
+  }
+}
+
+function openOauthLink() {
+  if (!oauthAuthorizationUrl.value) return
+  window.open(oauthAuthorizationUrl.value, '_blank', 'noopener,noreferrer')
+}
+
+async function copyOauthLink() {
+  if (!oauthAuthorizationUrl.value) return
+  try {
+    await navigator.clipboard.writeText(oauthAuthorizationUrl.value)
+    message.success('授权链接已复制')
+  } catch {
+    message.warning('复制失败，请手动复制授权链接')
+  }
+}
+
+async function submitOauthCallbackUrl() {
+  if (!editingId.value) {
+    message.warning('请先保存渠道后再提交回调 URL')
+    return
+  }
+  if (!oauthCallbackUrl.value.trim()) {
+    message.warning('请粘贴浏览器跳转后的完整回调 URL')
+    return
+  }
+  try {
+    await submitChannelAuthCallbackUrl(editingId.value, oauthCallbackUrl.value.trim())
+    oauthAuthorizationUrl.value = ''
+    oauthCallbackUrl.value = ''
+    await load()
+    message.success('OAuth 授权已保存')
+  } catch (error) {
+    message.error(errorMessage(error, '提交 OAuth 回调失败'))
+  }
 }
 
 // 通过后端供应商特定实现获取上游模型选项。
@@ -339,22 +436,46 @@ onMounted(load)
               @update:value="handleTypeChange"
             />
           </n-form-item>
-          <n-form-item label="Base URL">
+          <n-form-item v-if="!isAuthType(form.type)" label="Base URL">
             <n-input v-model:value="form.baseUrl" placeholder="例如：https://api.deepseek.com" />
           </n-form-item>
-          <n-form-item label="请求路径">
+          <n-form-item v-if="!isAuthType(form.type)" label="请求路径">
             <n-input v-model:value="form.chatPath" placeholder="例如：/v1/chat/completions 或 /v1/messages" />
           </n-form-item>
-          <n-form-item label="模型列表路径">
+          <n-form-item v-if="!isAuthType(form.type)" label="模型列表路径">
             <n-input v-model:value="form.modelsPath" placeholder="例如：/v1/models" />
           </n-form-item>
-          <n-form-item label="API Key">
+          <n-form-item v-if="!isAuthType(form.type)" label="API Key">
             <n-input
               v-model:value="form.apiKey"
               type="password"
               show-password-on="click"
               :placeholder="editingId ? '留空表示不修改密钥' : '请输入上游 API Key'"
             />
+          </n-form-item>
+          <n-form-item v-else label="授权文件">
+            <n-space vertical style="width: 100%">
+              <n-space>
+                <n-button :loading="authUploading" @click="triggerAuthUpload">上传 auth.json</n-button>
+                <n-button @click="startOauthLogin">生成 OAuth 授权链接</n-button>
+                <input ref="authFileInput" type="file" accept=".json,application/json" style="display: none" @change="handleAuthFileChange" />
+              </n-space>
+              <n-input-group v-if="oauthAuthorizationUrl">
+                <n-input :value="oauthAuthorizationUrl" readonly />
+                <n-button @click="openOauthLink">打开</n-button>
+                <n-button @click="copyOauthLink">复制</n-button>
+              </n-input-group>
+              <n-input-group v-if="oauthAuthorizationUrl">
+                <n-input
+                  v-model:value="oauthCallbackUrl"
+                  placeholder="粘贴完整回调 URL，例如 http://localhost:1455/auth/callback?code=...&state=..."
+                />
+                <n-button type="primary" @click="submitOauthCallbackUrl">提交回调</n-button>
+              </n-input-group>
+              <n-text depth="3">
+                先保存渠道，再上传 auth.json 或生成 OAuth 授权链接；打开授权链接后，把浏览器跳转到 localhost 的完整 URL 粘贴回来。
+              </n-text>
+            </n-space>
           </n-form-item>
           <n-form-item label="模型前缀">
             <n-input
