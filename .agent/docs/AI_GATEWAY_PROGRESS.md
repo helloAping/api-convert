@@ -20,7 +20,7 @@
 | 05 | **Provider 厂商实现** | `modules/05-providers.md` | 8 个 Provider 类型（OPENAI_COMPATIBLE/ANTHROPIC/OPENAI_RESPONSES/GPT_AUTH/CLAUDE_AUTH/DEEPSEEK_CHAT/DEEPSEEK_ANTHROPIC/GEMINI）|
 | 06 | **流式传输与 SSE 转换** | `modules/06-streaming.md` | SSE 字节级透传、`RealTimeResponsesTransformer` Codex 兼容转换 |
 | 07 | **管理端与前端** | `modules/07-admin.md` | 9 个管理端控制器、Sa-Token 鉴权、Dashboard 统计、Vue 3.5 前端 |
-| 08 | **测试体系** | `modules/08-testing.md` | 9 个测试类、46 个用例、运行命令 |
+| 08 | **测试体系** | `modules/08-testing.md` | 9 个测试类、47 个用例、运行命令 |
 | 09 | **部署与运维** | `modules/09-deployment.md` | Docker、Nginx、环境变量、API 测试命令、本地运行 |
 | 10 | **代码目录结构** | `modules/10-code-structure.md` | 完整的 Java 源码目录树 |
 
@@ -99,3 +99,4 @@
 - **V13 gateway key limits**: API Key limits moved to extensible rows, supporting simultaneous quota limits by hour/day and request-count limits by minute/hour/day; request-count limits are recorded after routing so failed upstream requests are counted, and each limit type allows only one row per window unit.
 - API Key model allowlist added alongside channel allowlist; routing applies both scopes, including direct `channel/model` requests.
 - Channel model selection now deduplicates custom typed and fetched upstream model IDs; backend rejects repeated provider models in the same channel before insert.
+- Deleting a channel now removes matching `gateway_api_key_channel` allowlist rows and disables keys that lose their last explicit channel scope, preventing an empty allowlist from expanding back to all channels.

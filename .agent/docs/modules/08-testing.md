@@ -10,7 +10,7 @@
 
 | 测试类 | 用例数 | 说明 |
 |---|---|---|
-| `ApiConvertApplicationTests` | 24 | `@SpringBootTest` 集成测试：上下文加载、渠道 CRUD、AUTH 渠道上传与路由、模型管理、请求日志分页、统计仪表盘、路由解析、工具请求优先路由、系统路由配置、轮询、加权、会话粘性、失败避让、额度不足、流式路由失败日志、密钥多限制项、重复窗口单位校验、重复上游模型校验、失败请求计数、模型白名单直连约束 |
+| `ApiConvertApplicationTests` | 25 | `@SpringBootTest` 集成测试：上下文加载、渠道 CRUD、AUTH 渠道上传与路由、模型管理、请求日志分页、统计仪表盘、路由解析、工具请求优先路由、系统路由配置、轮询、加权、会话粘性、失败避让、额度不足、流式路由失败日志、密钥多限制项、重复窗口单位校验、重复上游模型校验、删除渠道清理密钥渠道授权并禁用失去最后显式渠道的密钥、失败请求计数、模型白名单直连约束 |
 | `OpenAiCompatibleProviderClientTests` | 1 | Provider Client URL 构建逻辑 |
 | `DeepSeekChatProviderClientTests` | 2 | DeepSeek Chat thinking 模式下 assistant 历史消息的 `reasoning_content` 兜底与保留 |
 | `AnthropicProviderClientTests` | 1 | DeepSeek Anthropic 独立供应商 thinking 内容块兼容 |
@@ -26,7 +26,7 @@
 JAVA_HOME="$JAVA_HOME_25" PATH="$JAVA_HOME_25/bin":$PATH mvn -q test
 ```
 
-当前总量：9 个测试类、46 个用例。
+当前总量：9 个测试类、47 个用例。
 
 ## 3. 已知问题
 

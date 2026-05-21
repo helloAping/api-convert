@@ -1,14 +1,17 @@
 package cn.ms08.apiconvert;
 
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
+import cn.ms08.apiconvert.dao.GatewayApiKeyChannelMapper;
 import cn.ms08.apiconvert.dao.GatewayApiKeyMapper;
 import cn.ms08.apiconvert.dao.RequestLogMapper;
 import cn.ms08.apiconvert.dto.ModelRoute;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
+import cn.ms08.apiconvert.entity.GatewayApiKeyChannelEntity;
 import cn.ms08.apiconvert.entity.GatewayApiKeyEntity;
 import cn.ms08.apiconvert.entity.RequestLogEntity;
 import cn.ms08.apiconvert.service.RoutingService;
 import cn.ms08.apiconvert.vo.OpenAiChatCompletionResponse;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
@@ -69,6 +72,9 @@ class ApiConvertApplicationTests {
      */
     @Autowired
     private GatewayApiKeyMapper gatewayApiKeyMapper;
+
+    @Autowired
+    private GatewayApiKeyChannelMapper gatewayApiKeyChannelMapper;
 
     /**
      * 解析管理端接口返回的 JSON 响应。
@@ -900,6 +906,56 @@ class ApiConvertApplicationTests {
     }
 
     /**
+     * 验证删除渠道时会同步清理密钥渠道授权，避免管理端残留不可用渠道。
+     */
+    @Test
+    void deletingChannelRemovesApiKeyChannelAllowlistEntry() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String code = "delete-channel-scope-" + suffix;
+        String model = "delete-channel-scope-model-" + suffix;
+        long channelId = createChannel(token, code, model);
+        long apiKeyId = 0;
+
+        try {
+            String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "name": "删除渠道同步授权密钥",
+                                      "channelCodes": ["%s"]
+                                    }
+                                    """.formatted(code)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            apiKeyId = objectMapper.readTree(keyResponse).path("data").path("id").asLong();
+            assertThat(countApiKeyChannelScopes(code)).isEqualTo(1);
+
+            mockMvc.perform(delete("/api/admin/channels/" + channelId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+            channelId = 0;
+
+            assertThat(countApiKeyChannelScopes(code)).isZero();
+            assertThat(gatewayApiKeyMapper.selectById(apiKeyId).getStatus()).isEqualTo("DISABLED");
+        } finally {
+            if (apiKeyId > 0) {
+                mockMvc.perform(delete("/api/admin/api-keys/" + apiKeyId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            if (channelId > 0) {
+                mockMvc.perform(delete("/api/admin/channels/" + channelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+        }
+    }
+
+    /**
      * 验证同一限制类型下相同窗口单位只能配置一条，避免出现多个 n 小时或 n 天限制。
      */
     @Test
@@ -1370,6 +1426,12 @@ class ApiConvertApplicationTests {
                 .getResponse()
                 .getContentAsString();
         return objectMapper.readTree(createResponse).path("data").path("id").asLong();
+    }
+
+    private long countApiKeyChannelScopes(String channelCode) {
+        Long count = gatewayApiKeyChannelMapper.selectCount(new LambdaQueryWrapper<GatewayApiKeyChannelEntity>()
+                .eq(GatewayApiKeyChannelEntity::getChannelCode, channelCode));
+        return count == null ? 0 : count;
     }
 
     /**

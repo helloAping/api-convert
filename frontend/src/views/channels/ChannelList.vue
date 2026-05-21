@@ -159,7 +159,6 @@ function syncSelectedModels(values: string[]) {
     providerModel,
     modelAlias: '',
   })
-  ensureModelOptions(uniqueValues)
 }
 
 // 手动输入和上游返回都可能出现重复项，统一按去空格后的模型名保留一份。
