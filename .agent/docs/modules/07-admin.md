@@ -11,7 +11,7 @@
 | 控制器 | 路径前缀 | 功能 |
 |---|---|---|
 | `AdminAuthController` | `POST /api/admin/login` | Sa-Token 登录（无 Bearer 前缀） |
-| `AdminApiKeyController` | `/api/admin/api-keys` | API Key CRUD、额度追加 |
+| `AdminApiKeyController` | `/api/admin/api-keys` | API Key CRUD、额度追加、渠道/模型授权、窗口限制 |
 | `AdminChannelController` | `/api/admin/channels` | 渠道 CRUD、模型抓取 |
 | `AdminChannelAuthController` | `/api/admin/channels/{id}/auth/*` | AUTH 渠道授权文件上传、OAuth 授权链接、回调 URL 导入、状态查询 |
 | `AdminModelController` | `/api/admin/models` | 模型映射 CRUD、能力字段 |
@@ -31,6 +31,9 @@
 - 创建时生成随机 key，保存明文 + SHA-256 哈希 + 脱敏预览
 - 支持配额追加（`quotaAdd`）
 - 支持密钥-渠道白名单（`gateway_api_key_channel`）
+- 支持密钥-模型白名单（`gateway_api_key_model`），空列表表示允许全部模型
+- 支持可并存滑动窗口限制（`gateway_api_key_limit`）：额度限制支持小时/天，请求数限制支持分钟/小时/天
+- 前端使用限制项列表新增/删除限制，不使用模式切换；删除某条限制即关闭该窗口限制
 
 ## 4. 渠道管理（含 AUTH 模式）
 
@@ -39,6 +42,7 @@
 - 选择 `ProviderType` 自动填充默认路径
 - 配置 baseUrl、apiKey、请求路径、模型列表路径
 - 模型抓取：从上游 API 拉取模型列表并导入
+- 上游模型选择会按模型 ID 去重；同一渠道重复提交相同上游模型会被后端拒绝，避免模型管理出现同渠道重复记录
 
 ### 4.2 AUTH 渠道（V12）
 

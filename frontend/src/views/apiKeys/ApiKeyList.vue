@@ -4,8 +4,9 @@ import { useMessage, NButton, NTag, NInput } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
 import { addApiKeyQuota, getApiKeys, createApiKey, updateApiKey, deleteApiKey } from '@/api/apiKeys'
 import { getChannels } from '@/api/channels'
-import type { ApiKeyVO, ApiKeyForm, ApiKeyUpdateForm, ChannelVO } from '@/types'
-import { activeStatuses, quotaWindowUnits } from '@/types'
+import { getModels } from '@/api/models'
+import type { ApiKeyLimitForm, ApiKeyVO, ApiKeyForm, ApiKeyUpdateForm, ChannelVO, ModelVO } from '@/types'
+import { activeStatuses, apiKeyLimitTypes, quotaWindowUnits } from '@/types'
 
 const message = useMessage()
 // 跟踪密钥表格加载状态。
@@ -14,6 +15,8 @@ const loading = ref(false)
 const data = ref<ApiKeyVO[]>([])
 // 可授权给密钥使用的渠道选项。
 const channelOptions = ref<{ label: string; value: string }[]>([])
+// 可授权给密钥使用的对外模型选项。
+const modelOptions = ref<{ label: string; value: string }[]>([])
 // 控制修改密钥状态和渠道范围弹窗。
 const showModal = ref(false)
 // 控制创建密钥弹窗。
@@ -25,9 +28,9 @@ const editingId = ref<number | null>(null)
 // 当前正在追加额度的密钥 ID。
 const quotaEditingId = ref<number | null>(null)
 // 修改表单；channelCodes 为空表示允许所有渠道。
-const updateForm = ref<ApiKeyUpdateForm>({ status: 'ACTIVE', channelCodes: [], quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null })
+const updateForm = ref<ApiKeyUpdateForm>({ status: 'ACTIVE', channelCodes: [], modelNames: [], quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null, limits: [] })
 // 创建表单；channelCodes 为空表示允许所有渠道。
-const createForm = ref<ApiKeyForm>({ name: '', channelCodes: [], quotaBalance: null, quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null })
+const createForm = ref<ApiKeyForm>({ name: '', channelCodes: [], modelNames: [], quotaBalance: null, quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null, limits: [] })
 // 追加额度表单，amount 必须大于 0。
 const quotaAmount = ref<number | null>(null)
 // 新生成的明文密钥，用于创建弹窗内展示和复制。
@@ -53,8 +56,14 @@ const columns: DataTableColumn<ApiKeyVO>[] = [
   {
     title: '可用渠道',
     key: 'channelCodes',
-    minWidth: 220,
+    minWidth: 180,
     render: (row) => row.channelCodes.length ? row.channelCodes.join('、') : '所有渠道',
+  },
+  {
+    title: '可用模型',
+    key: 'modelNames',
+    minWidth: 180,
+    render: (row) => row.modelNames?.length ? row.modelNames.join('、') : '所有模型',
   },
   {
     title: '剩余额度',
@@ -64,9 +73,9 @@ const columns: DataTableColumn<ApiKeyVO>[] = [
   },
   {
     title: '窗口限制',
-    key: 'quotaLimit',
-    width: 170,
-    render: (row) => quotaWindowText(row),
+    key: 'limits',
+    minWidth: 260,
+    render: (row) => limitSummary(row.limits),
   },
   {
     title: '状态',
@@ -96,14 +105,93 @@ function quotaBalanceText(value: number | null) {
 }
 
 function unitLabel(unit: string | null | undefined) {
-  return { HOUR: '小时', DAY: '天', MONTH: '月' }[unit || ''] || unit || '-'
+  return { MINUTE: '分钟', HOUR: '小时', DAY: '天' }[unit || ''] || unit || '-'
 }
 
-function quotaWindowText(row: ApiKeyVO) {
-  if (row.quotaLimit === null || row.quotaLimit === undefined) {
+function limitTypeLabel(type: string | null | undefined) {
+  return { QUOTA: '额度', REQUEST: '请求数' }[type || ''] || type || '-'
+}
+
+function limitUnitOptions(type: string | null | undefined) {
+  const units = type === 'REQUEST' ? quotaWindowUnits : quotaWindowUnits.filter(unit => unit !== 'MINUTE')
+  return units.map(unit => ({ label: unitLabel(unit), value: unit }))
+}
+
+function limitUnitValues(type: string | null | undefined) {
+  return limitUnitOptions(type).map(option => option.value)
+}
+
+function limitSummary(limits: ApiKeyVO['limits']) {
+  if (!limits || !limits.length) {
     return '不限制'
   }
-  return `${row.quotaWindowValue || '-'}${unitLabel(row.quotaWindowUnit)}内 ${row.quotaLimit}`
+  return limits.map(limit => {
+    const suffix = limit.limitType === 'REQUEST' ? '次' : ''
+    return `${limitTypeLabel(limit.limitType)}：${limit.windowValue || '-'}${unitLabel(limit.windowUnit)}内 ${limit.limitValue ?? '-'}${suffix}`
+  }).join('；')
+}
+
+function createLimit(type = 'QUOTA', windowUnit?: string): ApiKeyLimitForm {
+  return {
+    limitType: type,
+    windowValue: 1,
+    windowUnit: windowUnit || (type === 'REQUEST' ? 'MINUTE' : 'HOUR'),
+    limitValue: null,
+    configJson: null,
+  }
+}
+
+function nextAvailableLimitUnit(limits: ApiKeyLimitForm[], type: string) {
+  const used = new Set(limits
+    .filter(limit => limit.limitType === type)
+    .map(limit => limit.windowUnit)
+    .filter(Boolean))
+  return limitUnitValues(type).find(unit => !used.has(unit))
+}
+
+function addLimit(limits: ApiKeyLimitForm[], type = 'QUOTA') {
+  const unit = nextAvailableLimitUnit(limits, type)
+  if (!unit) {
+    message.warning(`${limitTypeLabel(type)}限制已配置全部窗口单位`)
+    return
+  }
+  limits.push(createLimit(type, unit))
+}
+
+function addCreateLimit(type = 'QUOTA') {
+  addLimit(createForm.value.limits, type)
+}
+
+function addUpdateLimit(type = 'QUOTA') {
+  addLimit(updateForm.value.limits, type)
+}
+
+function removeLimit(limits: ApiKeyLimitForm[], index: number) {
+  limits.splice(index, 1)
+}
+
+function onLimitTypeChange(limit: ApiKeyLimitForm) {
+  const validUnits = limitUnitValues(limit.limitType)
+  if (!limit.windowUnit || !validUnits.includes(limit.windowUnit)) {
+    limit.windowUnit = limit.limitType === 'REQUEST' ? 'MINUTE' : 'HOUR'
+  }
+}
+
+// 同一限制类型下同一窗口单位只能保留一条，后端也会做相同校验。
+function validateLimitUniqueness(limits: ApiKeyLimitForm[]) {
+  const seen = new Set<string>()
+  for (const limit of limits) {
+    if (!limit.limitType || !limit.windowUnit) {
+      continue
+    }
+    const key = `${limit.limitType}|${limit.windowUnit}`
+    if (seen.has(key)) {
+      message.warning(`${limitTypeLabel(limit.limitType)}限制中 ${unitLabel(limit.windowUnit)} 窗口只能配置一条`)
+      return false
+    }
+    seen.add(key)
+  }
+  return true
 }
 
 // 前端展示密钥时只显示脱敏结果，复制时才使用原文。
@@ -124,12 +212,15 @@ function errorMessage(error: unknown, fallback: string) {
 async function load() {
   loading.value = true
   try {
-    const [keysRes, channelsRes] = await Promise.all([getApiKeys(), getChannels()])
+    const [keysRes, channelsRes, modelsRes] = await Promise.all([getApiKeys(), getChannels(), getModels()])
     data.value = keysRes.data.data
     channelOptions.value = channelsRes.data.data.map((channel: ChannelVO) => ({
       label: `${channel.name}（${channel.code}）`,
       value: channel.code,
     }))
+    modelOptions.value = Array.from(new Set(modelsRes.data.data.map((model: ModelVO) => model.publicName)))
+      .sort()
+      .map((name) => ({ label: name, value: name }))
   } catch (error) {
     message.error(errorMessage(error, '加载失败'))
   } finally {
@@ -138,7 +229,7 @@ async function load() {
 }
 
 function showCreateKey() {
-  createForm.value = { name: '', channelCodes: [], quotaBalance: null, quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null }
+  createForm.value = { name: '', channelCodes: [], modelNames: [], quotaBalance: null, quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null, limits: [] }
   newKey.value = ''
   showCreateModal.value = true
 }
@@ -148,9 +239,17 @@ function editStatus(item: ApiKeyVO) {
   updateForm.value = {
     status: item.status,
     channelCodes: [...item.channelCodes],
-    quotaLimit: item.quotaLimit,
-    quotaWindowValue: item.quotaWindowValue,
-    quotaWindowUnit: item.quotaWindowUnit,
+    modelNames: [...(item.modelNames || [])],
+    quotaLimit: null,
+    quotaWindowValue: null,
+    quotaWindowUnit: null,
+    limits: (item.limits || []).map(limit => ({
+      limitType: limit.limitType,
+      windowValue: limit.windowValue,
+      windowUnit: limit.windowUnit,
+      limitValue: limit.limitValue,
+      configJson: limit.configJson,
+    })),
   }
   showModal.value = true
 }
@@ -162,6 +261,9 @@ function openAddQuota(item: ApiKeyVO) {
 }
 
 async function saveCreate() {
+  if (!validateLimitUniqueness(createForm.value.limits)) {
+    return
+  }
   try {
     const res = await createApiKey(createForm.value)
     const created = res.data.data
@@ -206,6 +308,9 @@ async function copyKey(row: ApiKeyVO) {
 }
 
 async function saveUpdate() {
+  if (!validateLimitUniqueness(updateForm.value.limits)) {
+    return
+  }
   try {
     if (editingId.value) {
       await updateApiKey(editingId.value, updateForm.value)
@@ -272,20 +377,42 @@ onMounted(load)
               placeholder="不选择表示允许所有渠道"
             />
           </n-form-item>
+          <n-form-item label="可用模型">
+            <n-select
+              v-model:value="createForm.modelNames"
+              :options="modelOptions"
+              multiple
+              filterable
+              clearable
+              placeholder="不选择表示允许所有模型"
+            />
+          </n-form-item>
           <n-form-item label="初始额度">
             <n-input-number v-model:value="createForm.quotaBalance" :min="0" clearable placeholder="留空表示不限总额度" style="width: 100%" />
           </n-form-item>
-          <n-form-item label="窗口限制">
-            <n-space style="width: 100%">
-              <n-input-number v-model:value="createForm.quotaWindowValue" :min="1" clearable placeholder="数量" style="width: 120px" />
-              <n-select
-                v-model:value="createForm.quotaWindowUnit"
-                :options="quotaWindowUnits.map(unit => ({ label: unitLabel(unit), value: unit }))"
-                clearable
-                placeholder="单位"
-                style="width: 120px"
-              />
-              <n-input-number v-model:value="createForm.quotaLimit" :min="0" clearable placeholder="最多额度" style="width: 160px" />
+          <n-form-item label="限制项">
+            <n-space vertical style="width: 100%">
+              <n-space v-for="(limit, index) in createForm.limits" :key="index" align="center">
+                <n-select
+                  v-model:value="limit.limitType"
+                  :options="apiKeyLimitTypes.map(type => ({ label: limitTypeLabel(type), value: type }))"
+                  style="width: 110px"
+                  @update:value="onLimitTypeChange(limit)"
+                />
+                <n-input-number v-model:value="limit.windowValue" :min="1" placeholder="窗口" style="width: 100px" />
+                <n-select
+                  v-model:value="limit.windowUnit"
+                  :options="limitUnitOptions(limit.limitType)"
+                  placeholder="单位"
+                  style="width: 110px"
+                />
+                <n-input-number v-model:value="limit.limitValue" :min="0" placeholder="上限" style="width: 130px" />
+                <n-button size="small" @click="removeLimit(createForm.limits, index)">删除</n-button>
+              </n-space>
+              <n-space>
+                <n-button size="small" @click="addCreateLimit('QUOTA')">加额度限制</n-button>
+                <n-button size="small" @click="addCreateLimit('REQUEST')">加请求数限制</n-button>
+              </n-space>
             </n-space>
           </n-form-item>
         </n-form>
@@ -317,17 +444,39 @@ onMounted(load)
               placeholder="不选择表示允许所有渠道"
             />
           </n-form-item>
-          <n-form-item label="窗口限制">
-            <n-space style="width: 100%">
-              <n-input-number v-model:value="updateForm.quotaWindowValue" :min="1" clearable placeholder="数量" style="width: 120px" />
-              <n-select
-                v-model:value="updateForm.quotaWindowUnit"
-                :options="quotaWindowUnits.map(unit => ({ label: unitLabel(unit), value: unit }))"
-                clearable
-                placeholder="单位"
-                style="width: 120px"
-              />
-              <n-input-number v-model:value="updateForm.quotaLimit" :min="0" clearable placeholder="最多额度" style="width: 160px" />
+          <n-form-item label="可用模型">
+            <n-select
+              v-model:value="updateForm.modelNames"
+              :options="modelOptions"
+              multiple
+              filterable
+              clearable
+              placeholder="不选择表示允许所有模型"
+            />
+          </n-form-item>
+          <n-form-item label="限制项">
+            <n-space vertical style="width: 100%">
+              <n-space v-for="(limit, index) in updateForm.limits" :key="index" align="center">
+                <n-select
+                  v-model:value="limit.limitType"
+                  :options="apiKeyLimitTypes.map(type => ({ label: limitTypeLabel(type), value: type }))"
+                  style="width: 110px"
+                  @update:value="onLimitTypeChange(limit)"
+                />
+                <n-input-number v-model:value="limit.windowValue" :min="1" placeholder="窗口" style="width: 100px" />
+                <n-select
+                  v-model:value="limit.windowUnit"
+                  :options="limitUnitOptions(limit.limitType)"
+                  placeholder="单位"
+                  style="width: 110px"
+                />
+                <n-input-number v-model:value="limit.limitValue" :min="0" placeholder="上限" style="width: 130px" />
+                <n-button size="small" @click="removeLimit(updateForm.limits, index)">删除</n-button>
+              </n-space>
+              <n-space>
+                <n-button size="small" @click="addUpdateLimit('QUOTA')">加额度限制</n-button>
+                <n-button size="small" @click="addUpdateLimit('REQUEST')">加请求数限制</n-button>
+              </n-space>
             </n-space>
           </n-form-item>
         </n-form>

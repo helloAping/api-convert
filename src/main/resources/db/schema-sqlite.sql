@@ -90,6 +90,37 @@ CREATE TABLE IF NOT EXISTS gateway_api_key_channel (
 CREATE UNIQUE INDEX IF NOT EXISTS uk_gateway_api_key_channel ON gateway_api_key_channel(api_key_id, channel_code);
 CREATE INDEX IF NOT EXISTS idx_gateway_api_key_channel_api_key ON gateway_api_key_channel(api_key_id);
 
+-- 表注释：网关密钥限制项表，按限制类型保存额度、请求数等可扩展滑动窗口限制；没有记录表示不启用对应限制。
+-- 字段注释：id=限制项主键；api_key_id=网关密钥 ID；limit_type=限制类型（QUOTA/REQUEST/未来扩展类型）；window_value=滑动窗口长度；window_unit=窗口单位 MINUTE/HOUR/DAY；limit_value=限制阈值；config_json=预留扩展配置，不允许保存密钥明文；created_at=创建时间；updated_at=更新时间。
+CREATE TABLE IF NOT EXISTS gateway_api_key_limit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  api_key_id INTEGER NOT NULL,
+  limit_type TEXT NOT NULL,
+  window_value INTEGER NOT NULL,
+  window_unit TEXT NOT NULL,
+  limit_value NUMERIC NOT NULL,
+  config_json TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(api_key_id) REFERENCES gateway_api_key(id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_gateway_api_key_limit ON gateway_api_key_limit(api_key_id, limit_type, window_unit);
+CREATE INDEX IF NOT EXISTS idx_gateway_api_key_limit_api_key ON gateway_api_key_limit(api_key_id);
+
+-- 表注释：网关密钥模型授权表，没有授权记录表示允许所有对外模型。
+-- 字段注释：id=授权记录主键；api_key_id=网关密钥 ID；public_model=允许调用的网关对外模型名；created_at=创建时间。
+CREATE TABLE IF NOT EXISTS gateway_api_key_model (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  api_key_id INTEGER NOT NULL,
+  public_model TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(api_key_id) REFERENCES gateway_api_key(id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_gateway_api_key_model ON gateway_api_key_model(api_key_id, public_model);
+CREATE INDEX IF NOT EXISTS idx_gateway_api_key_model_api_key ON gateway_api_key_model(api_key_id);
+
 -- 表注释：请求日志表，记录网关调用结果和用量统计。
 -- 字段注释：id=日志主键；request_id=请求 ID；gateway_api_key_id=调用方密钥 ID；source_protocol=来源协议；request_type=对话接口类型；provider_code=实际渠道编码；provider_type=实际供应商协议类型；public_model=请求对外模型名；provider_model=上游模型名；stream=是否流式；success=是否成功；http_status=HTTP 状态码；latency_ms=耗时毫秒；input_tokens=输入 token；cache_read_input_tokens=缓存读取输入 token；output_tokens=输出 token；total_tokens=总 token；error_code=错误码；error_message=错误信息；created_at=创建时间。
 CREATE TABLE IF NOT EXISTS request_log (
@@ -136,4 +167,4 @@ VALUES
   ('routing.failure_cooldown_minutes', '0', '失败阈值触发后的避让分钟数；0 表示关闭'),
   ('routing.sticky_ttl_minutes', '1440', '会话粘性绑定保留分钟数');
 
-INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (12, 'Add auth file provider support');
+INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (13, 'Add API key limits and model allowlist');

@@ -18,8 +18,11 @@
 ### 1.2 路由查找链路
 
 1. 模型映射查找（`ai_channel_model`）
-2. 渠道主配置查找（`ai_channel`）
-3. 返回 `ModelRoute`（含 `providerType`、`baseUrl`、`apiKey`、`chatPath` 等）
+2. 按网关密钥的渠道白名单和模型白名单过滤候选；两者为空分别表示允许全部渠道/模型
+3. 渠道主配置查找（`ai_channel`）
+4. 返回 `ModelRoute`（含 `providerType`、`baseUrl`、`apiKey`、`chatPath` 等）
+
+模型白名单按 `ai_channel_model.public_name` 判断，也会作用于 `channel/provider_model` 直连写法，避免调用方绕过对外模型授权。
 
 ### 1.3 多渠道路由策略
 

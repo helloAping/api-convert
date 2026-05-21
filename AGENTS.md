@@ -78,7 +78,7 @@ Key capabilities:
 - **Stream transformer**: pluggable `StreamResponseTransformer` abstraction for real-time SSE format conversion between endpoint types and provider protocols
 - **Endpoint strategy pattern**: `EndpointType` enum + `EndpointHandler` interface, each endpoint independently handles request parsing, adaptation, and response writing
 - **Provider strategy pattern**: `ProviderType` enum + `AiProviderClient` interface, supports OpenAI-compatible, Anthropic, OpenAI Responses API, Gemini upstreams
-- **API key management**: gateway keys with SHA-256 auth, quota balance, sliding window rate limiting
+- **API key management**: gateway keys with SHA-256 auth, quota balance, extensible sliding-window quota/request limits, channel and model allowlists
 - **Admin management panel**: full CRUD for channels, models, API keys, request logs
 - **Admin auth**: Sa-Token-based login with Bearer token
 - **HTTP traffic logging**: inbound/outbound logging with automatic sensitive data sanitization

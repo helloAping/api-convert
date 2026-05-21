@@ -91,6 +91,7 @@ export interface ModelVO {
   cacheReadQuotaPerMillion: number | null
 }
 
+/** 管理端网关密钥视图，rawKey 仅用于历史兼容，界面应优先展示脱敏预览。 */
 export interface ApiKeyVO {
   id: number
   name: string
@@ -103,8 +104,11 @@ export interface ApiKeyVO {
   quotaWindowValue: number | null
   quotaWindowUnit: string | null
   channelCodes: string[]
+  modelNames: string[]
+  limits: ApiKeyLimitVO[]
 }
 
+/** 新建网关密钥后返回的结果，rawKey 只在创建响应中用于管理员复制。 */
 export interface ApiKeyCreationVO {
   id: number
   name: string
@@ -116,6 +120,18 @@ export interface ApiKeyCreationVO {
   quotaWindowValue: number | null
   quotaWindowUnit: string | null
   channelCodes: string[]
+  modelNames: string[]
+  limits: ApiKeyLimitVO[]
+}
+
+/** 网关密钥限制项视图，支持额度和请求数等滑动窗口限制。 */
+export interface ApiKeyLimitVO {
+  id: number | null
+  limitType: string
+  windowValue: number | null
+  windowUnit: string | null
+  limitValue: number | null
+  configJson?: string | null
 }
 
 export interface RequestLogVO {
@@ -363,21 +379,36 @@ export interface ChannelAuthStatusVO {
   hasAuthFile: boolean
 }
 
+/** 创建网关密钥的表单载荷，空渠道/模型列表表示不限制对应范围。 */
 export interface ApiKeyForm {
   name: string
   channelCodes: string[]
+  modelNames: string[]
   quotaBalance?: number | null
   quotaLimit?: number | null
   quotaWindowValue?: number | null
   quotaWindowUnit?: string | null
+  limits: ApiKeyLimitForm[]
 }
 
+/** 更新网关密钥的表单载荷，limits 为空数组表示清空所有窗口限制。 */
 export interface ApiKeyUpdateForm {
   status: string
   channelCodes: string[]
+  modelNames: string[]
   quotaLimit?: number | null
   quotaWindowValue?: number | null
   quotaWindowUnit?: string | null
+  limits: ApiKeyLimitForm[]
+}
+
+/** 单条网关密钥限制项表单，不能包含任何密钥或 token 配置。 */
+export interface ApiKeyLimitForm {
+  limitType: string
+  windowValue: number | null
+  windowUnit: string | null
+  limitValue: number | null
+  configJson?: string | null
 }
 
 export interface ApiKeyQuotaAddRequest {
@@ -424,5 +455,8 @@ export interface RequestLogSearchParam {
 /** 渠道聚合表单当前支持的供应商策略类型。 */
 export const channelTypes = ['OPENAI_COMPATIBLE', 'ANTHROPIC', 'OPENAI_RESPONSES', 'GPT_AUTH', 'CLAUDE_AUTH', 'DEEPSEEK_CHAT', 'DEEPSEEK_ANTHROPIC', 'GEMINI']
 export const activeStatuses = ['ACTIVE', 'DISABLED', 'EXPIRED']
-export const quotaWindowUnits = ['HOUR', 'DAY', 'MONTH']
+/** 管理端可选的滑动窗口单位，请求数可用分钟，额度界面会隐藏分钟。 */
+export const quotaWindowUnits = ['MINUTE', 'HOUR', 'DAY']
+/** 管理端当前开放的密钥限制类型，表结构保留未来扩展能力。 */
+export const apiKeyLimitTypes = ['QUOTA', 'REQUEST']
 export const routeModes = ['RANDOM', 'ROUND_ROBIN', 'WEIGHTED', 'SESSION_STICKY']

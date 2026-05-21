@@ -140,7 +140,8 @@ public class ChatGatewayService {
             if (stream) {
                 throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST, "stream is not supported yet");
             }
-            route = routingService.resolve(request, principal.apiKeyId(), principal.allowedChannelCodes(), sessionKey);
+            route = routingService.resolve(request, principal.apiKeyId(), principal.allowedChannelCodes(), principal.allowedModelNames(), sessionKey);
+            apiKeyQuotaService.recordRequest(principal.apiKeyId());
             apiKeyQuotaService.assertEnough(principal.apiKeyId(), route, estimatedUsage);
             UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, route);
             UnifiedChatResponse response = providerClientRegistry.get(route.providerType()).chat(route, adaptedRequest);
@@ -214,7 +215,8 @@ public class ChatGatewayService {
         UnifiedUsage estimatedUsage = apiKeyQuotaService.estimateUsage(request);
         StreamResponseTransformer.WrappedStream wrappedStream = null;
         try {
-            route = routingService.resolve(request, principal.apiKeyId(), principal.allowedChannelCodes(), sessionKey);
+            route = routingService.resolve(request, principal.apiKeyId(), principal.allowedChannelCodes(), principal.allowedModelNames(), sessionKey);
+            apiKeyQuotaService.recordRequest(principal.apiKeyId());
             apiKeyQuotaService.assertEnough(principal.apiKeyId(), route, estimatedUsage);
             // 流式路径也应用端点-供应商适配器的请求转换
             UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, route);
@@ -499,7 +501,7 @@ public class ChatGatewayService {
         if (principal instanceof GatewayPrincipal gatewayPrincipal) {
             return gatewayPrincipal;
         }
-        return new GatewayPrincipal(null, "anonymous", java.util.Set.of());
+        return new GatewayPrincipal(null, "anonymous", java.util.Set.of(), java.util.Set.of());
     }
 
     /**

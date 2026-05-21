@@ -53,7 +53,9 @@ src/main/java/cn/ms08/apiconvert/
 │   ├── AiChannelMapper.java
 │   ├── AiChannelModelMapper.java
 │   ├── GatewayApiKeyChannelMapper.java
+│   ├── GatewayApiKeyLimitMapper.java
 │   ├── GatewayApiKeyMapper.java
+│   ├── GatewayApiKeyModelMapper.java
 │   ├── GatewaySystemConfigMapper.java
 │   └── RequestLogMapper.java
 ├── dto/                                # DTO / 内部传输对象
@@ -78,6 +80,7 @@ src/main/java/cn/ms08/apiconvert/
 │   └── admin/
 │       ├── AdminLoginRequest.java
 │       ├── ApiKeyForm.java
+│       ├── ApiKeyLimitForm.java
 │       ├── ApiKeyQuotaAddRequest.java
 │       ├── ApiKeyUpdateForm.java
 │       ├── ChannelAuthCallbackRequest.java
@@ -104,6 +107,8 @@ src/main/java/cn/ms08/apiconvert/
 │   ├── AiChannelModelEntity.java
 │   ├── GatewayApiKeyChannelEntity.java
 │   ├── GatewayApiKeyEntity.java
+│   ├── GatewayApiKeyLimitEntity.java
+│   ├── GatewayApiKeyModelEntity.java
 │   ├── GatewaySystemConfigEntity.java
 │   └── RequestLogEntity.java
 ├── exception/                          # 异常处理
@@ -167,6 +172,7 @@ src/main/java/cn/ms08/apiconvert/
     └── admin/
         ├── AdminLoginVO.java
         ├── ApiKeyCreationVO.java
+        ├── ApiKeyLimitVO.java
         ├── ApiKeyVO.java
         ├── ChannelAuthStartVO.java
         ├── ChannelAuthStatusVO.java

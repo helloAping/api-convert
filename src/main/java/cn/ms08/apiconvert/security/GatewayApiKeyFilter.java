@@ -2,10 +2,12 @@ package cn.ms08.apiconvert.security;
 
 import cn.ms08.apiconvert.config.GatewayProperties;
 import cn.ms08.apiconvert.dao.GatewayApiKeyChannelMapper;
+import cn.ms08.apiconvert.dao.GatewayApiKeyModelMapper;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.GatewayException;
 import cn.ms08.apiconvert.entity.GatewayApiKeyChannelEntity;
 import cn.ms08.apiconvert.entity.GatewayApiKeyEntity;
+import cn.ms08.apiconvert.entity.GatewayApiKeyModelEntity;
 import cn.ms08.apiconvert.dao.GatewayApiKeyMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.FilterChain;
@@ -33,12 +35,15 @@ public class GatewayApiKeyFilter extends OncePerRequestFilter {
     private final GatewayProperties properties;
     private final GatewayApiKeyMapper apiKeyMapper;
     private final GatewayApiKeyChannelMapper apiKeyChannelMapper;
+    private final GatewayApiKeyModelMapper apiKeyModelMapper;
 
     public GatewayApiKeyFilter(GatewayProperties properties, GatewayApiKeyMapper apiKeyMapper,
-                               GatewayApiKeyChannelMapper apiKeyChannelMapper) {
+                               GatewayApiKeyChannelMapper apiKeyChannelMapper,
+                               GatewayApiKeyModelMapper apiKeyModelMapper) {
         this.properties = properties;
         this.apiKeyMapper = apiKeyMapper;
         this.apiKeyChannelMapper = apiKeyChannelMapper;
+        this.apiKeyModelMapper = apiKeyModelMapper;
     }
 
     @Override
@@ -60,7 +65,8 @@ public class GatewayApiKeyFilter extends OncePerRequestFilter {
         if (entity == null) {
             throw new GatewayException(ErrorCode.UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "Invalid gateway API key");
         }
-        request.setAttribute(PRINCIPAL_ATTRIBUTE, new GatewayPrincipal(entity.getId(), entity.getName(), allowedChannels(entity.getId())));
+        request.setAttribute(PRINCIPAL_ATTRIBUTE, new GatewayPrincipal(entity.getId(), entity.getName(),
+                allowedChannels(entity.getId()), allowedModels(entity.getId())));
         filterChain.doFilter(request, response);
     }
 
@@ -80,6 +86,17 @@ public class GatewayApiKeyFilter extends OncePerRequestFilter {
                         .eq(GatewayApiKeyChannelEntity::getApiKeyId, apiKeyId))
                 .stream()
                 .map(GatewayApiKeyChannelEntity::getChannelCode)
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    /**
+     * 查询密钥允许使用的对外模型；空集合表示未限制模型。
+     */
+    private Set<String> allowedModels(Long apiKeyId) {
+        return apiKeyModelMapper.selectList(new LambdaQueryWrapper<GatewayApiKeyModelEntity>()
+                        .eq(GatewayApiKeyModelEntity::getApiKeyId, apiKeyId))
+                .stream()
+                .map(GatewayApiKeyModelEntity::getPublicModel)
                 .collect(Collectors.toUnmodifiableSet());
     }
 }

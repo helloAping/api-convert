@@ -1,11 +1,13 @@
 package cn.ms08.apiconvert.service;
 
+import cn.ms08.apiconvert.dao.GatewayApiKeyLimitMapper;
 import cn.ms08.apiconvert.dao.GatewayApiKeyMapper;
 import cn.ms08.apiconvert.dto.ModelRoute;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedContentPart;
 import cn.ms08.apiconvert.dto.UnifiedUsage;
 import cn.ms08.apiconvert.entity.GatewayApiKeyEntity;
+import cn.ms08.apiconvert.entity.GatewayApiKeyLimitEntity;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.GatewayException;
 import org.springframework.http.HttpStatus;
@@ -39,19 +41,25 @@ public class ApiKeyQuotaService {
      */
     private final GatewayApiKeyMapper apiKeyMapper;
     /**
+     * 读取可并存的额度、请求数等密钥限制项。
+     */
+    private final GatewayApiKeyLimitMapper apiKeyLimitMapper;
+    /**
      * 用原子 SQL 扣减余额，避免并发请求把同一个密钥余额扣成负数。
      */
     private final JdbcTemplate jdbcTemplate;
     /**
      * 进程内滑动窗口缓存；窗口内事件会按密钥配置的过期边界清理。
      */
-    private final Map<Long, WindowState> windows = new ConcurrentHashMap<>();
+    private final Map<LimitKey, WindowState> windows = new ConcurrentHashMap<>();
 
     /**
      * 注入额度服务依赖。
      */
-    public ApiKeyQuotaService(GatewayApiKeyMapper apiKeyMapper, JdbcTemplate jdbcTemplate) {
+    public ApiKeyQuotaService(GatewayApiKeyMapper apiKeyMapper, GatewayApiKeyLimitMapper apiKeyLimitMapper,
+                              JdbcTemplate jdbcTemplate) {
         this.apiKeyMapper = apiKeyMapper;
+        this.apiKeyLimitMapper = apiKeyLimitMapper;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -74,7 +82,18 @@ public class ApiKeyQuotaService {
         }
         GatewayApiKeyEntity key = apiKey(apiKeyId);
         assertBalanceEnough(key, cost);
-        assertWindowEnough(key, cost);
+        assertLimitsEnough(key, "QUOTA", cost, false);
+    }
+
+    /**
+     * 记录一次已通过鉴权和路由的请求；请求数限制计入后，即使后续上游失败也会消耗请求窗口。
+     */
+    public void recordRequest(Long apiKeyId) {
+        if (apiKeyId == null) {
+            return;
+        }
+        GatewayApiKeyEntity key = apiKey(apiKeyId);
+        assertLimitsEnough(key, "REQUEST", BigDecimal.ONE, true);
     }
 
     /**
@@ -86,14 +105,10 @@ public class ApiKeyQuotaService {
         if (apiKeyId == null || cost.signum() <= 0) {
             return;
         }
-        WindowState state = windows.computeIfAbsent(apiKeyId, ignored -> new WindowState());
-        synchronized (state) {
-            GatewayApiKeyEntity key = apiKey(apiKeyId);
-            assertBalanceEnough(key, cost);
-            assertWindowEnough(key, cost, state);
-            deductBalance(key, cost);
-            addWindowEvent(key, cost, state);
-        }
+        GatewayApiKeyEntity key = apiKey(apiKeyId);
+        assertBalanceEnough(key, cost);
+        assertLimitsEnough(key, "QUOTA", cost, true);
+        deductBalance(key, cost);
     }
 
     /**
@@ -178,26 +193,23 @@ public class ApiKeyQuotaService {
     }
 
     /**
-     * 检查滑动窗口限制；窗口配置不完整时不启用周期限制。
+     * 检查并按需写入某类限制项窗口，多个窗口限制会同时生效。
      */
-    private void assertWindowEnough(GatewayApiKeyEntity key, BigDecimal cost) {
-        WindowState state = windows.computeIfAbsent(key.getId(), ignored -> new WindowState());
-        synchronized (state) {
-            assertWindowEnough(key, cost, state);
-        }
-    }
-
-    /**
-     * 在调用方已经持有窗口锁时检查密钥窗口额度。
-     */
-    private void assertWindowEnough(GatewayApiKeyEntity key, BigDecimal cost, WindowState state) {
-        if (!windowEnabled(key)) {
-            state.events.clear();
-            return;
-        }
-        purgeExpired(key, state);
-        if (state.total.add(cost).compareTo(key.getQuotaLimit()) > 0) {
-            throw insufficient(HttpStatus.TOO_MANY_REQUESTS, "API key sliding window quota is insufficient");
+    private void assertLimitsEnough(GatewayApiKeyEntity key, String limitType, BigDecimal amount, boolean addEvent) {
+        for (GatewayApiKeyLimitEntity limit : effectiveLimits(key, limitType)) {
+            LimitKey limitKey = new LimitKey(key.getId(), limit.getLimitType(), limit.getWindowValue(), limit.getWindowUnit());
+            WindowState state = windows.computeIfAbsent(limitKey, ignored -> new WindowState());
+            synchronized (state) {
+                purgeExpired(limit, state);
+                if (state.total.add(amount).compareTo(limit.getLimitValue()) > 0) {
+                    throw insufficient(HttpStatus.TOO_MANY_REQUESTS, limitExceededMessage(limit));
+                }
+                if (addEvent) {
+                    state.events.addLast(new WindowEvent(System.currentTimeMillis(), amount));
+                    state.total = state.total.add(amount);
+                    purgeExpired(limit, state);
+                }
+            }
         }
     }
 
@@ -219,26 +231,13 @@ public class ApiKeyQuotaService {
     }
 
     /**
-     * 写入滑动窗口事件；事件过期边界由密钥的窗口配置决定。
-     */
-    private void addWindowEvent(GatewayApiKeyEntity key, BigDecimal cost, WindowState state) {
-        if (!windowEnabled(key)) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        state.events.addLast(new WindowEvent(now, cost));
-        state.total = state.total.add(cost);
-        purgeExpired(key, state);
-    }
-
-    /**
      * 按当前密钥窗口配置清理已过期的额度事件。
      */
-    private void purgeExpired(GatewayApiKeyEntity key, WindowState state) {
-        long boundary = windowBoundaryMillis(key);
+    private void purgeExpired(GatewayApiKeyLimitEntity limit, WindowState state) {
+        long boundary = windowBoundaryMillis(limit);
         while (!state.events.isEmpty() && state.events.peekFirst().createdAtMillis() < boundary) {
             WindowEvent event = state.events.removeFirst();
-            state.total = state.total.subtract(event.cost());
+            state.total = state.total.subtract(event.amount());
         }
         if (state.total.signum() < 0) {
             state.total = BigDecimal.ZERO;
@@ -246,9 +245,29 @@ public class ApiKeyQuotaService {
     }
 
     /**
-     * 判断窗口限制配置是否完整且额度为正数。
+     * 读取某类有效限制；新限制表为空时兼容旧的单窗口额度字段。
      */
-    private boolean windowEnabled(GatewayApiKeyEntity key) {
+    private List<GatewayApiKeyLimitEntity> effectiveLimits(GatewayApiKeyEntity key, String limitType) {
+        List<GatewayApiKeyLimitEntity> limits = apiKeyLimitMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<GatewayApiKeyLimitEntity>()
+                        .eq(GatewayApiKeyLimitEntity::getApiKeyId, key.getId())
+                        .eq(GatewayApiKeyLimitEntity::getLimitType, limitType));
+        if (!limits.isEmpty() || !"QUOTA".equals(limitType) || !legacyWindowEnabled(key)) {
+            return limits.stream().filter(this::validLimit).toList();
+        }
+        GatewayApiKeyLimitEntity legacy = new GatewayApiKeyLimitEntity();
+        legacy.setApiKeyId(key.getId());
+        legacy.setLimitType("QUOTA");
+        legacy.setWindowValue(key.getQuotaWindowValue());
+        legacy.setWindowUnit(key.getQuotaWindowUnit());
+        legacy.setLimitValue(key.getQuotaLimit());
+        return List.of(legacy);
+    }
+
+    /**
+     * 兼容旧单窗口额度字段；新代码写入限制表后该兜底通常不会触发。
+     */
+    private boolean legacyWindowEnabled(GatewayApiKeyEntity key) {
         return key.getQuotaLimit() != null
                 && key.getQuotaLimit().signum() > 0
                 && key.getQuotaWindowValue() != null
@@ -257,19 +276,41 @@ public class ApiKeyQuotaService {
     }
 
     /**
+     * 过滤不完整或未来版本暂不支持的限制项，避免脏数据中断所有请求。
+     */
+    private boolean validLimit(GatewayApiKeyLimitEntity limit) {
+        if (limit.getLimitType() == null || limit.getWindowValue() == null || limit.getWindowValue() <= 0
+                || limit.getWindowUnit() == null || limit.getLimitValue() == null || limit.getLimitValue().signum() <= 0) {
+            return false;
+        }
+        return "QUOTA".equals(limit.getLimitType()) || "REQUEST".equals(limit.getLimitType());
+    }
+
+    /**
      * 计算滑动窗口起点，MONTH 使用自然月回退以符合“n 月内”的业务语义。
      */
-    private long windowBoundaryMillis(GatewayApiKeyEntity key) {
-        int value = key.getQuotaWindowValue();
-        String unit = key.getQuotaWindowUnit().trim().toUpperCase();
+    private long windowBoundaryMillis(GatewayApiKeyLimitEntity limit) {
+        int value = limit.getWindowValue();
+        String unit = limit.getWindowUnit().trim().toUpperCase();
         ZonedDateTime now = ZonedDateTime.now(ZoneId.systemDefault());
         ZonedDateTime boundary = switch (unit) {
+            case "MINUTE", "MINUTES" -> now.minusMinutes(value);
             case "HOUR", "HOURS" -> now.minusHours(value);
             case "DAY", "DAYS" -> now.minusDays(value);
             case "MONTH", "MONTHS" -> now.minusMonths(value);
-            default -> throw insufficient(HttpStatus.BAD_REQUEST, "Unsupported quota window unit: " + key.getQuotaWindowUnit());
+            default -> throw insufficient(HttpStatus.BAD_REQUEST, "Unsupported limit window unit: " + limit.getWindowUnit());
         };
         return boundary.toInstant().toEpochMilli();
+    }
+
+    /**
+     * 构建不同限制类型的错误消息，方便调用方区分额度和请求数窗口。
+     */
+    private String limitExceededMessage(GatewayApiKeyLimitEntity limit) {
+        if ("REQUEST".equals(limit.getLimitType())) {
+            return "API key sliding window request limit is exceeded";
+        }
+        return "API key sliding window quota is insufficient";
     }
 
     /**
@@ -307,6 +348,12 @@ public class ApiKeyQuotaService {
     /**
      * 滑动窗口中的一次成功扣费事件。
      */
-    private record WindowEvent(long createdAtMillis, BigDecimal cost) {
+    private record LimitKey(Long apiKeyId, String limitType, Integer windowValue, String windowUnit) {
+    }
+
+    /**
+     * 滑动窗口中的一次事件。
+     */
+    private record WindowEvent(long createdAtMillis, BigDecimal amount) {
     }
 }

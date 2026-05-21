@@ -374,19 +374,24 @@ public class AdminChannelService {
             return List.of();
         }
         Map<String, ChannelModelForm> normalized = new LinkedHashMap<>();
+        Map<String, String> providerModels = new LinkedHashMap<>();
         for (ChannelModelForm model : models) {
             if (model == null) {
                 continue;
             }
             requireText(model.providerModel(), "上游模型名不能为空");
+            String providerModel = model.providerModel().trim();
+            if (providerModels.putIfAbsent(providerModel, providerModel) != null) {
+                throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "上游模型名重复: " + providerModel);
+            }
             String alias = resolveAlias(model);
             String publicName = StringUtils.hasText(alias)
                     ? alias
-                    : applyModelPrefix(modelPrefix, model.providerModel());
+                    : applyModelPrefix(modelPrefix, providerModel);
             if (normalized.containsKey(publicName)) {
                 throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "公开模型名重复: " + publicName);
             }
-            normalized.put(publicName, new ChannelModelForm(publicName, model.providerModel(), alias,
+            normalized.put(publicName, new ChannelModelForm(publicName, providerModel, alias,
                     model.inputQuotaPerMillion(), model.outputQuotaPerMillion(), model.cacheReadQuotaPerMillion(),
                     model.vision(), model.toolsSupport(), model.jsonModeSupport(), model.contextLength()));
         }

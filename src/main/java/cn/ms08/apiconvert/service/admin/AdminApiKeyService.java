@@ -1,18 +1,26 @@
 package cn.ms08.apiconvert.service.admin;
 
 import cn.ms08.apiconvert.dao.AiChannelMapper;
+import cn.ms08.apiconvert.dao.AiChannelModelMapper;
 import cn.ms08.apiconvert.dao.GatewayApiKeyChannelMapper;
+import cn.ms08.apiconvert.dao.GatewayApiKeyLimitMapper;
 import cn.ms08.apiconvert.dao.GatewayApiKeyMapper;
+import cn.ms08.apiconvert.dao.GatewayApiKeyModelMapper;
 import cn.ms08.apiconvert.dto.admin.ApiKeyForm;
+import cn.ms08.apiconvert.dto.admin.ApiKeyLimitForm;
 import cn.ms08.apiconvert.dto.admin.ApiKeyQuotaAddRequest;
 import cn.ms08.apiconvert.dto.admin.ApiKeyUpdateForm;
 import cn.ms08.apiconvert.entity.AiChannelEntity;
+import cn.ms08.apiconvert.entity.AiChannelModelEntity;
 import cn.ms08.apiconvert.entity.GatewayApiKeyChannelEntity;
 import cn.ms08.apiconvert.entity.GatewayApiKeyEntity;
+import cn.ms08.apiconvert.entity.GatewayApiKeyLimitEntity;
+import cn.ms08.apiconvert.entity.GatewayApiKeyModelEntity;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.GatewayException;
 import cn.ms08.apiconvert.security.ApiKeyHasher;
 import cn.ms08.apiconvert.vo.admin.ApiKeyCreationVO;
+import cn.ms08.apiconvert.vo.admin.ApiKeyLimitVO;
 import cn.ms08.apiconvert.vo.admin.ApiKeyVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.http.HttpStatus;
@@ -26,6 +34,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -44,9 +53,21 @@ public class AdminApiKeyService {
      */
     private final GatewayApiKeyChannelMapper apiKeyChannelMapper;
     /**
+     * 密钥限制项 Mapper，保存额度、请求数等可并存限制。
+     */
+    private final GatewayApiKeyLimitMapper apiKeyLimitMapper;
+    /**
+     * 密钥模型授权关系 Mapper。
+     */
+    private final GatewayApiKeyModelMapper apiKeyModelMapper;
+    /**
      * 渠道 Mapper，用于校验授权渠道是否存在。
      */
     private final AiChannelMapper channelMapper;
+    /**
+     * 模型 Mapper，用于校验授权模型是否存在。
+     */
+    private final AiChannelModelMapper channelModelMapper;
     /**
      * 用于额度余额的原子追加，避免并发管理操作覆盖余额。
      */
@@ -56,10 +77,15 @@ public class AdminApiKeyService {
      * 注入密钥管理依赖。
      */
     public AdminApiKeyService(GatewayApiKeyMapper apiKeyMapper, GatewayApiKeyChannelMapper apiKeyChannelMapper,
-                              AiChannelMapper channelMapper, JdbcTemplate jdbcTemplate) {
+                              GatewayApiKeyLimitMapper apiKeyLimitMapper, GatewayApiKeyModelMapper apiKeyModelMapper,
+                              AiChannelMapper channelMapper, AiChannelModelMapper channelModelMapper,
+                              JdbcTemplate jdbcTemplate) {
         this.apiKeyMapper = apiKeyMapper;
         this.apiKeyChannelMapper = apiKeyChannelMapper;
+        this.apiKeyLimitMapper = apiKeyLimitMapper;
+        this.apiKeyModelMapper = apiKeyModelMapper;
         this.channelMapper = channelMapper;
+        this.channelModelMapper = channelModelMapper;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -91,6 +117,8 @@ public class AdminApiKeyService {
     public ApiKeyCreationVO create(ApiKeyForm form) {
         requireText(form.name(), "密钥名称不能为空");
         List<String> channelCodes = normalizeChannelCodes(form.channelCodes());
+        List<String> modelNames = normalizeModelNames(form.modelNames());
+        List<ApiKeyLimitForm> limits = normalizeLimitForms(form.limits(), form.quotaLimit(), form.quotaWindowValue(), form.quotaWindowUnit());
         String rawKey = "sk-" + UUID.randomUUID().toString().replace("-", "");
         String hash = ApiKeyHasher.hash(rawKey);
         var entity = new GatewayApiKeyEntity();
@@ -100,11 +128,14 @@ public class AdminApiKeyService {
         entity.setKeyPreview(maskRawKey(rawKey));
         entity.setStatus("ACTIVE");
         setInitialBalance(entity, form.quotaBalance());
-        applyWindowConfig(entity, form.quotaLimit(), form.quotaWindowValue(), form.quotaWindowUnit());
+        applyLegacyWindowConfig(entity, limits);
         apiKeyMapper.insert(entity);
         replaceChannels(entity.getId(), channelCodes);
+        replaceModels(entity.getId(), modelNames);
+        replaceLimits(entity.getId(), limits);
         return new ApiKeyCreationVO(entity.getId(), entity.getName(), rawKey, entity.getKeyPreview(), entity.getStatus(),
-                entity.getQuotaBalance(), entity.getQuotaLimit(), entity.getQuotaWindowValue(), entity.getQuotaWindowUnit(), channelCodes);
+                entity.getQuotaBalance(), entity.getQuotaLimit(), entity.getQuotaWindowValue(), entity.getQuotaWindowUnit(),
+                channelCodes, modelNames, findLimits(entity.getId()));
     }
 
     /**
@@ -119,9 +150,12 @@ public class AdminApiKeyService {
         if (StringUtils.hasText(form.status())) {
             entity.setStatus(form.status());
         }
-        applyWindowConfig(entity, form.quotaLimit(), form.quotaWindowValue(), form.quotaWindowUnit());
+        List<ApiKeyLimitForm> limits = normalizeLimitForms(form.limits(), form.quotaLimit(), form.quotaWindowValue(), form.quotaWindowUnit());
+        applyLegacyWindowConfig(entity, limits);
         apiKeyMapper.updateById(entity);
         replaceChannels(id, normalizeChannelCodes(form.channelCodes()));
+        replaceModels(id, normalizeModelNames(form.modelNames()));
+        replaceLimits(id, limits);
         return toVO(entity);
     }
 
@@ -152,6 +186,10 @@ public class AdminApiKeyService {
     public void delete(Long id) {
         apiKeyChannelMapper.delete(new LambdaQueryWrapper<GatewayApiKeyChannelEntity>()
                 .eq(GatewayApiKeyChannelEntity::getApiKeyId, id));
+        apiKeyModelMapper.delete(new LambdaQueryWrapper<GatewayApiKeyModelEntity>()
+                .eq(GatewayApiKeyModelEntity::getApiKeyId, id));
+        apiKeyLimitMapper.delete(new LambdaQueryWrapper<GatewayApiKeyLimitEntity>()
+                .eq(GatewayApiKeyLimitEntity::getApiKeyId, id));
         apiKeyMapper.deleteById(id);
     }
 
@@ -162,7 +200,7 @@ public class AdminApiKeyService {
         String prefix = entity.getApiKeyHash().length() > 8 ? entity.getApiKeyHash().substring(0, 8) : entity.getApiKeyHash();
         return new ApiKeyVO(entity.getId(), entity.getName(), rawKey(entity), prefix, keyPreview(entity), entity.getStatus(),
                 entity.getQuotaBalance(), entity.getQuotaLimit(), entity.getQuotaWindowValue(), entity.getQuotaWindowUnit(),
-                findChannelCodes(entity.getId()));
+                findChannelCodes(entity.getId()), findModelNames(entity.getId()), findLimits(entity.getId()));
     }
 
     /**
@@ -182,23 +220,20 @@ public class AdminApiKeyService {
     /**
      * 应用密钥滑动窗口限制；quotaLimit 为空时清除周期限制。
      */
-    private void applyWindowConfig(GatewayApiKeyEntity entity, BigDecimal quotaLimit, Integer windowValue, String windowUnit) {
-        if (quotaLimit == null) {
+    private void applyLegacyWindowConfig(GatewayApiKeyEntity entity, List<ApiKeyLimitForm> limits) {
+        ApiKeyLimitForm legacy = limits.stream()
+                .filter(limit -> "QUOTA".equals(limit.limitType()))
+                .findFirst()
+                .orElse(null);
+        if (legacy == null) {
             entity.setQuotaLimit(null);
             entity.setQuotaWindowValue(null);
             entity.setQuotaWindowUnit(null);
             return;
         }
-        if (quotaLimit.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "限制额度必须大于 0");
-        }
-        if (windowValue == null || windowValue <= 0) {
-            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "限制窗口必须大于 0");
-        }
-        String normalizedUnit = normalizeWindowUnit(windowUnit);
-        entity.setQuotaLimit(quotaLimit);
-        entity.setQuotaWindowValue(windowValue);
-        entity.setQuotaWindowUnit(normalizedUnit);
+        entity.setQuotaLimit(legacy.limitValue());
+        entity.setQuotaWindowValue(legacy.windowValue());
+        entity.setQuotaWindowUnit(legacy.windowUnit());
     }
 
     /**
@@ -209,11 +244,96 @@ public class AdminApiKeyService {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "限制窗口单位不能为空");
         }
         return switch (unit.trim().toUpperCase()) {
+            case "MINUTE", "MINUTES" -> "MINUTE";
             case "HOUR", "HOURS" -> "HOUR";
             case "DAY", "DAYS" -> "DAY";
-            case "MONTH", "MONTHS" -> "MONTH";
             default -> throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "不支持的限制窗口单位: " + unit);
         };
+    }
+
+    /**
+     * 标准化限制项列表；limits 为 null 时兼容旧单窗口字段，空列表表示清空所有窗口限制。
+     */
+    private List<ApiKeyLimitForm> normalizeLimitForms(List<ApiKeyLimitForm> limits, BigDecimal legacyQuotaLimit,
+                                                      Integer legacyWindowValue, String legacyWindowUnit) {
+        if (limits == null) {
+            if (legacyQuotaLimit == null) {
+                return List.of();
+            }
+            return List.of(normalizeLimit(new ApiKeyLimitForm("QUOTA", legacyWindowValue, legacyWindowUnit, legacyQuotaLimit, null)));
+        }
+        Map<String, ApiKeyLimitForm> normalized = new java.util.LinkedHashMap<>();
+        for (ApiKeyLimitForm limit : limits) {
+            ApiKeyLimitForm item = normalizeLimit(limit);
+            String key = item.limitType() + "|" + item.windowUnit();
+            if (normalized.putIfAbsent(key, item) != null) {
+                throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST,
+                        "同一限制类型下每个窗口单位只能配置一条限制: " + limitTypeLabel(item.limitType()) + "/" + item.windowUnit());
+            }
+        }
+        return List.copyOf(normalized.values());
+    }
+
+    /**
+     * 将限制类型转成管理端错误提示，便于管理员定位重复配置。
+     */
+    private String limitTypeLabel(String limitType) {
+        return switch (limitType) {
+            case "QUOTA" -> "额度";
+            case "REQUEST" -> "请求数";
+            default -> limitType;
+        };
+    }
+
+    /**
+     * 校验单条限制项，当前支持额度和请求数两种滑动窗口限制。
+     */
+    private ApiKeyLimitForm normalizeLimit(ApiKeyLimitForm form) {
+        if (form == null) {
+            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "限制项不能为空");
+        }
+        String type = normalizeLimitType(form.limitType());
+        if (form.windowValue() == null || form.windowValue() <= 0) {
+            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "限制窗口必须大于 0");
+        }
+        if (form.limitValue() == null || form.limitValue().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "限制值必须大于 0");
+        }
+        String unit = normalizeWindowUnit(form.windowUnit());
+        if ("QUOTA".equals(type) && "MINUTE".equals(unit)) {
+            // 后端保留扩展能力时可放开；当前业务只要求小时/天额度限制。
+            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "额度限制暂只支持 HOUR、DAY");
+        }
+        return new ApiKeyLimitForm(type, form.windowValue(), unit, form.limitValue(), sanitizeConfigJson(form.configJson()));
+    }
+
+    /**
+     * 标准化限制类型，避免未知类型进入运行时但保留表结构扩展空间。
+     */
+    private String normalizeLimitType(String limitType) {
+        if (!StringUtils.hasText(limitType)) {
+            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "限制类型不能为空");
+        }
+        return switch (limitType.trim().toUpperCase()) {
+            case "QUOTA" -> "QUOTA";
+            case "REQUEST", "REQUEST_COUNT" -> "REQUEST";
+            default -> throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "不支持的限制类型: " + limitType);
+        };
+    }
+
+    /**
+     * 扩展配置只能保存非空 JSON 文本，不能包含明显密钥字段。
+     */
+    private String sanitizeConfigJson(String configJson) {
+        if (!StringUtils.hasText(configJson)) {
+            return null;
+        }
+        String text = configJson.trim();
+        String lower = text.toLowerCase();
+        if (lower.contains("token") || lower.contains("key") || lower.contains("secret")) {
+            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "限制扩展配置不能包含敏感字段");
+        }
+        return text;
     }
 
     /**
@@ -263,6 +383,38 @@ public class AdminApiKeyService {
     }
 
     /**
+     * 用新的模型列表覆盖当前密钥授权范围。
+     */
+    private void replaceModels(Long apiKeyId, List<String> modelNames) {
+        apiKeyModelMapper.delete(new LambdaQueryWrapper<GatewayApiKeyModelEntity>()
+                .eq(GatewayApiKeyModelEntity::getApiKeyId, apiKeyId));
+        for (String modelName : modelNames) {
+            GatewayApiKeyModelEntity entity = new GatewayApiKeyModelEntity();
+            entity.setApiKeyId(apiKeyId);
+            entity.setPublicModel(modelName);
+            apiKeyModelMapper.insert(entity);
+        }
+    }
+
+    /**
+     * 用新的限制列表覆盖当前密钥限制项；空列表表示不启用任何窗口限制。
+     */
+    private void replaceLimits(Long apiKeyId, List<ApiKeyLimitForm> limits) {
+        apiKeyLimitMapper.delete(new LambdaQueryWrapper<GatewayApiKeyLimitEntity>()
+                .eq(GatewayApiKeyLimitEntity::getApiKeyId, apiKeyId));
+        for (ApiKeyLimitForm limit : limits) {
+            GatewayApiKeyLimitEntity entity = new GatewayApiKeyLimitEntity();
+            entity.setApiKeyId(apiKeyId);
+            entity.setLimitType(limit.limitType());
+            entity.setWindowValue(limit.windowValue());
+            entity.setWindowUnit(limit.windowUnit());
+            entity.setLimitValue(limit.limitValue());
+            entity.setConfigJson(limit.configJson());
+            apiKeyLimitMapper.insert(entity);
+        }
+    }
+
+    /**
      * 查询密钥允许使用的渠道，空列表代表允许所有渠道。
      */
     private List<String> findChannelCodes(Long apiKeyId) {
@@ -271,6 +423,33 @@ public class AdminApiKeyService {
                         .orderByAsc(GatewayApiKeyChannelEntity::getChannelCode))
                 .stream()
                 .map(GatewayApiKeyChannelEntity::getChannelCode)
+                .toList();
+    }
+
+    /**
+     * 查询密钥允许使用的模型，空列表代表允许所有模型。
+     */
+    private List<String> findModelNames(Long apiKeyId) {
+        return apiKeyModelMapper.selectList(new LambdaQueryWrapper<GatewayApiKeyModelEntity>()
+                        .eq(GatewayApiKeyModelEntity::getApiKeyId, apiKeyId)
+                        .orderByAsc(GatewayApiKeyModelEntity::getPublicModel))
+                .stream()
+                .map(GatewayApiKeyModelEntity::getPublicModel)
+                .toList();
+    }
+
+    /**
+     * 查询密钥限制项，用于管理端展示和编辑。
+     */
+    private List<ApiKeyLimitVO> findLimits(Long apiKeyId) {
+        return apiKeyLimitMapper.selectList(new LambdaQueryWrapper<GatewayApiKeyLimitEntity>()
+                        .eq(GatewayApiKeyLimitEntity::getApiKeyId, apiKeyId)
+                        .orderByAsc(GatewayApiKeyLimitEntity::getLimitType)
+                        .orderByAsc(GatewayApiKeyLimitEntity::getWindowUnit)
+                        .orderByAsc(GatewayApiKeyLimitEntity::getWindowValue))
+                .stream()
+                .map(limit -> new ApiKeyLimitVO(limit.getId(), limit.getLimitType(), limit.getWindowValue(),
+                        limit.getWindowUnit(), limit.getLimitValue(), limit.getConfigJson()))
                 .toList();
     }
 
@@ -291,6 +470,29 @@ public class AdminApiKeyService {
                     .eq(AiChannelEntity::getCode, trimmed));
             if (channel == null) {
                 throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "渠道不存在: " + trimmed);
+            }
+            normalized.add(trimmed);
+        }
+        return List.copyOf(normalized);
+    }
+
+    /**
+     * 去重并校验对外模型名；空列表按允许所有模型处理。
+     */
+    private List<String> normalizeModelNames(List<String> modelNames) {
+        if (modelNames == null || modelNames.isEmpty()) {
+            return List.of();
+        }
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String modelName : modelNames) {
+            if (!StringUtils.hasText(modelName)) {
+                continue;
+            }
+            String trimmed = modelName.trim();
+            Long count = channelModelMapper.selectCount(new LambdaQueryWrapper<AiChannelModelEntity>()
+                    .eq(AiChannelModelEntity::getPublicName, trimmed));
+            if (count == null || count == 0) {
+                throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "模型不存在: " + trimmed);
             }
             normalized.add(trimmed);
         }

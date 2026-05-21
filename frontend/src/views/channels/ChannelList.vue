@@ -151,14 +151,34 @@ function isAuthType(type: string) {
 
 // 多选模型变化时保留已有别名，新选中的模型默认不填别名，交给前缀生成默认展示名。
 function syncSelectedModels(values: string[]) {
-  selectedProviderModels.value = values
-  const current = new Map(form.value.models.map((model) => [model.providerModel, model]))
-  form.value.models = values.map((providerModel) => current.get(providerModel) || {
+  const uniqueValues = uniqueProviderModels(values)
+  selectedProviderModels.value = uniqueValues
+  const current = new Map(form.value.models.map((model) => [model.providerModel.trim(), model]))
+  form.value.models = uniqueValues.map((providerModel) => current.get(providerModel) || {
     publicName: '',
     providerModel,
     modelAlias: '',
   })
-  ensureModelOptions(values)
+  ensureModelOptions(uniqueValues)
+}
+
+// 手动输入和上游返回都可能出现重复项，统一按去空格后的模型名保留一份。
+function uniqueProviderModels(providerModels: string[]) {
+  return Array.from(new Set(providerModels
+    .map((providerModel) => providerModel?.trim())
+    .filter((providerModel): providerModel is string => !!providerModel)))
+}
+
+function mergeModelOptions(options: { label: string; value: string }[]) {
+  const merged = new Map<string, { label: string; value: string }>()
+  for (const option of options) {
+    const value = option.value?.trim()
+    if (!value || merged.has(value)) {
+      continue
+    }
+    merged.set(value, { label: option.label || value, value })
+  }
+  modelOptions.value = Array.from(merged.values())
 }
 
 // 根据可选前缀生成模型管理中展示的默认对外模型名。
@@ -169,13 +189,10 @@ function buildPublicModelName(providerModel: string, prefix: string) {
 
 // 手动输入模型名或编辑已有渠道时，将未出现在接口返回中的模型补进下拉框。
 function ensureModelOptions(providerModels: string[]) {
-  const existing = new Set(modelOptions.value.map((option) => option.value))
-  for (const providerModel of providerModels) {
-    if (providerModel && !existing.has(providerModel)) {
-      modelOptions.value.push({ label: providerModel, value: providerModel })
-      existing.add(providerModel)
-    }
-  }
+  mergeModelOptions([
+    ...modelOptions.value,
+    ...uniqueProviderModels(providerModels).map((providerModel) => ({ label: providerModel, value: providerModel })),
+  ])
 }
 
 // 只清理用户填写的别名；留空表示后端按前缀自动生成对外模型名。
@@ -261,7 +278,7 @@ function edit(item: ChannelVO) {
     })),
     enabled: item.enabled,
   }
-  selectedProviderModels.value = form.value.models.map((model) => model.providerModel)
+  selectedProviderModels.value = uniqueProviderModels(form.value.models.map((model) => model.providerModel))
   modelOptions.value = []
   ensureModelOptions(selectedProviderModels.value)
   showModal.value = true
@@ -353,15 +370,15 @@ async function loadUpstreamModels() {
       modelsPath: form.value.modelsPath,
       apiKey: form.value.apiKey,
     })
-    const selected = new Set(selectedProviderModels.value)
+    const selected = new Set(uniqueProviderModels(selectedProviderModels.value))
     const fetchedOptions = res.data.data.map((model) => ({
       label: model.ownedBy ? `${model.id}（${model.ownedBy}）` : model.id,
       value: model.id,
     }))
-    modelOptions.value = [
+    mergeModelOptions([
       ...fetchedOptions,
       ...modelOptions.value.filter((option) => selected.has(option.value) && !fetchedOptions.some((item) => item.value === option.value)),
-    ]
+    ])
     if (modelOptions.value.length === 0) {
       message.warning('上游未返回可用模型')
     } else {

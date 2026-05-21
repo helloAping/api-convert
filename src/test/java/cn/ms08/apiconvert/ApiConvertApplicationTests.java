@@ -327,6 +327,41 @@ class ApiConvertApplicationTests {
     }
 
     /**
+     * 验证同一渠道不能保存重复上游模型，避免前端自定义输入重复项造成模型管理重复记录。
+     */
+    @Test
+    void adminRejectsDuplicateProviderModelsInOneChannel() throws Exception {
+        String token = loginAsAdmin();
+        String code = "duplicate-provider-model-" + UUID.randomUUID();
+
+        String response = mockMvc.perform(post("/api/admin/channels")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "%s",
+                                  "name": "重复上游模型渠道",
+                                  "type": "OPENAI_COMPATIBLE",
+                                  "baseUrl": "https://api.example.com",
+                                  "chatPath": "/v1/chat/completions",
+                                  "modelsPath": "/v1/models",
+                                  "apiKey": "sk-test-channel-key",
+                                  "models": [
+                                    {"providerModel": "custom-model"},
+                                    {"providerModel": " custom-model "}
+                                  ],
+                                  "enabled": true
+                                }
+                                """.formatted(code)))
+                .andExpect(status().isBadRequest())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(response).contains("上游模型名重复: custom-model");
+    }
+
+    /**
      * 验证编辑渠道时 API Key 留空，模型发现接口会使用数据库中已保存的供应商密钥。
      */
     @Test
@@ -806,6 +841,234 @@ class ApiConvertApplicationTests {
                                 .header("Authorization", "Bearer " + token))
                         .andExpect(status().isOk());
             }
+            if (channelId > 0) {
+                mockMvc.perform(delete("/api/admin/channels/" + channelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+        }
+    }
+
+    /**
+     * 验证密钥可以同时保存额度限制、请求数限制和模型白名单。
+     */
+    @Test
+    void apiKeyCanPersistMultipleLimitsAndModelAllowlist() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String code = "limit-config-" + suffix;
+        String model = "limit-config-model-" + suffix;
+        long channelId = createChannel(token, code, model);
+        long apiKeyId = 0;
+
+        try {
+            String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "name": "多限制密钥",
+                                      "channelCodes": ["%s"],
+                                      "modelNames": ["%s"],
+                                      "limits": [
+                                        {"limitType": "QUOTA", "windowValue": 2, "windowUnit": "HOUR", "limitValue": 100},
+                                        {"limitType": "QUOTA", "windowValue": 1, "windowUnit": "DAY", "limitValue": 500},
+                                        {"limitType": "REQUEST", "windowValue": 1, "windowUnit": "MINUTE", "limitValue": 60}
+                                      ]
+                                    }
+                                    """.formatted(code, model)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode key = objectMapper.readTree(keyResponse).path("data");
+            apiKeyId = key.path("id").asLong();
+            assertThat(key.path("channelCodes").toString()).contains(code);
+            assertThat(key.path("modelNames").toString()).contains(model);
+            assertThat(key.path("limits")).hasSize(3);
+            assertThat(key.path("limits").toString()).contains("QUOTA", "REQUEST", "MINUTE", "HOUR", "DAY");
+        } finally {
+            if (apiKeyId > 0) {
+                mockMvc.perform(delete("/api/admin/api-keys/" + apiKeyId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            mockMvc.perform(delete("/api/admin/channels/" + channelId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    /**
+     * 验证同一限制类型下相同窗口单位只能配置一条，避免出现多个 n 小时或 n 天限制。
+     */
+    @Test
+    void apiKeyRejectsDuplicateLimitWindowUnitWithinSameType() throws Exception {
+        String token = loginAsAdmin();
+
+        String response = mockMvc.perform(post("/api/admin/api-keys")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "重复限制密钥",
+                                  "limits": [
+                                    {"limitType": "QUOTA", "windowValue": 1, "windowUnit": "HOUR", "limitValue": 100},
+                                    {"limitType": "QUOTA", "windowValue": 2, "windowUnit": "HOUR", "limitValue": 200}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(response).contains("同一限制类型下每个窗口单位只能配置一条限制", "额度/HOUR");
+    }
+
+    /**
+     * 验证请求数限制计入已通过路由的失败请求，后续请求会被滑动窗口拒绝。
+     */
+    @Test
+    void requestLimitCountsFailedUpstreamRequests() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String code = "request-limit-" + suffix;
+        String model = "request-limit-model-" + suffix;
+        long channelId = 0;
+        long apiKeyId = 0;
+
+        try {
+            String channelResponse = mockMvc.perform(post("/api/admin/channels")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "code": "%s",
+                                      "name": "请求数限制渠道",
+                                      "type": "OPENAI_COMPATIBLE",
+                                      "baseUrl": "http://127.0.0.1:1",
+                                      "chatPath": "/v1/chat/completions",
+                                      "modelsPath": "/v1/models",
+                                      "apiKey": "sk-test-channel-key",
+                                      "models": [
+                                        {"publicName": "%s", "providerModel": "%s"}
+                                      ],
+                                      "enabled": true
+                                    }
+                                    """.formatted(code, model, model)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            channelId = objectMapper.readTree(channelResponse).path("data").path("id").asLong();
+
+            String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "name": "请求数限制密钥",
+                                      "channelCodes": ["%s"],
+                                      "modelNames": ["%s"],
+                                      "limits": [
+                                        {"limitType": "REQUEST", "windowValue": 1, "windowUnit": "MINUTE", "limitValue": 1}
+                                      ]
+                                    }
+                                    """.formatted(code, model)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode key = objectMapper.readTree(keyResponse).path("data");
+            apiKeyId = key.path("id").asLong();
+            String rawKey = key.path("rawKey").asText();
+
+            mockMvc.perform(post("/v1/chat/completions")
+                            .header("Authorization", "Bearer " + rawKey)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "model": "%s",
+                                      "messages": [{"role": "user", "content": "hello"}],
+                                      "stream": false
+                                    }
+                                    """.formatted(model)))
+                    .andExpect(status().is5xxServerError());
+
+            String response = mockMvc.perform(post("/v1/chat/completions")
+                            .header("Authorization", "Bearer " + rawKey)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "model": "%s",
+                                      "messages": [{"role": "user", "content": "hello again"}],
+                                      "stream": false
+                                    }
+                                    """.formatted(model)))
+                    .andExpect(status().isTooManyRequests())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            assertThat(response).contains("sliding window request limit");
+        } finally {
+            if (apiKeyId > 0) {
+                mockMvc.perform(delete("/api/admin/api-keys/" + apiKeyId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            if (channelId > 0) {
+                mockMvc.perform(delete("/api/admin/channels/" + channelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+        }
+    }
+
+    /**
+     * 验证模型白名单也约束 channel/model 直连写法，不能绕过对外模型授权。
+     */
+    @Test
+    void modelAllowlistAlsoRestrictsDirectChannelModelRouting() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String code = "model-scope-" + suffix;
+        String allowed = "model-scope-allowed-" + suffix;
+        String blocked = "model-scope-blocked-" + suffix;
+        long channelId = 0;
+
+        try {
+            String channelResponse = mockMvc.perform(post("/api/admin/channels")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "code": "%s",
+                                      "name": "模型限制渠道",
+                                      "type": "OPENAI_COMPATIBLE",
+                                      "baseUrl": "https://api.example.com",
+                                      "chatPath": "/v1/chat/completions",
+                                      "modelsPath": "/v1/models",
+                                      "apiKey": "sk-test-channel-key",
+                                      "models": [
+                                        {"publicName": "%s", "providerModel": "%s-provider"},
+                                        {"publicName": "%s", "providerModel": "%s-provider"}
+                                      ],
+                                      "enabled": true
+                                    }
+                                    """.formatted(code, allowed, allowed, blocked, blocked)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            channelId = objectMapper.readTree(channelResponse).path("data").path("id").asLong();
+
+            ModelRoute route = routingService.resolve(code + "/" + allowed + "-provider", Set.of(code), Set.of(allowed));
+            assertThat(route.publicModel()).isEqualTo(allowed);
+            assertThatThrownBy(() -> routingService.resolve(code + "/" + blocked + "-provider", Set.of(code), Set.of(allowed)))
+                    .hasMessageContaining("Model not found or no active channel");
+        } finally {
             if (channelId > 0) {
                 mockMvc.perform(delete("/api/admin/channels/" + channelId)
                                 .header("Authorization", "Bearer " + token))
