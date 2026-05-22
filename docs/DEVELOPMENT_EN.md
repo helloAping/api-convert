@@ -203,5 +203,5 @@ New features should cover:
 1. Update database schema and progress documentation.
 2. Run backend tests and frontend build.
 3. Confirm README and development docs match actual capabilities.
-4. Create a version tag, for example `v1.0.4`.
+4. Create a version tag, for example `v1.0.5`.
 5. Build and push the Docker image.

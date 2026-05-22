@@ -2,6 +2,8 @@ package cn.ms08.apiconvert.service.admin;
 
 import cn.ms08.apiconvert.dao.AiChannelMapper;
 import cn.ms08.apiconvert.dao.AiChannelModelMapper;
+import cn.ms08.apiconvert.dao.GatewayApiKeyChannelMapper;
+import cn.ms08.apiconvert.dao.GatewayApiKeyMapper;
 import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
 import cn.ms08.apiconvert.dto.ProviderQuotaFetchRequest;
 import cn.ms08.apiconvert.dto.admin.ChannelForm;
@@ -9,6 +11,8 @@ import cn.ms08.apiconvert.dto.admin.ChannelModelFetchRequest;
 import cn.ms08.apiconvert.dto.admin.ChannelModelForm;
 import cn.ms08.apiconvert.entity.AiChannelEntity;
 import cn.ms08.apiconvert.entity.AiChannelModelEntity;
+import cn.ms08.apiconvert.entity.GatewayApiKeyChannelEntity;
+import cn.ms08.apiconvert.entity.GatewayApiKeyEntity;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.GatewayException;
 import cn.ms08.apiconvert.provider.ProviderClientRegistry;
@@ -80,6 +84,8 @@ public class AdminChannelService {
      * 读写渠道模型映射表。
      */
     private final AiChannelModelMapper channelModelMapper;
+    private final GatewayApiKeyChannelMapper apiKeyChannelMapper;
+    private final GatewayApiKeyMapper apiKeyMapper;
     /**
      * 将模型发现分派给供应商特定客户端实现。
      */
@@ -95,11 +101,15 @@ public class AdminChannelService {
     public AdminChannelService(
             AiChannelMapper channelMapper,
             AiChannelModelMapper channelModelMapper,
+            GatewayApiKeyChannelMapper apiKeyChannelMapper,
+            GatewayApiKeyMapper apiKeyMapper,
             ProviderClientRegistry providerClientRegistry,
             AuthFileService authFileService
     ) {
         this.channelMapper = channelMapper;
         this.channelModelMapper = channelModelMapper;
+        this.apiKeyChannelMapper = apiKeyChannelMapper;
+        this.apiKeyMapper = apiKeyMapper;
         this.providerClientRegistry = providerClientRegistry;
         this.authFileService = authFileService;
     }
@@ -249,10 +259,38 @@ public class AdminChannelService {
         if (channel == null) {
             return;
         }
+        List<Long> scopedApiKeyIds = apiKeyChannelMapper.selectList(new LambdaQueryWrapper<GatewayApiKeyChannelEntity>()
+                        .eq(GatewayApiKeyChannelEntity::getChannelCode, channel.getCode()))
+                .stream()
+                .map(GatewayApiKeyChannelEntity::getApiKeyId)
+                .distinct()
+                .toList();
+        apiKeyChannelMapper.delete(new LambdaQueryWrapper<GatewayApiKeyChannelEntity>()
+                .eq(GatewayApiKeyChannelEntity::getChannelCode, channel.getCode()));
+        disableKeysWithoutRemainingChannelScope(scopedApiKeyIds);
         channelModelMapper.delete(new LambdaQueryWrapper<AiChannelModelEntity>()
                 .eq(AiChannelModelEntity::getChannelCode, channel.getCode()));
         authFileService.delete(channel.getAuthFilePath());
         channelMapper.deleteById(id);
+    }
+
+    /**
+     * 避免删除最后一个显式授权渠道后，密钥因空白名单语义退回到允许全部渠道。
+     */
+    private void disableKeysWithoutRemainingChannelScope(List<Long> apiKeyIds) {
+        for (Long apiKeyId : apiKeyIds) {
+            Long remaining = apiKeyChannelMapper.selectCount(new LambdaQueryWrapper<GatewayApiKeyChannelEntity>()
+                    .eq(GatewayApiKeyChannelEntity::getApiKeyId, apiKeyId));
+            if (remaining != null && remaining > 0) {
+                continue;
+            }
+            GatewayApiKeyEntity apiKey = apiKeyMapper.selectById(apiKeyId);
+            if (apiKey == null || !"ACTIVE".equals(apiKey.getStatus())) {
+                continue;
+            }
+            apiKey.setStatus("DISABLED");
+            apiKeyMapper.updateById(apiKey);
+        }
     }
 
     /**

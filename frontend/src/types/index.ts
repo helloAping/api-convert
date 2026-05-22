@@ -99,6 +99,7 @@ export interface ApiKeyVO {
   keyPrefix: string
   keyPreview: string
   status: string
+  failoverEnabled: boolean
   quotaBalance: number | null
   quotaLimit: number | null
   quotaWindowValue: number | null
@@ -115,6 +116,7 @@ export interface ApiKeyCreationVO {
   rawKey: string
   keyPreview: string
   status: string
+  failoverEnabled: boolean
   quotaBalance: number | null
   quotaLimit: number | null
   quotaWindowValue: number | null
@@ -382,6 +384,7 @@ export interface ChannelAuthStatusVO {
 /** 创建网关密钥的表单载荷，空渠道/模型列表表示不限制对应范围。 */
 export interface ApiKeyForm {
   name: string
+  failoverEnabled: boolean
   channelCodes: string[]
   modelNames: string[]
   quotaBalance?: number | null
@@ -394,6 +397,7 @@ export interface ApiKeyForm {
 /** 更新网关密钥的表单载荷，limits 为空数组表示清空所有窗口限制。 */
 export interface ApiKeyUpdateForm {
   status: string
+  failoverEnabled: boolean
   channelCodes: string[]
   modelNames: string[]
   quotaLimit?: number | null

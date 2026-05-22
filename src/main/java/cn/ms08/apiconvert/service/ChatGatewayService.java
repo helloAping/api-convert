@@ -31,8 +31,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.IOException;
+import java.io.FilterOutputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -140,17 +142,30 @@ public class ChatGatewayService {
             if (stream) {
                 throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST, "stream is not supported yet");
             }
-            route = routingService.resolve(request, principal.apiKeyId(), principal.allowedChannelCodes(), principal.allowedModelNames(), sessionKey);
+            List<ModelRoute> routes = resolveChatRoutes(request, principal, sessionKey);
             apiKeyQuotaService.recordRequest(principal.apiKeyId());
-            apiKeyQuotaService.assertEnough(principal.apiKeyId(), route, estimatedUsage);
-            UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, route);
-            UnifiedChatResponse response = providerClientRegistry.get(route.providerType()).chat(route, adaptedRequest);
-            UnifiedChatResponse adaptedResponse = applyAdapter(response, endpointType, route);
-            routingService.recordSuccess(principal.apiKeyId(), route);
-            apiKeyQuotaService.deduct(principal.apiKeyId(), route, adaptedResponse.usage(), estimatedUsage);
-            usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, stream,
-                    HttpStatus.OK.value(), System.currentTimeMillis() - start, adaptedResponse.usage());
-            return adaptedResponse;
+            for (int index = 0; index < routes.size(); index++) {
+                route = routes.get(index);
+                try {
+                    apiKeyQuotaService.assertEnough(principal.apiKeyId(), route, estimatedUsage);
+                    UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, route);
+                    UnifiedChatResponse response = providerClientRegistry.get(route.providerType()).chat(route, adaptedRequest);
+                    UnifiedChatResponse adaptedResponse = applyAdapter(response, endpointType, route);
+                    routingService.recordSuccess(principal.apiKeyId(), route);
+                    apiKeyQuotaService.deduct(principal.apiKeyId(), route, adaptedResponse.usage(), estimatedUsage);
+                    usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, stream,
+                            HttpStatus.OK.value(), System.currentTimeMillis() - start, adaptedResponse.usage());
+                    return adaptedResponse;
+                } catch (Exception exception) {
+                    if (!shouldTryNextRoute(principal, index, routes, exception)) {
+                        throw exception;
+                    }
+                    recordProviderFailure(principal, request, route, sessionKey, exception);
+                    log.warn("同步请求当前渠道失败，切换备用渠道继续尝试：模型={}、失败渠道={}、错误类型={}、错误={}",
+                            request.model(), route.providerCode(), exception.getClass().getSimpleName(), exception.getMessage(), exception);
+                }
+            }
+            throw new GatewayException(ErrorCode.ROUTE_NOT_FOUND, HttpStatus.SERVICE_UNAVAILABLE, "No available route for model: " + request.model());
         } catch (GatewayException exception) {
             recordProviderFailure(principal, request, route, sessionKey, exception);
             log.warn("对话转发失败：{}", exception.getMessage(), exception);
@@ -164,6 +179,18 @@ public class ChatGatewayService {
                     ErrorCode.INTERNAL_ERROR.name(), "Internal server error");
             throw exception;
         }
+    }
+
+    /**
+     * 按密钥开关决定请求是否解析同模型的多渠道失败切换候选。
+     */
+    private List<ModelRoute> resolveChatRoutes(UnifiedChatRequest request, GatewayPrincipal principal, String sessionKey) {
+        if (principal.supportsFailover()) {
+            return routingService.resolveFailoverRoutes(request, principal.apiKeyId(), principal.allowedChannelCodes(),
+                    principal.allowedModelNames(), sessionKey);
+        }
+        return List.of(routingService.resolve(request, principal.apiKeyId(), principal.allowedChannelCodes(),
+                principal.allowedModelNames(), sessionKey));
     }
 
     /**
@@ -214,56 +241,74 @@ public class ChatGatewayService {
         ModelRoute route = null;
         UnifiedUsage estimatedUsage = apiKeyQuotaService.estimateUsage(request);
         StreamResponseTransformer.WrappedStream wrappedStream = null;
+        CountingOutputStream attemptOutput = null;
         try {
-            route = routingService.resolve(request, principal.apiKeyId(), principal.allowedChannelCodes(), principal.allowedModelNames(), sessionKey);
+            List<ModelRoute> routes = resolveChatRoutes(request, principal, sessionKey);
             apiKeyQuotaService.recordRequest(principal.apiKeyId());
-            apiKeyQuotaService.assertEnough(principal.apiKeyId(), route, estimatedUsage);
-            // 流式路径也应用端点-供应商适配器的请求转换
-            UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, route);
-            // 检查是否需要流式响应转换（端点与供应商协议不一致时）
-            OutputStream targetStream = outputStream;
-            if (endpointType != null) {
-                StreamResponseTransformer transformer = streamTransformerRegistry.get(endpointType, route.providerType());
-                if (transformer == null) {
-                    transformer = streamTransformerRegistry.get(endpointType, adapterProvider(route.providerType()));
-                }
-                if (transformer != null) {
-                    long createdAt = java.time.Instant.now().getEpochSecond();
-                    wrappedStream = transformer.wrap(outputStream, requestId, route.publicModel(), createdAt);
-                    wrappedStream.sendInitialEvents();
-                    targetStream = wrappedStream.outputStream();
+            for (int index = 0; index < routes.size(); index++) {
+                route = routes.get(index);
+                wrappedStream = null;
+                attemptOutput = new CountingOutputStream(outputStream);
+                try {
+                    apiKeyQuotaService.assertEnough(principal.apiKeyId(), route, estimatedUsage);
+                    // 流式路径也应用端点-供应商适配器的请求转换
+                    UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, route);
+                    // 检查是否需要流式响应转换（端点与供应商协议不一致时）
+                    OutputStream targetStream = attemptOutput;
+                    if (endpointType != null) {
+                        StreamResponseTransformer transformer = streamTransformerRegistry.get(endpointType, route.providerType());
+                        if (transformer == null) {
+                            transformer = streamTransformerRegistry.get(endpointType, adapterProvider(route.providerType()));
+                        }
+                        if (transformer != null) {
+                            long createdAt = java.time.Instant.now().getEpochSecond();
+                            wrappedStream = transformer.wrap(attemptOutput, requestId, route.publicModel(), createdAt);
+                            if (!principal.supportsFailover()) {
+                                wrappedStream.sendInitialEvents();
+                            }
+                            targetStream = wrappedStream.outputStream();
+                        }
+                    }
+                    AiProviderClient client = providerClientRegistry.get(route.providerType());
+                    if (!client.supportsStreaming()) {
+                        throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                                "stream is not supported for provider type " + route.providerType());
+                    }
+                    log.info("上游请求：POST {} {}、渠道类型：{}、渠道编码：{}、请求体：{}",
+                            route.baseUrl() + route.chatPath(),
+                            formatSanitizedHeaders(route),
+                            route.providerType(), route.providerCode(),
+                            serializeRequest(adaptedRequest));
+                    UnifiedUsage usage = client.streamChat(route, adaptedRequest, targetStream);
+                    // 流式响应转换完成
+                    if (wrappedStream != null) {
+                        wrappedStream.complete();
+                    }
+                    long latencyMs = System.currentTimeMillis() - start;
+                    routingService.recordSuccess(principal.apiKeyId(), route);
+                    log.info("SSE 流完成 请求ID：{}、协议：{}、接口：{}、模型：{}、渠道编码：{}、渠道类型：{}、耗时：{}ms、输入Token：{}、输出Token：{}、总计Token：{}、缓存读取Token：{}",
+                            requestId, sourceProtocol, requestType, request.model(),
+                            route.providerCode(), route.providerType(), latencyMs,
+                            safeTokens(usage != null ? usage.inputTokens() : null),
+                            safeTokens(usage != null ? usage.outputTokens() : null),
+                            safeTokens(usage != null ? usage.totalTokens() : null),
+                            safeTokens(usage != null ? usage.cacheReadInputTokens() : null));
+                    apiKeyQuotaService.deduct(principal.apiKeyId(), route, usage, estimatedUsage);
+                    usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, true,
+                            HttpStatus.OK.value(), latencyMs, usage);
+                    return;
+                } catch (Exception exception) {
+                    if (shouldTryNextRoute(principal, index, routes, exception, attemptOutput)) {
+                        recordProviderFailure(principal, request, route, sessionKey, exception);
+                        log.warn("流式请求当前渠道未写出即失败，切换备用渠道继续尝试：模型={}、失败渠道={}、错误类型={}、错误={}",
+                                request.model(), route.providerCode(), exception.getClass().getSimpleName(), exception.getMessage(), exception);
+                        wrappedStream = null;
+                        continue;
+                    }
+                    throw exception;
                 }
             }
-            AiProviderClient client = providerClientRegistry.get(route.providerType());
-            if (!client.supportsStreaming()) {
-                if (wrappedStream != null) {
-                    wrappedStream.writeErrorEvent("stream is not supported for provider type " + route.providerType());
-                }
-                throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
-                        "stream is not supported for provider type " + route.providerType());
-            }
-            log.info("上游请求：POST {} {}、渠道类型：{}、渠道编码：{}、请求体：{}",
-                    route.baseUrl() + route.chatPath(),
-                    formatSanitizedHeaders(route),
-                    route.providerType(), route.providerCode(),
-                    serializeRequest(adaptedRequest));
-            UnifiedUsage usage = client.streamChat(route, adaptedRequest, targetStream);
-            // 流式响应转换完成
-            if (wrappedStream != null) {
-                wrappedStream.complete();
-            }
-            long latencyMs = System.currentTimeMillis() - start;
-            routingService.recordSuccess(principal.apiKeyId(), route);
-            log.info("SSE 流完成 请求ID：{}、协议：{}、接口：{}、模型：{}、渠道编码：{}、渠道类型：{}、耗时：{}ms、输入Token：{}、输出Token：{}、总计Token：{}、缓存读取Token：{}",
-                    requestId, sourceProtocol, requestType, request.model(),
-                    route.providerCode(), route.providerType(), latencyMs,
-                    safeTokens(usage != null ? usage.inputTokens() : null),
-                    safeTokens(usage != null ? usage.outputTokens() : null),
-                    safeTokens(usage != null ? usage.totalTokens() : null),
-                    safeTokens(usage != null ? usage.cacheReadInputTokens() : null));
-            apiKeyQuotaService.deduct(principal.apiKeyId(), route, usage, estimatedUsage);
-            usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, true,
-                    HttpStatus.OK.value(), latencyMs, usage);
+            throw new GatewayException(ErrorCode.ROUTE_NOT_FOUND, HttpStatus.SERVICE_UNAVAILABLE, "No available route for model: " + request.model());
         } catch (GatewayException exception) {
             if (isClientDisconnect(exception)) {
                 log.debug("SSE 客户端断开：模型={}、请求ID：{}", request.model(), requestId);
@@ -297,10 +342,43 @@ public class ChatGatewayService {
      * 只有真实上游调用失败才累计路由失败次数，额度不足、参数错误等网关本地拒绝不触发渠道避让。
      */
     private void recordProviderFailure(GatewayPrincipal principal, UnifiedChatRequest request, ModelRoute route,
-                                       String sessionKey, GatewayException exception) {
+                                       String sessionKey, Exception exception) {
         if (exception instanceof ProviderException) {
             routingService.recordFailure(principal.apiKeyId(), request, route, sessionKey);
         }
+    }
+
+    /**
+     * 判断本次渠道尝试失败后是否应继续尝试下一个候选；本地鉴权、额度和模型解析类拒绝不应被重试掩盖。
+     */
+    private boolean shouldTryNextRoute(GatewayPrincipal principal, int index, List<ModelRoute> routes, Exception exception) {
+        return shouldTryNextRoute(principal, index, routes, exception, null);
+    }
+
+    /**
+     * 流式请求只有在尚未向客户端写出任何字节时才允许失败切换，避免破坏已建立的 SSE 响应。
+     */
+    private boolean shouldTryNextRoute(GatewayPrincipal principal, int index, List<ModelRoute> routes,
+                                       Exception exception, CountingOutputStream attemptOutput) {
+        return principal.supportsFailover()
+                && index < routes.size() - 1
+                && (attemptOutput == null || !attemptOutput.hasWritten())
+                && !isClientDisconnect(exception)
+                && isRouteAttemptFailure(exception);
+    }
+
+    /**
+     * 渠道尝试内的上游错误、协议不支持和代码异常均可切换；网关本地全局拒绝直接返回。
+     */
+    private boolean isRouteAttemptFailure(Exception exception) {
+        if (!(exception instanceof GatewayException gatewayException)) {
+            return true;
+        }
+        return switch (gatewayException.code()) {
+            case PROVIDER_NOT_FOUND, PROVIDER_UNAVAILABLE, PROVIDER_AUTH_FAILED, PROVIDER_RATE_LIMITED,
+                 PROVIDER_TIMEOUT, PROVIDER_BAD_RESPONSE, UNSUPPORTED_FEATURE, INTERNAL_ERROR -> true;
+            case INVALID_REQUEST, UNAUTHORIZED, FORBIDDEN, MODEL_NOT_FOUND, ROUTE_NOT_FOUND, QUOTA_INSUFFICIENT -> false;
+        };
     }
 
     /**
@@ -501,7 +579,7 @@ public class ChatGatewayService {
         if (principal instanceof GatewayPrincipal gatewayPrincipal) {
             return gatewayPrincipal;
         }
-        return new GatewayPrincipal(null, "anonymous", java.util.Set.of(), java.util.Set.of());
+        return new GatewayPrincipal(null, "anonymous", java.util.Set.of(), java.util.Set.of(), false);
     }
 
     /**
@@ -544,6 +622,35 @@ public class ChatGatewayService {
         } catch (Exception ignored) {
             // 响应已提交或客户端已断开，忽略写入失败
             log.trace("写入 SSE 错误事件失败（可能客户端已断开）：{}", ignored.getMessage());
+        }
+    }
+
+    /**
+     * 统计本次流式尝试是否已向客户端写出字节；未写出时上游失败可以安全切换到下一个渠道。
+     */
+    private static final class CountingOutputStream extends FilterOutputStream {
+        private boolean written;
+
+        private CountingOutputStream(OutputStream out) {
+            super(out);
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            out.write(b);
+            written = true;
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            out.write(b, off, len);
+            if (len > 0) {
+                written = true;
+            }
+        }
+
+        private boolean hasWritten() {
+            return written;
         }
     }
 }

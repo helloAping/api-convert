@@ -66,7 +66,7 @@ public class GatewayApiKeyFilter extends OncePerRequestFilter {
             throw new GatewayException(ErrorCode.UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "Invalid gateway API key");
         }
         request.setAttribute(PRINCIPAL_ATTRIBUTE, new GatewayPrincipal(entity.getId(), entity.getName(),
-                allowedChannels(entity.getId()), allowedModels(entity.getId())));
+                allowedChannels(entity.getId()), allowedModels(entity.getId()), entity.getFailoverEnabled()));
         filterChain.doFilter(request, response);
     }
 

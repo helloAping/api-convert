@@ -1,14 +1,17 @@
 package cn.ms08.apiconvert;
 
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
+import cn.ms08.apiconvert.dao.GatewayApiKeyChannelMapper;
 import cn.ms08.apiconvert.dao.GatewayApiKeyMapper;
 import cn.ms08.apiconvert.dao.RequestLogMapper;
 import cn.ms08.apiconvert.dto.ModelRoute;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
+import cn.ms08.apiconvert.entity.GatewayApiKeyChannelEntity;
 import cn.ms08.apiconvert.entity.GatewayApiKeyEntity;
 import cn.ms08.apiconvert.entity.RequestLogEntity;
 import cn.ms08.apiconvert.service.RoutingService;
 import cn.ms08.apiconvert.vo.OpenAiChatCompletionResponse;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
@@ -28,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -69,6 +73,9 @@ class ApiConvertApplicationTests {
      */
     @Autowired
     private GatewayApiKeyMapper gatewayApiKeyMapper;
+
+    @Autowired
+    private GatewayApiKeyChannelMapper gatewayApiKeyChannelMapper;
 
     /**
      * 解析管理端接口返回的 JSON 响应。
@@ -900,6 +907,56 @@ class ApiConvertApplicationTests {
     }
 
     /**
+     * 验证删除渠道时会同步清理密钥渠道授权，避免管理端残留不可用渠道。
+     */
+    @Test
+    void deletingChannelRemovesApiKeyChannelAllowlistEntry() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String code = "delete-channel-scope-" + suffix;
+        String model = "delete-channel-scope-model-" + suffix;
+        long channelId = createChannel(token, code, model);
+        long apiKeyId = 0;
+
+        try {
+            String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "name": "删除渠道同步授权密钥",
+                                      "channelCodes": ["%s"]
+                                    }
+                                    """.formatted(code)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            apiKeyId = objectMapper.readTree(keyResponse).path("data").path("id").asLong();
+            assertThat(countApiKeyChannelScopes(code)).isEqualTo(1);
+
+            mockMvc.perform(delete("/api/admin/channels/" + channelId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+            channelId = 0;
+
+            assertThat(countApiKeyChannelScopes(code)).isZero();
+            assertThat(gatewayApiKeyMapper.selectById(apiKeyId).getStatus()).isEqualTo("DISABLED");
+        } finally {
+            if (apiKeyId > 0) {
+                mockMvc.perform(delete("/api/admin/api-keys/" + apiKeyId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            if (channelId > 0) {
+                mockMvc.perform(delete("/api/admin/channels/" + channelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+        }
+    }
+
+    /**
      * 验证同一限制类型下相同窗口单位只能配置一条，避免出现多个 n 小时或 n 天限制。
      */
     @Test
@@ -1166,6 +1223,233 @@ class ApiConvertApplicationTests {
     }
 
     /**
+     * 验证密钥开启失败切换后，同步请求会在首个上游失败时继续尝试同模型的下一个授权渠道。
+     */
+    @Test
+    void syncChatFailsOverToNextAuthorizedChannelWhenKeySwitchEnabled() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String firstCode = "failover-a-" + suffix;
+        String secondCode = "failover-b-" + suffix;
+        String model = "failover-model-" + suffix;
+        long firstChannelId = 0;
+        long secondChannelId = 0;
+        long apiKeyId = 0;
+        AtomicInteger firstCalls = new AtomicInteger();
+        AtomicInteger secondCalls = new AtomicInteger();
+        HttpServer firstServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        HttpServer secondServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        firstServer.createContext("/v1/chat/completions", exchange -> {
+            firstCalls.incrementAndGet();
+            byte[] body = """
+                    {"error":{"message":"first channel unavailable"}}
+                    """.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(500, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        secondServer.createContext("/v1/chat/completions", exchange -> {
+            secondCalls.incrementAndGet();
+            byte[] body = """
+                    {
+                      "id": "chatcmpl-failover",
+                      "object": "chat.completion",
+                      "created": 1,
+                      "model": "%s",
+                      "choices": [
+                        {"index": 0, "message": {"role": "assistant", "content": "ok from fallback"}, "finish_reason": "stop"}
+                      ],
+                      "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+                    }
+                    """.formatted(model).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        firstServer.start();
+        secondServer.start();
+
+        try {
+            updateRoutingConfig(token, "ROUND_ROBIN", 0, 0, 1440);
+            firstChannelId = createChannelWithBaseUrl(token, firstCode, model,
+                    "http://127.0.0.1:" + firstServer.getAddress().getPort());
+            secondChannelId = createChannelWithBaseUrl(token, secondCode, model,
+                    "http://127.0.0.1:" + secondServer.getAddress().getPort());
+
+            String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "name": "失败切换密钥",
+                                      "failoverEnabled": true,
+                                      "channelCodes": ["%s", "%s"],
+                                      "modelNames": ["%s"]
+                                    }
+                                    """.formatted(firstCode, secondCode, model)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode key = objectMapper.readTree(keyResponse).path("data");
+            apiKeyId = key.path("id").asLong();
+            String rawKey = key.path("rawKey").asText();
+            assertThat(key.path("failoverEnabled").asBoolean()).isTrue();
+
+            String response = mockMvc.perform(post("/v1/chat/completions")
+                            .header("Authorization", "Bearer " + rawKey)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "model": "%s",
+                                      "messages": [{"role": "user", "content": "hello"}],
+                                      "stream": false
+                                    }
+                                    """.formatted(model)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            assertThat(response).contains("ok from fallback");
+            assertThat(firstCalls.get()).isEqualTo(1);
+            assertThat(secondCalls.get()).isEqualTo(1);
+        } finally {
+            restoreDefaultRoutingConfig(token);
+            if (apiKeyId > 0) {
+                mockMvc.perform(delete("/api/admin/api-keys/" + apiKeyId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            if (firstChannelId > 0) {
+                mockMvc.perform(delete("/api/admin/channels/" + firstChannelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            if (secondChannelId > 0) {
+                mockMvc.perform(delete("/api/admin/channels/" + secondChannelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            firstServer.stop(0);
+            secondServer.stop(0);
+        }
+    }
+
+    /**
+     * 验证密钥开启失败切换后，流式请求在首个上游未写出即失败时会继续尝试下一个渠道。
+     */
+    @Test
+    void streamingChatFailsOverBeforeAnyBytesAreWritten() throws Exception {
+        String token = loginAsAdmin();
+        String suffix = UUID.randomUUID().toString();
+        String firstCode = "stream-failover-a-" + suffix;
+        String secondCode = "stream-failover-b-" + suffix;
+        String model = "stream-failover-model-" + suffix;
+        long firstChannelId = 0;
+        long secondChannelId = 0;
+        long apiKeyId = 0;
+        AtomicInteger firstCalls = new AtomicInteger();
+        AtomicInteger secondCalls = new AtomicInteger();
+        HttpServer firstServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        HttpServer secondServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        firstServer.createContext("/v1/chat/completions", exchange -> {
+            firstCalls.incrementAndGet();
+            byte[] body = """
+                    {"error":{"message":"stream first channel unavailable"}}
+                    """.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(500, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        secondServer.createContext("/v1/chat/completions", exchange -> {
+            secondCalls.incrementAndGet();
+            byte[] body = """
+                    data: {"id":"chatcmpl-stream-failover","object":"chat.completion.chunk","created":1,"model":"%s","choices":[{"index":0,"delta":{"role":"assistant","content":"stream fallback"},"finish_reason":null}]}
+
+                    data: {"id":"chatcmpl-stream-failover","object":"chat.completion.chunk","created":1,"model":"%s","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}
+
+                    data: [DONE]
+
+                    """.formatted(model, model).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        firstServer.start();
+        secondServer.start();
+
+        try {
+            updateRoutingConfig(token, "ROUND_ROBIN", 0, 0, 1440);
+            firstChannelId = createChannelWithBaseUrl(token, firstCode, model,
+                    "http://127.0.0.1:" + firstServer.getAddress().getPort());
+            secondChannelId = createChannelWithBaseUrl(token, secondCode, model,
+                    "http://127.0.0.1:" + secondServer.getAddress().getPort());
+
+            String keyResponse = mockMvc.perform(post("/api/admin/api-keys")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "name": "流式失败切换密钥",
+                                      "failoverEnabled": true,
+                                      "channelCodes": ["%s", "%s"],
+                                      "modelNames": ["%s"]
+                                    }
+                                    """.formatted(firstCode, secondCode, model)))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode key = objectMapper.readTree(keyResponse).path("data");
+            apiKeyId = key.path("id").asLong();
+            String rawKey = key.path("rawKey").asText();
+
+            String response = mockMvc.perform(post("/v1/chat/completions")
+                            .header("Authorization", "Bearer " + rawKey)
+                            .accept(MediaType.ALL)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "model": "%s",
+                                      "messages": [{"role": "user", "content": "hello"}],
+                                      "stream": true
+                                    }
+                                    """.formatted(model)))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+
+            assertThat(response).contains("stream fallback");
+            assertThat(firstCalls.get()).isEqualTo(1);
+            assertThat(secondCalls.get()).isEqualTo(1);
+        } finally {
+            restoreDefaultRoutingConfig(token);
+            if (apiKeyId > 0) {
+                mockMvc.perform(delete("/api/admin/api-keys/" + apiKeyId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            if (firstChannelId > 0) {
+                mockMvc.perform(delete("/api/admin/channels/" + firstChannelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            if (secondChannelId > 0) {
+                mockMvc.perform(delete("/api/admin/channels/" + secondChannelId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk());
+            }
+            firstServer.stop(0);
+            secondServer.stop(0);
+        }
+    }
+
+    /**
      * 验证流式对话在路由失败时仍会记录协议、接口类型、流式标记、耗时和错误码。
      */
     @Test
@@ -1346,6 +1630,15 @@ class ApiConvertApplicationTests {
     }
 
     private long createChannel(String token, String code, String providerModel, boolean toolsSupport, int priority) throws Exception {
+        return createChannelWithBaseUrl(token, code, providerModel, "https://api.example.com", toolsSupport, priority);
+    }
+
+    private long createChannelWithBaseUrl(String token, String code, String providerModel, String baseUrl) throws Exception {
+        return createChannelWithBaseUrl(token, code, providerModel, baseUrl, false, 100);
+    }
+
+    private long createChannelWithBaseUrl(String token, String code, String providerModel, String baseUrl,
+                                          boolean toolsSupport, int priority) throws Exception {
         String createResponse = mockMvc.perform(post("/api/admin/channels")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1354,7 +1647,7 @@ class ApiConvertApplicationTests {
                                   "code": "%s",
                                   "name": "%s",
                                   "type": "OPENAI_COMPATIBLE",
-                                  "baseUrl": "https://api.example.com",
+                                  "baseUrl": "%s",
                                   "chatPath": "/v1/chat/completions",
                                   "modelsPath": "/v1/models",
                                   "apiKey": "sk-test-channel-key",
@@ -1364,12 +1657,18 @@ class ApiConvertApplicationTests {
                                   ],
                                   "enabled": true
                                 }
-                                """.formatted(code, code, priority, providerModel, toolsSupport)))
+                                """.formatted(code, code, baseUrl, priority, providerModel, toolsSupport)))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
         return objectMapper.readTree(createResponse).path("data").path("id").asLong();
+    }
+
+    private long countApiKeyChannelScopes(String channelCode) {
+        Long count = gatewayApiKeyChannelMapper.selectCount(new LambdaQueryWrapper<GatewayApiKeyChannelEntity>()
+                .eq(GatewayApiKeyChannelEntity::getChannelCode, channelCode));
+        return count == null ? 0 : count;
     }
 
     /**

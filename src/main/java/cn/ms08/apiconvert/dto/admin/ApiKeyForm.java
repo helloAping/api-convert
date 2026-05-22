@@ -7,6 +7,7 @@ import java.math.BigDecimal;
  * 创建网关密钥的表单；channelCodes/modelNames 为空表示该密钥允许使用所有渠道/模型。
  *
  * @param name 密钥展示名称
+ * @param failoverEnabled 是否开启请求上游未写出即失败后的同模型多渠道切换
  * @param channelCodes 允许使用的渠道编码列表
  * @param modelNames 允许使用的对外模型名列表
  * @param quotaBalance 初始剩余额度；为空表示不限总额度
@@ -17,6 +18,7 @@ import java.math.BigDecimal;
  */
 public record ApiKeyForm(
     String name,
+    Boolean failoverEnabled,
     List<String> channelCodes,
     List<String> modelNames,
     BigDecimal quotaBalance,

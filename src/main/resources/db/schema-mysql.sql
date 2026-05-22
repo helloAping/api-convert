@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS gateway_api_key (
   api_key_hash VARCHAR(128) NOT NULL UNIQUE COMMENT 'API Key 哈希值，用于鉴权匹配',
   key_preview VARCHAR(64) COMMENT '脱敏展示值，不能用于鉴权',
   status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT '密钥状态',
+  failover_enabled BOOLEAN NOT NULL DEFAULT FALSE COMMENT '上游未写出即失败后是否切换同模型其他渠道',
   quota_balance DECIMAL(20,6) NULL COMMENT '密钥剩余额度；NULL 表示不限总额度',
   quota_limit DECIMAL(20,6) NULL COMMENT '滑动窗口内最多可使用的额度；NULL 表示不限制',
   quota_window_value INT NULL COMMENT '滑动窗口长度数值，例如 3 小时或 7 天',
@@ -144,4 +145,4 @@ VALUES
   ('routing.failure_cooldown_minutes', '0', '失败阈值触发后的避让分钟数；0 表示关闭'),
   ('routing.sticky_ttl_minutes', '1440', '会话粘性绑定保留分钟数');
 
-INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (13, 'Add API key limits and model allowlist');
+INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (14, 'Add API key channel failover switch');
