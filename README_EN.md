@@ -150,7 +150,7 @@ docker run --rm -p 8080:8080 \
 Release image example:
 
 ```bash
-docker pull crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.4
+docker pull crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.5
 ```
 
 When using a reverse proxy, forward the `Authorization` header:

@@ -150,7 +150,7 @@ docker run --rm -p 8080:8080 \
 发布镜像示例：
 
 ```bash
-docker pull crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.4
+docker pull crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.5
 ```
 
 反向代理时必须透传 `Authorization` 请求头：

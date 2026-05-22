@@ -87,11 +87,11 @@
       → RequestAdapter.toUnified()  # 转为 UnifiedChatRequest
         → ChatGatewayService.chat() / .stream()
           1. 生成 UUID requestId
-          2. RoutingService.resolve(model)
+          2. RoutingService.resolve(model)，密钥开启失败切换时会解析同模型候选列表
           3. EndpointProviderAdapter.adaptRequest()  # 跨协议请求预处理
           4. ProviderClientRegistry.get(type)  # 获取厂商客户端
-          5. 非流式: client.chat(route, adaptedRequest) → adaptResponse()
-          5. 流式: streamTransformerRegistry.get(endpoint, provider) → transformer.wrap() → client.streamChat()
+          5. 非流式: client.chat(route, adaptedRequest) → adaptResponse()；上游失败且密钥开启失败切换时按剩余候选重复 3-5
+          5. 流式: streamTransformerRegistry.get(endpoint, provider) → transformer.wrap() → client.streamChat()；上游未写出即失败且密钥开启失败切换时按剩余候选重复
           6. ApiKeyQuotaService.deduct()  # 扣减额度
           7. UsageRecorder.recordSuccess()  # 记录日志
         → ResponseAdapter.toXXX()  # 转回外部响应格式

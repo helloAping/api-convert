@@ -12,6 +12,7 @@ import java.util.List;
  * @param keyPrefix 哈希前缀，用于排查但不能作为真实密钥
  * @param keyPreview 脱敏展示值，不能用于调用
  * @param status 密钥状态
+ * @param failoverEnabled 是否开启请求上游未写出即失败后的同模型多渠道切换
  * @param quotaBalance 剩余额度；为空表示不限总额度
  * @param quotaLimit 滑动窗口内最多可消耗的额度；为空表示不限制
  * @param quotaWindowValue 滑动窗口长度数值
@@ -27,6 +28,7 @@ public record ApiKeyVO(
     String keyPrefix,
     String keyPreview,
     String status,
+    Boolean failoverEnabled,
     BigDecimal quotaBalance,
     BigDecimal quotaLimit,
     Integer quotaWindowValue,

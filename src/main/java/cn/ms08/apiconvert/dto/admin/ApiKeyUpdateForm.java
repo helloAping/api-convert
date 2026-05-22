@@ -7,6 +7,7 @@ import java.math.BigDecimal;
  * 更新网关密钥状态、授权范围和滑动窗口限制的表单。
  *
  * @param status 密钥状态
+ * @param failoverEnabled 是否开启请求上游未写出即失败后的同模型多渠道切换
  * @param channelCodes 允许使用的渠道编码列表；空列表表示允许所有渠道
  * @param modelNames 允许使用的对外模型名列表；空列表表示允许所有模型
  * @param quotaLimit 滑动窗口内最多可消耗的额度；为空表示不限制
@@ -16,6 +17,7 @@ import java.math.BigDecimal;
  */
 public record ApiKeyUpdateForm(
     String status,
+    Boolean failoverEnabled,
     List<String> channelCodes,
     List<String> modelNames,
     BigDecimal quotaLimit,

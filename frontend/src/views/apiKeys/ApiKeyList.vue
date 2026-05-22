@@ -27,10 +27,10 @@ const showQuotaModal = ref(false)
 const editingId = ref<number | null>(null)
 // 当前正在追加额度的密钥 ID。
 const quotaEditingId = ref<number | null>(null)
-// 修改表单；channelCodes 为空表示允许所有渠道。
-const updateForm = ref<ApiKeyUpdateForm>({ status: 'ACTIVE', channelCodes: [], modelNames: [], quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null, limits: [] })
-// 创建表单；channelCodes 为空表示允许所有渠道。
-const createForm = ref<ApiKeyForm>({ name: '', channelCodes: [], modelNames: [], quotaBalance: null, quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null, limits: [] })
+// 修改表单；channelCodes 为空表示允许所有渠道，failoverEnabled 允许上游未写出即失败时换渠道。
+const updateForm = ref<ApiKeyUpdateForm>({ status: 'ACTIVE', failoverEnabled: false, channelCodes: [], modelNames: [], quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null, limits: [] })
+// 创建表单；channelCodes 为空表示允许所有渠道，failoverEnabled 默认关闭以保持单渠道失败返回。
+const createForm = ref<ApiKeyForm>({ name: '', failoverEnabled: false, channelCodes: [], modelNames: [], quotaBalance: null, quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null, limits: [] })
 // 追加额度表单，amount 必须大于 0。
 const quotaAmount = ref<number | null>(null)
 // 新生成的明文密钥，用于创建弹窗内展示和复制。
@@ -76,6 +76,12 @@ const columns: DataTableColumn<ApiKeyVO>[] = [
     key: 'limits',
     minWidth: 260,
     render: (row) => limitSummary(row.limits),
+  },
+  {
+    title: '失败切换',
+    key: 'failoverEnabled',
+    width: 100,
+    render: (row) => h(NTag, { type: row.failoverEnabled ? 'success' : 'default' }, { default: () => row.failoverEnabled ? '开启' : '关闭' }),
   },
   {
     title: '状态',
@@ -229,7 +235,7 @@ async function load() {
 }
 
 function showCreateKey() {
-  createForm.value = { name: '', channelCodes: [], modelNames: [], quotaBalance: null, quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null, limits: [] }
+  createForm.value = { name: '', failoverEnabled: false, channelCodes: [], modelNames: [], quotaBalance: null, quotaLimit: null, quotaWindowValue: null, quotaWindowUnit: null, limits: [] }
   newKey.value = ''
   showCreateModal.value = true
 }
@@ -238,6 +244,7 @@ function editStatus(item: ApiKeyVO) {
   editingId.value = item.id
   updateForm.value = {
     status: item.status,
+    failoverEnabled: Boolean(item.failoverEnabled),
     channelCodes: [...item.channelCodes],
     modelNames: [...(item.modelNames || [])],
     quotaLimit: null,
@@ -390,6 +397,9 @@ onMounted(load)
           <n-form-item label="初始额度">
             <n-input-number v-model:value="createForm.quotaBalance" :min="0" clearable placeholder="留空表示不限总额度" style="width: 100%" />
           </n-form-item>
+          <n-form-item label="失败切换">
+            <n-switch v-model:value="createForm.failoverEnabled" />
+          </n-form-item>
           <n-form-item label="限制项">
             <n-space vertical style="width: 100%">
               <n-space v-for="(limit, index) in createForm.limits" :key="index" align="center">
@@ -433,6 +443,9 @@ onMounted(load)
         <n-form :model="updateForm" label-placement="left" label-width="110">
           <n-form-item label="状态">
             <n-select v-model:value="updateForm.status" :options="activeStatuses.map(s => ({ label: statusLabel(s), value: s }))" />
+          </n-form-item>
+          <n-form-item label="失败切换">
+            <n-switch v-model:value="updateForm.failoverEnabled" />
           </n-form-item>
           <n-form-item label="可用渠道">
             <n-select

@@ -46,6 +46,10 @@ public class GatewayApiKeyEntity {
      */
     private String status;
     /**
+     * 是否允许请求在当前渠道上游未写出即失败后切换到同模型的其他授权渠道。
+     */
+    private Boolean failoverEnabled;
+    /**
      * 密钥剩余额度；为空表示不限制总额度，便于兼容历史密钥。
      */
     private BigDecimal quotaBalance;

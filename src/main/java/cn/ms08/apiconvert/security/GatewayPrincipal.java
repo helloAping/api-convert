@@ -9,7 +9,8 @@ public record GatewayPrincipal(
         Long apiKeyId,
         String name,
         Set<String> allowedChannelCodes,
-        Set<String> allowedModelNames
+        Set<String> allowedModelNames,
+        Boolean failoverEnabled
 ) {
     /**
      * 未配置渠道授权记录时表示该密钥允许使用所有渠道。
@@ -23,5 +24,12 @@ public record GatewayPrincipal(
      */
     public boolean allowAllModels() {
         return allowedModelNames == null || allowedModelNames.isEmpty();
+    }
+
+    /**
+     * 仅该密钥显式开启时，请求才会在上游未写出即失败后尝试同模型的其他渠道。
+     */
+    public boolean supportsFailover() {
+        return Boolean.TRUE.equals(failoverEnabled);
     }
 }

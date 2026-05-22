@@ -112,6 +112,17 @@ public class RoutingService {
     }
 
     /**
+     * 解析失败切换候选路由：第一个元素沿用当前路由策略，其余元素为同模型剩余可用渠道。
+     */
+    public List<ModelRoute> resolveFailoverRoutes(UnifiedChatRequest request, Long apiKeyId, Set<String> allowedChannelCodes,
+                                                  Set<String> allowedModelNames, String sessionKey) {
+        if (request == null) {
+            throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "request is required");
+        }
+        return resolveRoutes(request.model(), apiKeyId, allowedChannelCodes, allowedModelNames, hasTools(request.rawOptions()), sessionKey);
+    }
+
+    /**
      * 上游调用成功后清理该密钥在此渠道模型上的失败状态。
      */
     public void recordSuccess(Long apiKeyId, ModelRoute route) {
@@ -149,6 +160,11 @@ public class RoutingService {
 
     private ModelRoute resolve(String requestedModel, Long apiKeyId, Set<String> allowedChannelCodes,
                                Set<String> allowedModelNames, boolean requiresTools, String sessionKey) {
+        return resolveRoutes(requestedModel, apiKeyId, allowedChannelCodes, allowedModelNames, requiresTools, sessionKey).getFirst();
+    }
+
+    private List<ModelRoute> resolveRoutes(String requestedModel, Long apiKeyId, Set<String> allowedChannelCodes,
+                                           Set<String> allowedModelNames, boolean requiresTools, String sessionKey) {
         if (!StringUtils.hasText(requestedModel)) {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "model is required");
         }
@@ -167,7 +183,14 @@ public class RoutingService {
         }
         available = preferToolCapableCandidates(available, requiresTools);
         RouteCandidate selected = selectCandidate(requestedModel, apiKeyId, sessionKey, available, config);
-        return toRoute(selected);
+        List<RouteCandidate> ordered = new ArrayList<>();
+        ordered.add(selected);
+        for (RouteCandidate candidate : available) {
+            if (!candidate.identity().equals(selected.identity())) {
+                ordered.add(candidate);
+            }
+        }
+        return ordered.stream().map(this::toRoute).toList();
     }
 
     /**

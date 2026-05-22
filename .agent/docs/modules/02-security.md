@@ -33,6 +33,7 @@
 `gateway_api_key` 字段：
 - `quota_balance` — 总余额；空表示不限制总额度（兼容历史密钥）
 - `quota_limit` + `quota_window_value` + `quota_window_unit` — 旧单窗口额度字段，仅用于兼容和管理端摘要
+- `failover_enabled` — 上游未写出响应即失败后是否允许切换到同模型的其他授权渠道，默认关闭
 
 `gateway_api_key_limit` 保存可并存限制项：
 
@@ -48,6 +49,7 @@
 - `gateway_api_key_channel`：限制密钥可用渠道，空列表表示允许所有渠道
 - `gateway_api_key_model`：限制密钥可用对外模型名，空列表表示允许所有模型
 - 渠道和模型授权会同时作用于普通模型路由和 `channel/model` 直连写法
+- 同步失败切换只会在该密钥允许的渠道和模型范围内选择候选，不会绕过白名单
 
 ### 2.4 额度计算链路
 

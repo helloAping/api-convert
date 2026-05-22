@@ -127,6 +127,7 @@ public class AdminApiKeyService {
         entity.setApiKeyHash(hash);
         entity.setKeyPreview(maskRawKey(rawKey));
         entity.setStatus("ACTIVE");
+        entity.setFailoverEnabled(Boolean.TRUE.equals(form.failoverEnabled()));
         setInitialBalance(entity, form.quotaBalance());
         applyLegacyWindowConfig(entity, limits);
         apiKeyMapper.insert(entity);
@@ -134,7 +135,7 @@ public class AdminApiKeyService {
         replaceModels(entity.getId(), modelNames);
         replaceLimits(entity.getId(), limits);
         return new ApiKeyCreationVO(entity.getId(), entity.getName(), rawKey, entity.getKeyPreview(), entity.getStatus(),
-                entity.getQuotaBalance(), entity.getQuotaLimit(), entity.getQuotaWindowValue(), entity.getQuotaWindowUnit(),
+                entity.getFailoverEnabled(), entity.getQuotaBalance(), entity.getQuotaLimit(), entity.getQuotaWindowValue(), entity.getQuotaWindowUnit(),
                 channelCodes, modelNames, findLimits(entity.getId()));
     }
 
@@ -149,6 +150,9 @@ public class AdminApiKeyService {
         }
         if (StringUtils.hasText(form.status())) {
             entity.setStatus(form.status());
+        }
+        if (form.failoverEnabled() != null) {
+            entity.setFailoverEnabled(Boolean.TRUE.equals(form.failoverEnabled()));
         }
         List<ApiKeyLimitForm> limits = normalizeLimitForms(form.limits(), form.quotaLimit(), form.quotaWindowValue(), form.quotaWindowUnit());
         applyLegacyWindowConfig(entity, limits);
@@ -199,7 +203,7 @@ public class AdminApiKeyService {
     private ApiKeyVO toVO(GatewayApiKeyEntity entity) {
         String prefix = entity.getApiKeyHash().length() > 8 ? entity.getApiKeyHash().substring(0, 8) : entity.getApiKeyHash();
         return new ApiKeyVO(entity.getId(), entity.getName(), rawKey(entity), prefix, keyPreview(entity), entity.getStatus(),
-                entity.getQuotaBalance(), entity.getQuotaLimit(), entity.getQuotaWindowValue(), entity.getQuotaWindowUnit(),
+                entity.getFailoverEnabled(), entity.getQuotaBalance(), entity.getQuotaLimit(), entity.getQuotaWindowValue(), entity.getQuotaWindowUnit(),
                 findChannelCodes(entity.getId()), findModelNames(entity.getId()), findLimits(entity.getId()));
     }
 

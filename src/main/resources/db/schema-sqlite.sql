@@ -60,7 +60,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_ai_channel_model_alias ON ai_channel_model(
 CREATE INDEX IF NOT EXISTS idx_ai_channel_model_public_name ON ai_channel_model(public_name);
 
 -- 表注释：网关调用方 API Key 表，明文用于管理端复制，哈希用于鉴权匹配。
--- 字段注释：id=密钥主键；name=密钥名称；raw_key=明文密钥；api_key_hash=API Key 哈希；key_preview=脱敏展示值；status=状态；quota_balance=剩余额度，空表示不限总额度；quota_limit=滑动窗口内最多可用额度，空表示不限；quota_window_value=窗口长度数值；quota_window_unit=窗口单位 HOUR/DAY/MONTH；created_at=创建时间；updated_at=更新时间。
+-- 字段注释：id=密钥主键；name=密钥名称；raw_key=明文密钥；api_key_hash=API Key 哈希；key_preview=脱敏展示值；status=状态；failover_enabled=上游未写出即失败后是否切换同模型其他渠道；quota_balance=剩余额度，空表示不限总额度；quota_limit=滑动窗口内最多可用额度，空表示不限；quota_window_value=窗口长度数值；quota_window_unit=窗口单位 HOUR/DAY/MONTH；created_at=创建时间；updated_at=更新时间。
 CREATE TABLE IF NOT EXISTS gateway_api_key (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS gateway_api_key (
   api_key_hash TEXT NOT NULL UNIQUE,
   key_preview TEXT,
   status TEXT NOT NULL DEFAULT 'ACTIVE',
+  failover_enabled INTEGER NOT NULL DEFAULT 0,
   quota_balance NUMERIC,
   quota_limit NUMERIC,
   quota_window_value INTEGER,
@@ -167,4 +168,4 @@ VALUES
   ('routing.failure_cooldown_minutes', '0', '失败阈值触发后的避让分钟数；0 表示关闭'),
   ('routing.sticky_ttl_minutes', '1440', '会话粘性绑定保留分钟数');
 
-INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (13, 'Add API key limits and model allowlist');
+INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (14, 'Add API key channel failover switch');
