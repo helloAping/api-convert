@@ -71,6 +71,7 @@ public class AdminDashboardService {
         LocalDateTime queryStart = dailyStart.isBefore(hourlyStart) ? dailyStart : hourlyStart;
 
         List<RequestLogEntity> logs = requestLogMapper.selectList(new LambdaQueryWrapper<RequestLogEntity>()
+                .eq(RequestLogEntity::getSuccess, true)
                 .ge(RequestLogEntity::getCreatedAt, queryStart)
                 .le(RequestLogEntity::getCreatedAt, now)
                 .orderByAsc(RequestLogEntity::getCreatedAt));
