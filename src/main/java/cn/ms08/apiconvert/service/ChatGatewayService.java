@@ -161,6 +161,20 @@ public class ChatGatewayService {
                         throw exception;
                     }
                     recordProviderFailure(principal, request, route, sessionKey, exception);
+                    int retryStatus;
+                    String retryCode;
+                    String retryMsg;
+                    if (exception instanceof GatewayException gatewayException) {
+                        retryStatus = gatewayException.status().value();
+                        retryCode = gatewayException.code().name();
+                        retryMsg = gatewayException.getMessage();
+                    } else {
+                        retryStatus = HttpStatus.INTERNAL_SERVER_ERROR.value();
+                        retryCode = ErrorCode.INTERNAL_ERROR.name();
+                        retryMsg = exception.getMessage() != null ? exception.getMessage() : exception.getClass().getSimpleName();
+                    }
+                    usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), stream,
+                            retryStatus, System.currentTimeMillis() - start, retryCode, retryMsg);
                     log.warn("同步请求当前渠道失败，切换备用渠道继续尝试：模型={}、失败渠道={}、错误类型={}、错误={}",
                             request.model(), route.providerCode(), exception.getClass().getSimpleName(), exception.getMessage(), exception);
                 }
@@ -300,6 +314,24 @@ public class ChatGatewayService {
                 } catch (Exception exception) {
                     if (shouldTryNextRoute(principal, index, routes, exception, attemptOutput)) {
                         recordProviderFailure(principal, request, route, sessionKey, exception);
+                        int retryStatus;
+                        String retryCode;
+                        String retryMsg;
+                        if (exception instanceof GatewayException gatewayException) {
+                            retryStatus = gatewayException.status().value();
+                            retryCode = gatewayException.code().name();
+                            retryMsg = gatewayException.getMessage();
+                        } else if (exception instanceof ProviderException providerException) {
+                            retryStatus = providerException.status().value();
+                            retryCode = providerException.code().name();
+                            retryMsg = providerException.getMessage();
+                        } else {
+                            retryStatus = HttpStatus.INTERNAL_SERVER_ERROR.value();
+                            retryCode = ErrorCode.INTERNAL_ERROR.name();
+                            retryMsg = exception.getMessage() != null ? exception.getMessage() : exception.getClass().getSimpleName();
+                        }
+                        usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), true,
+                                retryStatus, System.currentTimeMillis() - start, retryCode, retryMsg);
                         log.warn("流式请求当前渠道未写出即失败，切换备用渠道继续尝试：模型={}、失败渠道={}、错误类型={}、错误={}",
                                 request.model(), route.providerCode(), exception.getClass().getSimpleName(), exception.getMessage(), exception);
                         wrappedStream = null;
