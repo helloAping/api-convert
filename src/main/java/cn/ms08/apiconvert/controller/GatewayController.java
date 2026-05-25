@@ -38,6 +38,16 @@ public class GatewayController {
         endpointRegistry.get(EndpointType.OPENAI_RESPONSES).handle(request, response);
     }
 
+    @PostMapping("/v1/videos")
+    public void videos(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        endpointRegistry.get(EndpointType.OPENAI_VIDEOS).handle(request, response);
+    }
+
+    @PostMapping("/v1/images/generations")
+    public void images(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        endpointRegistry.get(EndpointType.OPENAI_IMAGES).handle(request, response);
+    }
+
     @GetMapping("/v1/models")
     public void models(HttpServletRequest request, HttpServletResponse response) throws IOException {
         endpointRegistry.get(EndpointType.OPENAI_MODELS).handle(request, response);

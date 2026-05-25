@@ -26,6 +26,8 @@ public record ChannelForm(
     String type,
     String baseUrl,
     String chatPath,
+    String videoPath,
+    String imagePath,
     String modelsPath,
     String apiKey,
     String authMode,

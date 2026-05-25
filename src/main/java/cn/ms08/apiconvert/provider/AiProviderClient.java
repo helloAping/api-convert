@@ -1,6 +1,8 @@
 package cn.ms08.apiconvert.provider;
 
 import cn.ms08.apiconvert.dto.ModelRoute;
+import cn.ms08.apiconvert.dto.OpenAiImageRequest;
+import cn.ms08.apiconvert.dto.OpenAiVideoRequest;
 import cn.ms08.apiconvert.dto.ProviderModel;
 import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
 import cn.ms08.apiconvert.dto.ProviderQuota;
@@ -10,6 +12,8 @@ import cn.ms08.apiconvert.dto.UnifiedChatResponse;
 import cn.ms08.apiconvert.dto.UnifiedUsage;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.ProviderException;
+import cn.ms08.apiconvert.vo.OpenAiImageResponse;
+import cn.ms08.apiconvert.vo.OpenAiVideoResponse;
 import org.springframework.http.HttpStatus;
 
 import java.io.OutputStream;
@@ -42,6 +46,22 @@ public interface AiProviderClient {
      */
     default UnifiedUsage streamChat(ModelRoute route, UnifiedChatRequest request, OutputStream outputStream) {
         throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST, "stream is not supported for provider type " + type());
+    }
+
+    /**
+     * 向支持 OpenAI Videos API 的供应商发起视频生成请求；未实现的供应商默认返回不支持。
+     */
+    default OpenAiVideoResponse generateVideo(ModelRoute route, OpenAiVideoRequest request) {
+        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                "video generation is not supported for provider type " + type());
+    }
+
+    /**
+     * 向支持 OpenAI Images API 的供应商发起图片生成请求；未实现的供应商默认返回不支持。
+     */
+    default OpenAiImageResponse generateImage(ModelRoute route, OpenAiImageRequest request) {
+        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                "image generation is not supported for provider type " + type());
     }
 
     /**

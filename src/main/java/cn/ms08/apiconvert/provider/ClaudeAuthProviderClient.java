@@ -76,7 +76,8 @@ public class ClaudeAuthProviderClient extends AnthropicProviderClient {
             throw new ProviderException(ErrorCode.PROVIDER_AUTH_FAILED, HttpStatus.BAD_GATEWAY, "CLAUDE_AUTH 授权文件缺少 access_token");
         }
         return new ModelRoute(route.publicModel(), route.providerCode(), route.providerType(), route.providerModel(),
-                route.baseUrl(), route.chatPath(), accessToken, route.authMode(), route.authFilePath(),
+                route.baseUrl(), route.chatPath(), route.videoPath(), route.imagePath(), accessToken,
+                route.authMode(), route.authFilePath(),
                 route.inputQuotaPerMillion(), route.outputQuotaPerMillion(), route.cacheReadQuotaPerMillion());
     }
 }

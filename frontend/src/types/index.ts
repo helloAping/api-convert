@@ -27,6 +27,10 @@ export interface ChannelVO {
   baseUrl: string
   /** 供应商特定的对话或消息请求路径。 */
   chatPath: string
+  /** 供应商特定的视频生成请求路径。 */
+  videoPath: string
+  /** 供应商特定的图片生成请求路径。 */
+  imagePath: string
   /** 供应商特定的模型列表请求路径。 */
   modelsPath: string
   /** 渠道密钥兼容字段，当前等同于渠道 ID。 */
@@ -268,6 +272,10 @@ export interface ChannelForm {
   baseUrl: string
   /** 供应商特定的对话或消息请求路径。 */
   chatPath: string
+  /** 供应商特定的视频生成请求路径。 */
+  videoPath: string
+  /** 供应商特定的图片生成请求路径。 */
+  imagePath: string
   /** 供应商特定的模型列表请求路径。 */
   modelsPath: string
   /** 原始供应商密钥；更新时为空表示保留现有密钥。 */

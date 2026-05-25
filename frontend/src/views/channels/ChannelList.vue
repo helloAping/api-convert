@@ -40,6 +40,8 @@ const columns: DataTableColumn<ChannelVO>[] = [
   { title: '供应商', key: 'type', width: 150, render: (row) => channelTypeLabel(row.type) },
   { title: 'Base URL', key: 'baseUrl', ellipsis: { tooltip: true } },
   { title: '请求路径', key: 'chatPath', width: 180 },
+  { title: '视频接口路径', key: 'videoPath', width: 170 },
+  { title: '图片接口路径', key: 'imagePath', width: 190 },
   { title: '模型数', key: 'modelCount', width: 90 },
   { title: '密钥', key: 'apiKey', width: 140 },
   {
@@ -80,6 +82,8 @@ function emptyForm(): ChannelForm {
     type: 'OPENAI_COMPATIBLE',
     baseUrl: '',
     chatPath: '/v1/chat/completions',
+    videoPath: '/v1/videos',
+    imagePath: '/v1/images/generations',
     modelsPath: '/v1/models',
     apiKey: '',
     authMode: 'API_KEY',
@@ -118,18 +122,18 @@ function channelTypeLabel(type: string) {
 
 // 供应商类型变化时切换默认请求路径和模型列表路径。
 function handleTypeChange(type: string) {
-  const defaults: Record<string, { baseUrl: string; chatPath: string; modelsPath: string }> = {
-    OPENAI_COMPATIBLE: { baseUrl: '', chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
-    ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', modelsPath: '/v1/models' },
-    OPENAI_RESPONSES: { baseUrl: '', chatPath: '/v1/responses', modelsPath: '/v1/models' },
-    GPT_AUTH: { baseUrl: 'https://api.openai.com', chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
-    CLAUDE_AUTH: { baseUrl: 'https://api.anthropic.com', chatPath: '/v1/messages', modelsPath: '/v1/models' },
-    DEEPSEEK_CHAT: { baseUrl: '', chatPath: '/v1/chat/completions', modelsPath: '/v1/models' },
-    DEEPSEEK_ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', modelsPath: '/v1/models' },
-    GEMINI: { baseUrl: '', chatPath: '/v1beta/models', modelsPath: '/v1beta/models' },
+  const defaults: Record<string, { baseUrl: string; chatPath: string; videoPath: string; imagePath: string; modelsPath: string }> = {
+    OPENAI_COMPATIBLE: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    OPENAI_RESPONSES: { baseUrl: '', chatPath: '/v1/responses', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    GPT_AUTH: { baseUrl: 'https://api.openai.com', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    CLAUDE_AUTH: { baseUrl: 'https://api.anthropic.com', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    DEEPSEEK_CHAT: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    DEEPSEEK_ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    GEMINI: { baseUrl: '', chatPath: '/v1beta/models', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1beta/models' },
   }
   // 收集所有默认路径，用于判断用户是否手动修改过
-  const defaultPaths = new Set(Object.values(defaults).flatMap(d => [d.chatPath, d.modelsPath]))
+  const defaultPaths = new Set(Object.values(defaults).flatMap(d => [d.chatPath, d.videoPath, d.imagePath, d.modelsPath]))
   const newDefault = defaults[type]
   if (!newDefault) return
   if (isAuthType(type)) {
@@ -138,6 +142,12 @@ function handleTypeChange(type: string) {
   // 仅当当前路径仍然匹配任意默认值时自动切换，用户手动修改过的路径不会被覆盖
   if (defaultPaths.has(form.value.chatPath)) {
     form.value.chatPath = newDefault.chatPath
+  }
+  if (defaultPaths.has(form.value.videoPath)) {
+    form.value.videoPath = newDefault.videoPath
+  }
+  if (defaultPaths.has(form.value.imagePath)) {
+    form.value.imagePath = newDefault.imagePath
   }
   if (defaultPaths.has(form.value.modelsPath)) {
     form.value.modelsPath = newDefault.modelsPath
@@ -259,6 +269,8 @@ function edit(item: ChannelVO) {
     type: item.type,
     baseUrl: item.baseUrl,
     chatPath: item.chatPath,
+    videoPath: item.videoPath || '/v1/videos',
+    imagePath: item.imagePath || '/v1/images/generations',
     modelsPath: item.modelsPath,
     apiKey: '',
     authMode: item.authMode || (isAuthType(item.type) ? 'AUTH_FILE' : 'API_KEY'),
@@ -457,6 +469,12 @@ onMounted(load)
           </n-form-item>
           <n-form-item v-if="!isAuthType(form.type)" label="请求路径">
             <n-input v-model:value="form.chatPath" placeholder="例如：/v1/chat/completions 或 /v1/messages" />
+          </n-form-item>
+          <n-form-item v-if="!isAuthType(form.type)" label="视频接口路径">
+            <n-input v-model:value="form.videoPath" placeholder="例如：/v1/videos" />
+          </n-form-item>
+          <n-form-item v-if="!isAuthType(form.type)" label="图片接口路径">
+            <n-input v-model:value="form.imagePath" placeholder="例如：/v1/images/generations" />
           </n-form-item>
           <n-form-item v-if="!isAuthType(form.type)" label="模型列表路径">
             <n-input v-model:value="form.modelsPath" placeholder="例如：/v1/models" />

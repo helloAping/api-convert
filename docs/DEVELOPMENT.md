@@ -39,6 +39,8 @@
 | `POST /v1/chat/completions` | `ChatCompletionsEndpointHandler` | OpenAI Chat Completions 入口，支持流式 |
 | `POST /v1/messages` | `AnthropicMessagesEndpointHandler` | Anthropic Messages 入口，支持流式 |
 | `POST /v1/responses` | `OpenAiResponsesEndpointHandler` | OpenAI Responses API 入口，支持流式 |
+| `POST /v1/videos` | `OpenAiVideosEndpointHandler` | OpenAI Videos API 入口，非流式视频生成 |
+| `POST /v1/images/generations` | `OpenAiImagesEndpointHandler` | OpenAI Images API 入口，非流式图片生成 |
 
 新增公开端点时：
 
@@ -53,10 +55,10 @@
 
 | 类型 | Client | 上游协议 |
 |---|---|---|
-| `OPENAI_COMPATIBLE` | `OpenAiCompatibleProviderClient` | Chat Completions |
+| `OPENAI_COMPATIBLE` | `OpenAiCompatibleProviderClient` | Chat Completions + Videos + Images |
 | `ANTHROPIC` | `AnthropicProviderClient` | Messages |
 | `OPENAI_RESPONSES` | `OpenAiResponsesProviderClient` | Responses API |
-| `GPT_AUTH` | `GptAuthProviderClient` | Chat Completions + auth.json |
+| `GPT_AUTH` | `GptAuthProviderClient` | Chat Completions + Videos + Images + auth.json |
 | `CLAUDE_AUTH` | `ClaudeAuthProviderClient` | Messages + auth.json |
 | `DEEPSEEK_CHAT` | `DeepSeekChatProviderClient` | Chat Completions + reasoning |
 | `DEEPSEEK_ANTHROPIC` | `DeepSeekAnthropicProviderClient` | Messages + thinking |
@@ -156,6 +158,10 @@
 - CRUD 页面遵循：表格、弹窗表单、API 调用、toast 错误提示。
 - 网关密钥和上游密钥只显示脱敏值；创建密钥时允许复制原文，其他场景不要暴露明文。
 - 渠道模型选择要按上游模型 ID 去重，避免同一渠道重复保存模型。
+
+## JDK 25 安装
+
+项目必须使用 JDK 25 编译和运行。创建目录、克隆仓库、下载 JDK 和启动脚本示例见根目录 [README.md](../README.md#下载-jdk-并启动)。
 
 ## 测试与验证
 

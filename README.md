@@ -6,7 +6,7 @@
 
 ## 核心特性
 
-- 兼容端点：`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、`/v1/models`
+- 兼容端点：`/v1/chat/completions`、`/v1/responses`、`/v1/videos`、`/v1/images/generations`、`/v1/messages`、`/v1/models`
 - 上游类型：OpenAI 兼容、Anthropic、OpenAI Responses、GPT_AUTH、CLAUDE_AUTH、DeepSeek Chat、DeepSeek Anthropic、Gemini
 - 协议适配：Chat Completions、Anthropic Messages、Responses API、DeepSeek、Gemini 之间按端点和上游类型转换
 - 路由策略：随机、轮询、加权、会话粘性、工具请求优先、失败避让
@@ -29,21 +29,79 @@
 
 前置要求：
 
-- JDK 25
+- Git
 - Node.js 与 npm
-- 仓库内 Maven Wrapper：`mvnw.cmd` / `mvnw`
+- 仓库内 Maven Wrapper：`mvnw.cmd` / `mvnw`，由启动脚本内部调用
+
+### 下载 JDK 并启动
+
+JDK 建议解压到仓库同级目录，不要放进 `api-convert` git 工作树。Maven 相关操作、后端启动和前端启动都由启动脚本内部封装。
 
 Windows PowerShell：
 
 ```powershell
-.\scripts\start.ps1
+mkdir api-convert-work
+cd api-convert-work
+git clone https://gitee.com/skwyl/api-convert.git
+
+Invoke-WebRequest `
+  -Uri "https://api.adoptium.net/v3/binary/latest/25/ga/windows/x64/jdk/hotspot/normal/eclipse" `
+  -OutFile "jdk-25.zip"
+mkdir jdk-25
+tar -xf jdk-25.zip -C jdk-25 --strip-components=1
+
+cd api-convert
+.\scripts\start.ps1 -JavaHome "..\jdk-25" `
+  -AdminUsername admin `
+  -AdminPassword "change-me"
 ```
 
-Linux / macOS / Git Bash：
+Linux x64：
 
 ```bash
-./scripts/start.sh
+mkdir -p api-convert-work
+cd api-convert-work
+git clone https://gitee.com/skwyl/api-convert.git
+
+curl -L "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse" \
+  -o jdk-25.tar.gz
+mkdir -p jdk-25
+tar -xzf jdk-25.tar.gz -C jdk-25 --strip-components=1
+
+cd api-convert
+./scripts/start.sh --java-home ../jdk-25 \
+  --admin-username admin \
+  --admin-password 'change-me'
 ```
+
+macOS Apple Silicon：
+
+```bash
+mkdir -p api-convert-work
+cd api-convert-work
+git clone https://gitee.com/skwyl/api-convert.git
+
+curl -L "https://api.adoptium.net/v3/binary/latest/25/ga/mac/aarch64/jdk/hotspot/normal/eclipse" \
+  -o jdk-25.tar.gz
+mkdir -p jdk-25
+tar -xzf jdk-25.tar.gz -C jdk-25 --strip-components=3
+
+cd api-convert
+./scripts/start.sh --java-home ../jdk-25 \
+  --admin-username admin \
+  --admin-password 'change-me'
+```
+
+macOS Intel 把上面 URL 中的 `aarch64` 改成 `x64`。
+
+国内镜像目录：
+
+| 系统 | 清华 TUNA 镜像目录 |
+|---|---|
+| Windows x64 | `https://mirrors.tuna.tsinghua.edu.cn/Adoptium/25/jdk/x64/windows/` |
+| Linux x64 | `https://mirrors.tuna.tsinghua.edu.cn/Adoptium/25/jdk/x64/linux/` |
+| macOS Intel | `https://mirrors.tuna.tsinghua.edu.cn/Adoptium/25/jdk/x64/mac/` |
+| macOS Apple Silicon | `https://mirrors.tuna.tsinghua.edu.cn/Adoptium/25/jdk/aarch64/mac/` |
 
 启动后：
 
@@ -51,18 +109,28 @@ Linux / macOS / Git Bash：
 - 前端开发服务：`http://localhost:5173`
 - 默认管理账号：`admin / admin123`
 
-指定 JDK、管理员密码或 MySQL：
+更多启动参数示例：
 
 ```powershell
-.\scripts\start.ps1 -JavaHome 'D:\path\to\jdk-25' `
+.\scripts\start.ps1 -JavaHome '..\jdk-25' `
   -AdminUsername admin `
-  -AdminPassword 'change-me'
+  -AdminPassword 'change-me' `
+  -BackendPort 8080 `
+  -DbType mysql `
+  -DatasourceUrl 'jdbc:mysql://127.0.0.1:3306/api_convert?useSSL=false&serverTimezone=Asia/Shanghai' `
+  -DatasourceUsername root `
+  -DatasourcePassword 'mysql-password'
 ```
 
 ```bash
-./scripts/start.sh --java-home /path/to/jdk-25 \
+./scripts/start.sh --java-home ../jdk-25 \
   --admin-username admin \
-  --admin-password 'change-me'
+  --admin-password 'change-me' \
+  --backend-port 8080 \
+  --db-type mysql \
+  --datasource-url 'jdbc:mysql://127.0.0.1:3306/api_convert?useSSL=false&serverTimezone=Asia/Shanghai' \
+  --datasource-username root \
+  --datasource-password 'mysql-password'
 ```
 
 生产环境不要使用默认管理端密码。更多环境变量见 [开发文档](docs/DEVELOPMENT.md#配置项)。
@@ -108,6 +176,24 @@ curl -X POST http://localhost:8080/v1/responses \
   -H "Authorization: Bearer <gateway-api-key>" \
   -H "Content-Type: application/json" \
   -d '{"model":"example-chat","input":"hello","stream":false}'
+```
+
+OpenAI Videos API：
+
+```bash
+curl -X POST http://localhost:8080/v1/videos \
+  -H "Authorization: Bearer <gateway-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"example-video","prompt":"A cinematic city skyline at sunset","seconds":4,"size":"1280x720"}'
+```
+
+OpenAI Images API：
+
+```bash
+curl -X POST http://localhost:8080/v1/images/generations \
+  -H "Authorization: Bearer <gateway-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"example-image","prompt":"A clean product render on a white background","size":"1024x1024","n":1}'
 ```
 
 ## 管理端使用流程
@@ -161,18 +247,14 @@ proxy_set_header Authorization $http_authorization;
 
 ## 构建与测试
 
-后端：
+本地启动和后端构建由启动脚本封装，直接通过脚本指定 JDK 路径：
 
-```bash
-JAVA_HOME=/path/to/jdk-25 PATH=/path/to/jdk-25/bin:$PATH mvn -q test
+```powershell
+.\scripts\start.ps1 -JavaHome "..\jdk-25"
 ```
 
-前端：
-
 ```bash
-cd frontend
-npm install
-npm run build
+./scripts/start.sh --java-home ../jdk-25
 ```
 
 ## 开源协议

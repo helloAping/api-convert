@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS ai_channel (
   type VARCHAR(64) NOT NULL COMMENT '协议类型，例如 OPENAI_COMPATIBLE 或 ANTHROPIC',
   base_url VARCHAR(1024) NOT NULL COMMENT '上游基础地址',
   chat_path VARCHAR(512) NOT NULL DEFAULT '/v1/chat/completions' COMMENT '对话或消息请求路径',
+  video_path VARCHAR(512) NOT NULL DEFAULT '/v1/videos' COMMENT '视频生成请求路径',
+  image_path VARCHAR(512) NOT NULL DEFAULT '/v1/images/generations' COMMENT '图片生成请求路径',
   models_path VARCHAR(512) NOT NULL DEFAULT '/v1/models' COMMENT '模型列表请求路径',
   api_key TEXT COMMENT '上游 API Key，返回前和日志中必须脱敏',
   auth_mode VARCHAR(32) NOT NULL DEFAULT 'API_KEY' COMMENT '鉴权模式：API_KEY、AUTH_FILE、OAUTH',
@@ -145,4 +147,4 @@ VALUES
   ('routing.failure_cooldown_minutes', '0', '失败阈值触发后的避让分钟数；0 表示关闭'),
   ('routing.sticky_ttl_minutes', '1440', '会话粘性绑定保留分钟数');
 
-INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (14, 'Add API key channel failover switch');
+INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (15, 'Add channel image and video endpoint paths');

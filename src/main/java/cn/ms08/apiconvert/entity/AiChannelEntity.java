@@ -45,6 +45,14 @@ public class AiChannelEntity {
      */
     private String chatPath;
     /**
+     * 视频生成请求路径，用于 OpenAI Videos API 或兼容供应商的自定义路径。
+     */
+    private String videoPath;
+    /**
+     * 图片生成请求路径，用于 OpenAI Images API 或兼容供应商的自定义路径。
+     */
+    private String imagePath;
+    /**
      * 模型列表请求路径。
      */
     private String modelsPath;

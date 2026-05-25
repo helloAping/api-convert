@@ -591,6 +591,8 @@ public class ChatGatewayService {
             case CHAT_COMPLETIONS -> "chat_completions";
             case ANTHROPIC_MESSAGES -> "messages";
             case OPENAI_RESPONSES -> "responses";
+            case OPENAI_VIDEOS -> "videos";
+            case OPENAI_IMAGES -> "images";
             case OPENAI_MODELS -> "models";
             case HEALTH -> "health";
         };

@@ -48,6 +48,14 @@ public class AdminChannelService {
      */
     private static final String DEFAULT_CHAT_PATH = "/v1/chat/completions";
     /**
+     * OpenAI 兼容渠道默认视频生成路径。
+     */
+    private static final String DEFAULT_VIDEO_PATH = "/v1/videos";
+    /**
+     * OpenAI 兼容渠道默认图片生成路径。
+     */
+    private static final String DEFAULT_IMAGE_PATH = "/v1/images/generations";
+    /**
      * Anthropic 风格渠道的默认消息路径。
      */
     private static final String DEFAULT_ANTHROPIC_PATH = "/v1/messages";
@@ -305,6 +313,8 @@ public class AdminChannelService {
         if (StringUtils.hasText(form.baseUrl())) channel.setBaseUrl(form.baseUrl());
         else if (creating || isAuthProvider(channel.getType())) channel.setBaseUrl(defaultBaseUrl(channel.getType()));
         if (StringUtils.hasText(form.chatPath())) channel.setChatPath(form.chatPath()); else if (creating) channel.setChatPath(defaultPath(channel.getType(), null));
+        if (StringUtils.hasText(form.videoPath())) channel.setVideoPath(form.videoPath()); else if (creating) channel.setVideoPath(DEFAULT_VIDEO_PATH);
+        if (StringUtils.hasText(form.imagePath())) channel.setImagePath(form.imagePath()); else if (creating) channel.setImagePath(DEFAULT_IMAGE_PATH);
         if (StringUtils.hasText(form.modelsPath())) channel.setModelsPath(form.modelsPath()); else if (creating) channel.setModelsPath(DEFAULT_MODELS_PATH);
         if (StringUtils.hasText(form.apiKey())) channel.setApiKey(form.apiKey());
         if (StringUtils.hasText(form.authMode())) channel.setAuthMode(form.authMode());
@@ -330,6 +340,8 @@ public class AdminChannelService {
                 channel.getEnabled(),
                 channel.getBaseUrl(),
                 channel.getChatPath(),
+                channel.getVideoPath(),
+                channel.getImagePath(),
                 channel.getModelsPath(),
                 channel.getId(),
                 channel.getName() + " 密钥",

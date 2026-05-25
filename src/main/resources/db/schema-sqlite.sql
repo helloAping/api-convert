@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS ai_channel (
   type TEXT NOT NULL,
   base_url TEXT NOT NULL,
   chat_path TEXT NOT NULL DEFAULT '/v1/chat/completions',
+  video_path TEXT NOT NULL DEFAULT '/v1/videos',
+  image_path TEXT NOT NULL DEFAULT '/v1/images/generations',
   models_path TEXT NOT NULL DEFAULT '/v1/models',
   api_key TEXT,
   auth_mode TEXT NOT NULL DEFAULT 'API_KEY',
@@ -168,4 +170,4 @@ VALUES
   ('routing.failure_cooldown_minutes', '0', '失败阈值触发后的避让分钟数；0 表示关闭'),
   ('routing.sticky_ttl_minutes', '1440', '会话粘性绑定保留分钟数');
 
-INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (14, 'Add API key channel failover switch');
+INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (15, 'Add channel image and video endpoint paths');
