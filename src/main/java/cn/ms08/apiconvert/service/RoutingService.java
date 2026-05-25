@@ -87,6 +87,14 @@ public class RoutingService {
     }
 
     /**
+     * 非对话类端点按模型名复用相同路由、授权和避让规则，但不要求工具调用能力。
+     */
+    public ModelRoute resolveModel(String requestedModel, Long apiKeyId, Set<String> allowedChannelCodes,
+                                   Set<String> allowedModelNames) {
+        return resolve(requestedModel, apiKeyId, allowedChannelCodes, allowedModelNames, false, null);
+    }
+
+    /**
      * 按统一请求解析路由，自动识别工具调用请求。
      */
     public ModelRoute resolve(UnifiedChatRequest request, Set<String> allowedChannelCodes) {
@@ -367,7 +375,8 @@ public class RoutingService {
         AiChannelModelEntity model = selected.model();
         AiChannelEntity channel = selected.channel();
         return new ModelRoute(model.getPublicName(), channel.getCode(), ProviderType.valueOf(channel.getType()),
-                model.getProviderModel(), channel.getBaseUrl(), channel.getChatPath(), channel.getApiKey(),
+                model.getProviderModel(), channel.getBaseUrl(), channel.getChatPath(), channel.getVideoPath(),
+                channel.getImagePath(), channel.getApiKey(),
                 channel.getAuthMode(), channel.getAuthFilePath(),
                 model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion());
     }

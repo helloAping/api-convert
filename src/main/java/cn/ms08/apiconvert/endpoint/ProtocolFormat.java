@@ -41,6 +41,8 @@ public final class ProtocolFormat {
             case CHAT_COMPLETIONS -> OPENAI;
             case OPENAI_RESPONSES -> OPENAI_RESPONSE;
             case ANTHROPIC_MESSAGES -> CLAUDE;
+            case OPENAI_VIDEOS -> OPENAI;
+            case OPENAI_IMAGES -> OPENAI;
             case OPENAI_MODELS -> OPENAI;
             case HEALTH -> "health";
         };

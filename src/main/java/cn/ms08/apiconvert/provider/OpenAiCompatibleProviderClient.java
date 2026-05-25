@@ -3,6 +3,8 @@ package cn.ms08.apiconvert.provider;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
 import cn.ms08.apiconvert.dto.OpenAiChatCompletionRequest;
+import cn.ms08.apiconvert.dto.OpenAiImageRequest;
+import cn.ms08.apiconvert.dto.OpenAiVideoRequest;
 import cn.ms08.apiconvert.dto.ProviderModel;
 import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
 import cn.ms08.apiconvert.dto.ProviderQuota;
@@ -15,6 +17,8 @@ import cn.ms08.apiconvert.dto.UnifiedUsage;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.ProviderException;
 import cn.ms08.apiconvert.logging.LogSanitizer;
+import cn.ms08.apiconvert.vo.OpenAiImageResponse;
+import cn.ms08.apiconvert.vo.OpenAiVideoResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -151,6 +155,72 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
         } catch (RestClientException exception) {
             throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
                     "Provider stream request failed: " + exception.getMessage());
+        }
+    }
+
+    /**
+     * OpenAI 兼容视频生成使用渠道配置的视频路径，模型名按渠道映射替换后透传其余参数。
+     */
+    @Override
+    public OpenAiVideoResponse generateVideo(ModelRoute route, OpenAiVideoRequest request) {
+        OpenAiVideoRequest providerRequest = request.copyForProviderModel(route.providerModel());
+        try {
+            OpenAiVideoResponse response = restClientBuilder.clone()
+                    .baseUrl(route.baseUrl())
+                    .build()
+                    .post()
+                    .uri(route.resolvedVideoPath())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("Authorization", "Bearer " + route.apiKey())
+                    .body(providerRequest)
+                    .retrieve()
+                    .body(OpenAiVideoResponse.class);
+            if (response == null) {
+                throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY, "Provider returned empty response");
+            }
+            response.setModel(route.publicModel());
+            return response;
+        } catch (ProviderException exception) {
+            throw exception;
+        } catch (RestClientResponseException exception) {
+            int status = exception.getStatusCode().value();
+            throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
+                    upstreamError(prefix(status), exception));
+        } catch (RestClientException exception) {
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider video request failed: " + exception.getMessage());
+        }
+    }
+
+    /**
+     * OpenAI 兼容图片生成使用渠道配置的图片路径，模型名按渠道映射替换后透传其余参数。
+     */
+    @Override
+    public OpenAiImageResponse generateImage(ModelRoute route, OpenAiImageRequest request) {
+        OpenAiImageRequest providerRequest = request.copyForProviderModel(route.providerModel());
+        try {
+            OpenAiImageResponse response = restClientBuilder.clone()
+                    .baseUrl(route.baseUrl())
+                    .build()
+                    .post()
+                    .uri(route.resolvedImagePath())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("Authorization", "Bearer " + route.apiKey())
+                    .body(providerRequest)
+                    .retrieve()
+                    .body(OpenAiImageResponse.class);
+            if (response == null) {
+                throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY, "Provider returned empty response");
+            }
+            response.setModel(route.publicModel());
+            return response;
+        } catch (ProviderException exception) {
+            throw exception;
+        } catch (RestClientResponseException exception) {
+            int status = exception.getStatusCode().value();
+            throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
+                    upstreamError(prefix(status), exception));
+        } catch (RestClientException exception) {
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider image request failed: " + exception.getMessage());
         }
     }
 

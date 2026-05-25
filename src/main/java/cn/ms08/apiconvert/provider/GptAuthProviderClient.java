@@ -3,6 +3,8 @@ package cn.ms08.apiconvert.provider;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
 import cn.ms08.apiconvert.dto.ModelRoute;
+import cn.ms08.apiconvert.dto.OpenAiImageRequest;
+import cn.ms08.apiconvert.dto.OpenAiVideoRequest;
 import cn.ms08.apiconvert.dto.ProviderModel;
 import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
 import cn.ms08.apiconvert.dto.ProviderQuota;
@@ -13,6 +15,8 @@ import cn.ms08.apiconvert.dto.UnifiedUsage;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.ProviderException;
 import cn.ms08.apiconvert.service.auth.AuthFileService;
+import cn.ms08.apiconvert.vo.OpenAiImageResponse;
+import cn.ms08.apiconvert.vo.OpenAiVideoResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -50,6 +54,16 @@ public class GptAuthProviderClient extends OpenAiCompatibleProviderClient {
     }
 
     @Override
+    public OpenAiVideoResponse generateVideo(ModelRoute route, OpenAiVideoRequest request) {
+        return super.generateVideo(withAccessToken(route), request);
+    }
+
+    @Override
+    public OpenAiImageResponse generateImage(ModelRoute route, OpenAiImageRequest request) {
+        return super.generateImage(withAccessToken(route), request);
+    }
+
+    @Override
     public java.util.List<ProviderModel> models(ProviderModelFetchRequest request) {
         return super.models(request);
     }
@@ -68,7 +82,8 @@ public class GptAuthProviderClient extends OpenAiCompatibleProviderClient {
             throw new ProviderException(ErrorCode.PROVIDER_AUTH_FAILED, HttpStatus.BAD_GATEWAY, "GPT_AUTH 授权文件缺少 access_token");
         }
         return new ModelRoute(route.publicModel(), route.providerCode(), route.providerType(), route.providerModel(),
-                route.baseUrl(), route.chatPath(), accessToken, route.authMode(), route.authFilePath(),
+                route.baseUrl(), route.chatPath(), route.videoPath(), route.imagePath(), accessToken,
+                route.authMode(), route.authFilePath(),
                 route.inputQuotaPerMillion(), route.outputQuotaPerMillion(), route.cacheReadQuotaPerMillion());
     }
 }

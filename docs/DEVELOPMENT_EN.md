@@ -39,6 +39,8 @@ The main request flow is:
 | `POST /v1/chat/completions` | `ChatCompletionsEndpointHandler` | OpenAI Chat Completions entry, streaming supported |
 | `POST /v1/messages` | `AnthropicMessagesEndpointHandler` | Anthropic Messages entry, streaming supported |
 | `POST /v1/responses` | `OpenAiResponsesEndpointHandler` | OpenAI Responses API entry, streaming supported |
+| `POST /v1/videos` | `OpenAiVideosEndpointHandler` | OpenAI Videos API entry, non-streaming video generation |
+| `POST /v1/images/generations` | `OpenAiImagesEndpointHandler` | OpenAI Images API entry, non-streaming image generation |
 
 To add a public endpoint:
 
@@ -53,10 +55,10 @@ Current usable provider types:
 
 | Type | Client | Upstream Protocol |
 |---|---|---|
-| `OPENAI_COMPATIBLE` | `OpenAiCompatibleProviderClient` | Chat Completions |
+| `OPENAI_COMPATIBLE` | `OpenAiCompatibleProviderClient` | Chat Completions + Videos + Images |
 | `ANTHROPIC` | `AnthropicProviderClient` | Messages |
 | `OPENAI_RESPONSES` | `OpenAiResponsesProviderClient` | Responses API |
-| `GPT_AUTH` | `GptAuthProviderClient` | Chat Completions + auth.json |
+| `GPT_AUTH` | `GptAuthProviderClient` | Chat Completions + Videos + Images + auth.json |
 | `CLAUDE_AUTH` | `ClaudeAuthProviderClient` | Messages + auth.json |
 | `DEEPSEEK_CHAT` | `DeepSeekChatProviderClient` | Chat Completions + reasoning |
 | `DEEPSEEK_ANTHROPIC` | `DeepSeekAnthropicProviderClient` | Messages + thinking |
@@ -156,6 +158,10 @@ Limit types:
 - CRUD pages follow table + modal form + API call + toast error handling.
 - Gateway keys and upstream keys are displayed desensitized. Raw gateway keys are only shown immediately after creation for admin copy.
 - Channel model selection must deduplicate by upstream model ID to avoid duplicate mappings in the same channel.
+
+## JDK 25 Installation
+
+The project must be built and run with JDK 25. Directory creation, JDK download, repository clone, and start-script examples are documented in the root [README_EN.md](../README_EN.md#download-jdk-and-start).
 
 ## Tests and Verification
 

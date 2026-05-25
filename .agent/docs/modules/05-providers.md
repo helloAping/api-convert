@@ -11,7 +11,7 @@
 | 组件 | 说明 |
 |---|---|
 | `ProviderType` 枚举 | 供应商类型标识，渠道创建时选择，自动推导 `chatPath` |
-| `AiProviderClient` 接口 | 策略接口：`chat()`、`streamChat()`、`supportsStreaming()`、`fetchModels()`、`fetchQuota()` |
+| `AiProviderClient` 接口 | 策略接口：`chat()`、`streamChat()`、`supportsStreaming()`、`generateVideo()`、`generateImage()`、`models()`、`quota()` |
 | `ProviderClientRegistry` | Spring 组件，构建 `EnumMap<ProviderType, AiProviderClient>` 注册表 |
 | `ProviderException` | 上游调用失败时抛出，含状态码和上游错误体 |
 
@@ -19,10 +19,10 @@
 
 | Provider | 鉴权方式 | 请求格式 | 流式 | 模型列表 | 额度查询 | 特殊说明 |
 |---|---|---|---|---|---|---|
-| `OPENAI_COMPATIBLE` | Bearer `Authorization` | OpenAI Chat Completions | ✅ | ✅ | ❌ | 通用兼容，如兼容 API |
+| `OPENAI_COMPATIBLE` | Bearer `Authorization` | OpenAI Chat Completions + Videos + Images | ✅ | ✅ | ❌ | 通用兼容；`generateVideo()`/`generateImage()` 按渠道路径透传 |
 | `ANTHROPIC` | Bearer `Authorization` + `anthropic-version` | Anthropic Messages | ✅ | ❌ | ❌ | Claude 官方 |
 | `OPENAI_RESPONSES` | Bearer `Authorization` | OpenAI Responses API | ✅ | ❌ | ❌ | 原生 Responses 上游 |
-| `GPT_AUTH` | Bearer `Authorization`（从 auth.json 读取） | OpenAI Chat Completions | ✅ | ❌ | ❌ | V12 新增，OAuth 授权 |
+| `GPT_AUTH` | Bearer `Authorization`（从 auth.json 读取） | OpenAI Chat Completions + Videos + Images | ✅ | ❌ | ❌ | V12 新增，OAuth 授权；视频/图片生成复用 access_token |
 | `CLAUDE_AUTH` | Bearer `Authorization`（从 auth.json 读取） | Anthropic Messages | ✅ | ❌ | ❌ | V12 新增，OAuth 授权 |
 | `DEEPSEEK_CHAT` | Bearer `Authorization` | OpenAI Chat Completions（含 `reasoning_content`） | ✅ | ❌ | ❌ | DeepSeek Chat 风格 |
 | `DEEPSEEK_ANTHROPIC` | Bearer `Authorization` + `anthropic-version` | Anthropic Messages（含 thinking 块） | ✅ | ❌ | ❌ | DeepSeek Claude 风格 |

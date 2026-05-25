@@ -30,6 +30,8 @@ public record ChannelVO(
     Boolean enabled,
     String baseUrl,
     String chatPath,
+    String videoPath,
+    String imagePath,
     String modelsPath,
     Long credentialId,
     String credentialName,

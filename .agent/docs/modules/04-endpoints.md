@@ -25,6 +25,8 @@
 | `CHAT_COMPLETIONS` | `ChatCompletionsEndpointHandler` | OpenAI Chat 协议：`OpenAiRequestAdapter` → 网关 → `OpenAiResponseAdapter` |
 | `ANTHROPIC_MESSAGES` | `AnthropicMessagesEndpointHandler` | Claude 协议：`AnthropicRequestAdapter` → 网关 → `AnthropicResponseAdapter` |
 | `OPENAI_RESPONSES` | `OpenAiResponsesEndpointHandler` | Responses API：`OpenAiResponsesRequestAdapter` → 网关 → `OpenAiResponsesResponseAdapter`；流式使用 `RealTimeResponsesTransformer` |
+| `OPENAI_VIDEOS` | `OpenAiVideosEndpointHandler` | Videos API：`VideoGatewayService` → `AiProviderClient.generateVideo()`；非流式视频生成 |
+| `OPENAI_IMAGES` | `OpenAiImagesEndpointHandler` | Images API：`ImageGatewayService` → `AiProviderClient.generateImage()`；非流式图片生成 |
 | `OPENAI_MODELS` | `OpenAiModelsEndpointHandler` | 模型列表（不走 ChatGatewayService，直接查 DB） |
 
 **管理端端点元信息**：`AdminGatewayInfoController` 通过 `EndpointType.allEndpointVOs()` 自动推导端点清单，新增端点时无需修改控制器。
@@ -34,7 +36,7 @@
 1. **端点层（EndpointHandler）** — 负责"入口协议适配"：外部请求格式 → `UnifiedChatRequest` → 调用网关 → `UnifiedChatResponse` → 转回外部响应格式
 2. **Provider 层（AiProviderClient）** — 负责"上游厂商适配"：`UnifiedChatRequest` → 厂商 API 请求 → 调用上游 → 转回 `UnifiedChatResponse`
 
-端点通过 `ChatGatewayService` 调用 Provider 层，后者按 `ModelRoute.providerType` 从 `ProviderClientRegistry` 获取对应客户端。
+对话端点通过 `ChatGatewayService` 调用 Provider 层；视频端点通过 `VideoGatewayService` 调用 `generateVideo()`；图片端点通过 `ImageGatewayService` 调用 `generateImage()`。三者均按 `ModelRoute.providerType` 从 `ProviderClientRegistry` 获取对应客户端。
 
 ## 3. 端点-供应商适配器 (`adapter/endpoint/` 包)
 

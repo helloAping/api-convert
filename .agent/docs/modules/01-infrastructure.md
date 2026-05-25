@@ -25,7 +25,7 @@
 - 根据 `api-convert.database.type`（`sqlite` / `mysql`）选择脚本
 - 首次安装：`gateway_schema_version` 不存在时，只执行 `schema-sqlite.sql` 或 `schema-mysql.sql`
 - 增量升级：`gateway_schema_version` 已存在时，从当前版本逐个执行 `src/main/resources/db/migration/{sqlite,mysql}/V{version}.sql`
-- **当前结构版本：`14`**
+- **当前结构版本：`15`**
 - 首次安装脚本不得删除用户表；如版本 SQL 需要替换表或删除字段，必须先在脚本内完成备份或数据同步
 
 ### 核心数据表
@@ -33,7 +33,7 @@
 | 表名 | 用途 |
 |---|---|
 | `gateway_schema_version` | 安装版本追踪 |
-| `ai_channel` | 渠道配置：供应商类型、baseUrl、请求路径、模型列表路径、上游 API Key、AUTH 类型渠道的 auth.json 文件引用 |
+| `ai_channel` | 渠道配置：供应商类型、baseUrl、对话/视频/图片/模型列表路径、上游 API Key、AUTH 类型渠道的 auth.json 文件引用 |
 | `ai_channel_model` | 渠道模型映射：模型前缀、唯一别名、1M 输入/输出/缓存读取额度单价、能力字段（vision、tools_support、json_mode_support、context_length） |
 | `gateway_api_key` | 网关 API Key：明文（管理端复制）、SHA-256 哈希（鉴权）、余额、同步失败切换开关、旧单窗口额度字段兼容 |
 | `gateway_api_key_channel` | 网关密钥可用渠道范围；无记录表示允许全部渠道 |
@@ -59,6 +59,11 @@
 
 - `gateway_api_key` 新增 `failover_enabled`，默认关闭，避免改变历史密钥的单渠道失败返回行为
 - 开启后当前渠道上游在未向客户端写出响应前失败时，按同模型剩余授权渠道继续尝试；流式请求一旦已经写出 SSE 字节，就继续使用当前渠道结果或错误事件
+
+### V15 渠道多模态路径配置（新增）
+
+- `ai_channel` 新增 `video_path` 和 `image_path`，默认分别为 `/v1/videos`、`/v1/images/generations`
+- 前端渠道管理可保存视频生成和图片生成 API 路径，网关按当前路由命中的渠道配置调用上游
 
 ## 3. 启动引导数据 (`GatewayBootstrapService`)
 

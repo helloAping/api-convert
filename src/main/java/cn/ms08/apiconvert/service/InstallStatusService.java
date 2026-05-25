@@ -10,9 +10,9 @@ import org.springframework.stereotype.Service;
 public class InstallStatusService {
 
     /**
-     * 当前要求的结构版本；版本 9 支持网关密钥额度和模型额度单价。
+     * 当前要求的结构版本；版本 15 支持渠道视频生成和图片生成路径。
      */
-    private static final int CURRENT_SCHEMA_VERSION = 9;
+    private static final int CURRENT_SCHEMA_VERSION = 15;
 
     /**
      * 查询 schema 版本表。

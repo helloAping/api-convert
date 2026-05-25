@@ -22,6 +22,12 @@ public enum EndpointType {
     OPENAI_RESPONSES("POST", "/v1/responses", "OpenAI", "Gateway API Key",
             "OpenAI Responses API 新协议，支持 SSE 流式透传",
             ProviderType.OPENAI_RESPONSES),
+    OPENAI_VIDEOS("POST", "/v1/videos", "OpenAI", "Gateway API Key",
+            "OpenAI Videos API 视频生成，按模型路由到支持视频的 OpenAI 兼容供应商",
+            ProviderType.OPENAI_COMPATIBLE),
+    OPENAI_IMAGES("POST", "/v1/images/generations", "OpenAI", "Gateway API Key",
+            "OpenAI Images API 图片生成，按模型路由到支持图片的 OpenAI 兼容供应商",
+            ProviderType.OPENAI_COMPATIBLE),
     OPENAI_MODELS("GET", "/v1/models", "OpenAI", "Gateway API Key",
             "OpenAI 兼容模型列表",
             ProviderType.OPENAI_COMPATIBLE);
