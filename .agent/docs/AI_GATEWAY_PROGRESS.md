@@ -77,6 +77,12 @@
 | P2 | 集成测试 | SQLite 安装、健康检查、鉴权失败、流式转发等场景 | 08-测试 |
 | P3 | 其他 Provider | 本地模型 client 实现 | 05-Provider |
 
+## 已修复 Bug
+
+| 日期 | 问题 | 修复 | 相关文件 |
+|---|---|---|---|
+| 2026-05-27 | OpenAiChatCompletionRequest 将 null 的 frequency_penalty/presence_penalty 序列化发送至上游，导致图片识别上游返回 400 错误 | 添加 @JsonInclude(JsonInclude.Include.NON_NULL) 注解，避免序列化 null 字段 | dto/OpenAiChatCompletionRequest.java |
+
 ---
 
 ## 近期更新
