@@ -192,6 +192,7 @@ New features should cover:
 |---|---|---|
 | `SERVER_PORT` | `8080` | Backend server port |
 | `API_CONVERT_TIME_ZONE` | `Asia/Shanghai` | Application time zone |
+| `API_CONVERT_JACKSON_MAX_STRING_LENGTH` | `100000000` | Maximum length of a single JSON string, used for base64 image/video passthrough |
 | `API_CONVERT_DB_TYPE` | `sqlite` | Database type: `sqlite` or `mysql` |
 | `API_CONVERT_SQLITE_PATH` | `${user.dir}/api-convert.db` | SQLite database path |
 | `SPRING_DATASOURCE_URL` | `jdbc:sqlite:${api-convert.database.sqlite-path}` | JDBC URL |

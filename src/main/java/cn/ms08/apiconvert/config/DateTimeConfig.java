@@ -2,6 +2,7 @@ package cn.ms08.apiconvert.config;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonSerializer;
@@ -16,7 +17,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.format.FormatterRegistry;
 import org.springframework.format.datetime.standard.DateTimeFormatterRegistrar;
 import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.converter.json.AbstractJsonHttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.io.IOException;
@@ -46,12 +47,18 @@ public class DateTimeConfig implements WebMvcConfigurer {
      * 项目统一时区，默认固定为上海时区。
      */
     private final ZoneId projectZoneId;
+    /**
+     * Jackson 单个字符串解析上限，用于支持 base64 图片/视频等大字段透传。
+     */
+    private final int jacksonMaxStringLength;
 
     /**
      * 初始化项目时区，并同步设置 JVM 默认时区，避免数据库驱动和第三方库使用系统默认时区。
      */
-    public DateTimeConfig(@Value("${api-convert.time-zone:Asia/Shanghai}") String timeZoneId) {
+    public DateTimeConfig(@Value("${api-convert.time-zone:Asia/Shanghai}") String timeZoneId,
+                          @Value("${api-convert.jackson.max-string-length:100000000}") int jacksonMaxStringLength) {
         this.projectZoneId = ZoneId.of(timeZoneId);
+        this.jacksonMaxStringLength = jacksonMaxStringLength;
         TimeZone.setDefault(TimeZone.getTimeZone(projectZoneId));
     }
 
@@ -70,6 +77,9 @@ public class DateTimeConfig implements WebMvcConfigurer {
     @Bean
     public ObjectMapper objectMapper() {
         ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.getFactory().setStreamReadConstraints(StreamReadConstraints.builder()
+                .maxStringLength(jacksonMaxStringLength)
+                .build());
         SimpleModule module = new SimpleModule();
         module.addSerializer(LocalDateTime.class, new JsonSerializer<>() {
             /**
@@ -104,11 +114,8 @@ public class DateTimeConfig implements WebMvcConfigurer {
      */
     @Override
     public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
-        for (HttpMessageConverter<?> converter : converters) {
-            if (converter instanceof MappingJackson2HttpMessageConverter jacksonConverter) {
-                jacksonConverter.setObjectMapper(objectMapper());
-            }
-        }
+        converters.removeIf(AbstractJsonHttpMessageConverter.class::isInstance);
+        converters.add(new FasterxmlJsonHttpMessageConverter(objectMapper()));
     }
 
     /**

@@ -18,10 +18,12 @@ import java.io.IOException;
 public class OpenAiImagesEndpointHandler implements EndpointHandler {
 
     private final ImageGatewayService imageGatewayService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    public OpenAiImagesEndpointHandler(ImageGatewayService imageGatewayService) {
+    public OpenAiImagesEndpointHandler(ImageGatewayService imageGatewayService,
+                                       ObjectMapper objectMapper) {
         this.imageGatewayService = imageGatewayService;
+        this.objectMapper = objectMapper;
     }
 
     @Override

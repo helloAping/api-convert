@@ -36,6 +36,7 @@ proxy_set_header Authorization $http_authorization;
 | `api-convert.database.install-enabled` | 自动安装/升级开关（默认 `true`） |
 | `api-convert.auth.storage-dir` | AUTH 文件存储根目录 |
 | `API_CONVERT_AUTH_STORAGE_DIR` | 覆盖 AUTH 文件存储路径 |
+| `API_CONVERT_JACKSON_MAX_STRING_LENGTH` | JSON 单个字符串最大长度，默认 `100000000`，用于 base64 图片/视频透传 |
 | `JAVA_HOME_25` | JDK 25 路径（本地开发） |
 
 ## 4. API 快速测试
