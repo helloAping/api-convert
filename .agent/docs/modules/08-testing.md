@@ -21,7 +21,7 @@
 | `RealTimeResponsesTransformerTests` | 4 | Codex SSE 兼容：累计文本去重、原生 Responses SSE 解析、Chat `reasoning_content`/`tool_calls` 转 Responses `reasoning`/`function_call`、流结束 JSON 合法性 |
 | `EndpointTypeTests` | 1 | 公开端点类型枚举与路径映射 |
 | `AiProviderClientTests` | 1 | Provider 默认不支持能力的异常边界 |
-| `DateTimeConfigTests` | 1 | 全局 `ObjectMapper` 支持超过 Jackson 默认上限的 base64 字符串 |
+| `DateTimeConfigTests` | 2 | 全局 `ObjectMapper` 支持超过 Jackson 默认上限的 base64 字符串，并兼容上游 Chat Completions 响应扩展字段 |
 
 ## 2. 运行测试
 
@@ -29,7 +29,7 @@
 JAVA_HOME="$JAVA_HOME_25" PATH="$JAVA_HOME_25/bin":$PATH mvn -q test
 ```
 
-当前总量：12 个测试类、52 个用例。
+当前总量：12 个测试类、53 个用例。
 
 ## 3. 已知问题
 

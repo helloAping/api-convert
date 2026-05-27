@@ -95,7 +95,7 @@
 
 - OpenAI 兼容视频生成端点：新增 `POST /v1/videos`，通过 `OpenAiVideosEndpointHandler` 和 `VideoGatewayService` 复用 API Key 鉴权、模型/渠道授权、请求数限制、路由避让与请求日志；`AiProviderClient.generateVideo()` 默认不支持，`OPENAI_COMPATIBLE` 与 `GPT_AUTH` 透传到上游 `/v1/videos`。
 - **V15 多模态端点路径**：渠道表新增 `video_path`、`image_path`，前端渠道管理支持保存视频生成和图片生成 API 路径；新增 `POST /v1/images/generations` 图片生成端点，`AiProviderClient.generateImage()` 默认不支持，`OPENAI_COMPATIBLE` 与 `GPT_AUTH` 按渠道保存路径透传图片生成请求。
-- JSON 解析上限：全局 `ObjectMapper` 的 Jackson 单个字符串最大长度默认提升到 `100000000`，并通过 `API_CONVERT_JACKSON_MAX_STRING_LENGTH` 可配置；公开端点和 `RestClient` JSON 转换器统一使用该 mapper，支持 base64 图片/视频请求和响应透传。
+- JSON 解析兼容：全局 `ObjectMapper` 的 Jackson 单个字符串最大长度默认提升到 `100000000`，并通过 `API_CONVERT_JACKSON_MAX_STRING_LENGTH` 可配置；公开端点和 `RestClient` JSON 转换器统一使用该 mapper，支持 base64 图片/视频请求和响应透传，并兼容上游 OpenAI 兼容响应中的供应商扩展字段与 MiMo `audio_tokens`/`video_tokens` 用量明细。
 - **V12 auth-file provider**: `GPT_AUTH`/`CLAUDE_AUTH` with `auth.json` upload, `auth-dir` storage, desensitized API responses.
 - Auto-fill official upstream addresses for AUTH channels on save.
 - OAuth start/callback endpoints with built-in Codex/OpenAI and Claude metadata.

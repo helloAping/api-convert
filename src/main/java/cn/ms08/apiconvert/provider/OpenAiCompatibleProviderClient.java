@@ -109,7 +109,8 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
             throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
                     upstreamError(prefix(status), exception));
         } catch (RestClientException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider request failed: " + exception.getMessage());
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
+                    restClientError("Provider request failed", exception));
         }
     }
 
@@ -154,7 +155,7 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
                     "Provider stream request failed: " + exception.getMessage());
         } catch (RestClientException exception) {
             throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
-                    "Provider stream request failed: " + exception.getMessage());
+                    restClientError("Provider stream request failed", exception));
         }
     }
 
@@ -187,7 +188,8 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
             throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
                     upstreamError(prefix(status), exception));
         } catch (RestClientException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider video request failed: " + exception.getMessage());
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
+                    restClientError("Provider video request failed", exception));
         }
     }
 
@@ -220,7 +222,8 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
             throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
                     upstreamError(prefix(status), exception));
         } catch (RestClientException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider image request failed: " + exception.getMessage());
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
+                    restClientError("Provider image request failed", exception));
         }
     }
 
@@ -347,7 +350,8 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
             throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
                     upstreamError(prefix(status), exception));
         } catch (RestClientException | IllegalArgumentException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider models request failed: " + exception.getMessage());
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
+                    restClientError("Provider models request failed", exception));
         }
     }
 
@@ -371,7 +375,8 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
             } catch (RestClientResponseException exception) {
                 lastResponseException = exception;
             } catch (RestClientException | IllegalArgumentException exception) {
-                throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY, "Provider quota request failed: " + exception.getMessage());
+                throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
+                        restClientError("Provider quota request failed", exception));
             }
         }
         if (lastResponseException != null) {
@@ -484,6 +489,23 @@ public class OpenAiCompatibleProviderClient implements AiProviderClient {
             return prefix + ": status=" + statusCode;
         }
         return prefix + ": status=" + statusCode + ", body=" + body;
+    }
+
+    private String restClientError(String prefix, Exception exception) {
+        String message = exception.getMessage();
+        Throwable root = rootCause(exception);
+        if (root != exception && root.getMessage() != null && !root.getMessage().equals(message)) {
+            message = message + "; rootCause=" + root.getClass().getSimpleName() + ": " + root.getMessage();
+        }
+        return prefix + ": " + LogSanitizer.sanitizeBody(message == null ? exception.getClass().getSimpleName() : message);
+    }
+
+    private Throwable rootCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     private ErrorCode httpStatusToErrorCode(int status) {
