@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue'
 import { NTag, useMessage } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
@@ -7,6 +7,7 @@ import { getDashboardStats } from '@/api/dashboard'
 import { getGatewayInfo } from '@/api/gatewayInfo'
 import LineChart from '@/components/charts/LineChart.vue'
 import PieChart from '@/components/charts/PieChart.vue'
+import { DocumentOutline } from '@vicons/ionicons5'
 import type {
   DashboardDimensionUsageVO,
   DashboardSeriesVO,
@@ -314,6 +315,12 @@ onMounted(load)
               <n-text code>{{ gatewayInfo.baseUrl || '-' }}</n-text>
             </n-descriptions-item>
           </n-descriptions>
+          <n-space justify="end" style="margin-bottom: 8px">
+            <n-a href="/docs/api-reference.html" target="_blank">
+              <n-icon size="18" style="vertical-align: middle"><DocumentOutline /></n-icon>
+              查看完整 API 文档
+            </n-a>
+          </n-space>
           <n-data-table
             :columns="endpointColumns"
             :data="gatewayInfo.endpoints"
