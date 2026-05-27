@@ -18,10 +18,12 @@ import java.io.IOException;
 public class OpenAiVideosEndpointHandler implements EndpointHandler {
 
     private final VideoGatewayService videoGatewayService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    public OpenAiVideosEndpointHandler(VideoGatewayService videoGatewayService) {
+    public OpenAiVideosEndpointHandler(VideoGatewayService videoGatewayService,
+                                       ObjectMapper objectMapper) {
         this.videoGatewayService = videoGatewayService;
+        this.objectMapper = objectMapper;
     }
 
     @Override

@@ -5,6 +5,7 @@ import cn.ms08.apiconvert.dto.OpenAiResponsesRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
 import cn.ms08.apiconvert.service.ChatGatewayService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
@@ -27,11 +28,17 @@ public class OpenAiResponsesEndpointHandler implements EndpointHandler {
 
     private final OpenAiResponsesRequestAdapter requestAdapter;
     private final ChatGatewayService chatGatewayService;
+    private final ObjectMapper objectMapper;
 
+    /**
+     * 注入网关统一 ObjectMapper，确保长 base64 字符串和时间格式配置在端点解析时生效。
+     */
     public OpenAiResponsesEndpointHandler(OpenAiResponsesRequestAdapter requestAdapter,
-                                          ChatGatewayService chatGatewayService) {
+                                          ChatGatewayService chatGatewayService,
+                                          ObjectMapper objectMapper) {
         this.requestAdapter = requestAdapter;
         this.chatGatewayService = chatGatewayService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -41,13 +48,13 @@ public class OpenAiResponsesEndpointHandler implements EndpointHandler {
 
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        OpenAiResponsesRequest responsesRequest = objectMapper().readValue(
+        OpenAiResponsesRequest responsesRequest = objectMapper.readValue(
                 request.getInputStream(), OpenAiResponsesRequest.class);
         UnifiedChatRequest unifiedRequest = requestAdapter.toUnified(responsesRequest);
 
         boolean stream = Boolean.TRUE.equals(unifiedRequest.stream())
                 || isStreamingAccept(request);
-        log.info("/v1/responses 请求: model={}, stream={}（请求体stream={}、Accept头流式={}）, instructions长度={}",
+        log.info("/v1/responses request: model={}, stream={} (bodyStream={}, acceptStream={}), instructionsLength={}",
                 unifiedRequest.model(), stream, unifiedRequest.stream(),
                 isStreamingAccept(request),
                 responsesRequest.getInstructions() != null ? responsesRequest.getInstructions().length() : 0);
@@ -68,7 +75,7 @@ public class OpenAiResponsesEndpointHandler implements EndpointHandler {
 
         response.setStatus(HttpStatus.OK.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        objectMapper().writeValue(response.getOutputStream(), unifiedResponse.rawResponse());
+        objectMapper.writeValue(response.getOutputStream(), unifiedResponse.rawResponse());
     }
 
     /**
@@ -77,12 +84,5 @@ public class OpenAiResponsesEndpointHandler implements EndpointHandler {
     private static boolean isStreamingAccept(HttpServletRequest request) {
         String accept = request.getHeader("Accept");
         return accept != null && accept.toLowerCase().contains("text/event-stream");
-    }
-
-    /**
-     * 分离 ObjectMapper 实例避免序列化冲突。
-     */
-    private com.fasterxml.jackson.databind.ObjectMapper objectMapper() {
-        return new com.fasterxml.jackson.databind.ObjectMapper();
     }
 }

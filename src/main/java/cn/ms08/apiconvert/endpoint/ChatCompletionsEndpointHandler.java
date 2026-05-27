@@ -25,13 +25,15 @@ public class ChatCompletionsEndpointHandler implements EndpointHandler {
     private final OpenAiRequestAdapter requestAdapter;
     private final OpenAiResponseAdapter responseAdapter;
     private final ChatGatewayService chatGatewayService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     public ChatCompletionsEndpointHandler(OpenAiRequestAdapter requestAdapter, OpenAiResponseAdapter responseAdapter,
-                                          ChatGatewayService chatGatewayService) {
+                                          ChatGatewayService chatGatewayService,
+                                          ObjectMapper objectMapper) {
         this.requestAdapter = requestAdapter;
         this.responseAdapter = responseAdapter;
         this.chatGatewayService = chatGatewayService;
+        this.objectMapper = objectMapper;
     }
 
     @Override

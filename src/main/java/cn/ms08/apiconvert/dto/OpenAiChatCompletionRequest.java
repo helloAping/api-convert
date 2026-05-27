@@ -2,6 +2,7 @@ package cn.ms08.apiconvert.dto;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.LinkedHashMap;
@@ -12,6 +13,7 @@ import java.util.Map;
  * OpenAI Chat Completions 请求体，按 OpenAI 标准规范映射所有常用参数。
  * 非标准或供应商特有参数通过 additionalProperties 透传。
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class OpenAiChatCompletionRequest {
 
     private String model;

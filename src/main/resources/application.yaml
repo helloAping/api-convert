@@ -15,6 +15,8 @@ mybatis-plus:
 
 api-convert:
   time-zone: ${API_CONVERT_TIME_ZONE:Asia/Shanghai}
+  jackson:
+    max-string-length: ${API_CONVERT_JACKSON_MAX_STRING_LENGTH:100000000}
   database:
     type: ${API_CONVERT_DB_TYPE:sqlite}
     sqlite-path: ${API_CONVERT_SQLITE_PATH:${user.dir}/api-convert.db}
