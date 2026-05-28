@@ -192,6 +192,7 @@ npm run build
 |---|---|---|
 | `SERVER_PORT` | `8080` | 后端监听端口 |
 | `API_CONVERT_TIME_ZONE` | `Asia/Shanghai` | 应用时区 |
+| `API_CONVERT_JACKSON_MAX_STRING_LENGTH` | `100000000` | JSON 单个字符串最大长度，支持 base64 图片/视频透传 |
 | `API_CONVERT_DB_TYPE` | `sqlite` | 数据库类型：`sqlite` 或 `mysql` |
 | `API_CONVERT_SQLITE_PATH` | `${user.dir}/api-convert.db` | SQLite 文件路径 |
 | `SPRING_DATASOURCE_URL` | `jdbc:sqlite:${api-convert.database.sqlite-path}` | JDBC URL |

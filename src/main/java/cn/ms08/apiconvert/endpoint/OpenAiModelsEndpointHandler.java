@@ -24,11 +24,13 @@ public class OpenAiModelsEndpointHandler implements EndpointHandler {
 
     private final AiChannelModelMapper modelMapper;
     private final AiChannelMapper channelMapper;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    public OpenAiModelsEndpointHandler(AiChannelModelMapper modelMapper, AiChannelMapper channelMapper) {
+    public OpenAiModelsEndpointHandler(AiChannelModelMapper modelMapper, AiChannelMapper channelMapper,
+                                       ObjectMapper objectMapper) {
         this.modelMapper = modelMapper;
         this.channelMapper = channelMapper;
+        this.objectMapper = objectMapper;
     }
 
     @Override

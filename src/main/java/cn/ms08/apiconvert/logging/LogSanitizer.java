@@ -22,6 +22,7 @@ public final class LogSanitizer {
      * 较长的正文会被截断并追加长度提示。
      */
     private static final int MAX_BODY_LENGTH = 2048;
+    private static final int MAX_PARSE_BODY_LENGTH = 256 * 1024;
     /**
      * JSON 数组中当元素超过此阈值时，替换为 [...] N items 摘要。
      */
@@ -58,6 +59,9 @@ public final class LogSanitizer {
     public static String sanitizeBody(String body) {
         if (!StringUtils.hasText(body)) {
             return "";
+        }
+        if (body.length() > MAX_PARSE_BODY_LENGTH) {
+            return "<large body omitted, original=" + body.length() + " chars>";
         }
         String trimmed = body.trim();
         String sanitized = sanitizeJson(trimmed);

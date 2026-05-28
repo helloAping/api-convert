@@ -54,6 +54,10 @@ public class ChatGatewayService {
      * OpenAI Chat Completions 兼容接口类型。
      */
     private static final String REQUEST_TYPE_CHAT_COMPLETIONS = "chat_completions";
+    /**
+     * 上游请求日志只需要排障摘要，超过该长度的多模态内容不再额外序列化成完整 JSON。
+     */
+    private static final int MAX_LOG_CONTENT_CHARS = 8192;
 
     /**
      * 根据模型和密钥授权范围选择实际渠道。
@@ -508,12 +512,61 @@ public class ChatGatewayService {
      * 序列化后的 JSON 经过脱敏处理，对话内容（messages.content）会替换为省略标记。
      */
     private String serializeRequest(UnifiedChatRequest request) {
+        if (containsLargeLogContent(request)) {
+            return "<large request omitted>";
+        }
         try {
             String json = objectMapper.writeValueAsString(request);
             return LogSanitizer.sanitizeBody(json);
         } catch (Exception exception) {
             return "<serialization error: " + exception.getMessage() + ">";
         }
+    }
+
+    /**
+     * 检测消息和透传参数中的大文本/base64，避免日志路径复制大对象造成请求后内存峰值。
+     */
+    private boolean containsLargeLogContent(UnifiedChatRequest request) {
+        if (request == null) {
+            return false;
+        }
+        if (request.messages() != null) {
+            for (cn.ms08.apiconvert.dto.UnifiedMessage message : request.messages()) {
+                if (message != null
+                        && (contentLooksLarge(message.content()) || contentLooksLarge(message.options()))) {
+                    return true;
+                }
+            }
+        }
+        return contentLooksLarge(request.rawOptions());
+    }
+
+    /**
+     * 递归检查常见 JSON 结构中的字符串长度，不对非字符串对象调用 toString 以免再次复制大内容。
+     */
+    private boolean contentLooksLarge(Object content) {
+        if (content == null) {
+            return false;
+        }
+        if (content instanceof CharSequence text) {
+            return text.length() > MAX_LOG_CONTENT_CHARS;
+        }
+        if (content instanceof Map<?, ?> map) {
+            for (Object value : map.values()) {
+                if (contentLooksLarge(value)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (content instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                if (contentLooksLarge(item)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

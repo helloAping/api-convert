@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>API Gateway - Public Endpoints</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0e1a;color:#e2e8f0;display:flex;min-height:100vh;line-height:1.6}#side{width:240px;flex-shrink:0;background:#111827;border-right:1px solid #1e293b;overflow-y:auto;position:sticky;top:0;height:100vh;padding:1.5rem 0}#side h1{font-size:1rem;font-weight:700;color:#4f9cf7;padding:0 1rem 1rem;border-bottom:1px solid #1e293b}#side nav a{display:block;padding:.35rem 1rem;color:#94a3b8;text-decoration:none;font-size:.82rem;border-left:2px solid transparent}#side nav a:hover,#side nav a.active{color:#e2e8f0;background:#1a1f2e;border-left-color:#4f9cf7}#side nav .sl{padding:.5rem 1rem .2rem;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:600}#main{flex:1;max-width:960px;padding:2rem 2.5rem;min-width:0}h1{font-size:1.75rem;color:#4f9cf7;margin-bottom:.5rem}h2{font-size:1.35rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #1e293b}h3{font-size:1.1rem;margin:1.5rem 0 .75rem;color:#4f9cf7}code{font-family:"Cascadia Code","Fira Code","JetBrains Mono",Consolas,monospace;font-size:.85em;background:#0f1525;padding:.15em .4em;border-radius:3px}pre{background:#0f1525;padding:1rem;border-radius:6px;overflow-x:auto;margin:.75rem 0;border:1px solid #1e293b}pre code{background:0 0;padding:0;font-size:.82rem;line-height:1.5}details{margin:.5rem 0}details summary{padding:.6rem 1rem;background:#111827;border:1px solid #1e293b;border-radius:6px;cursor:pointer;font-weight:600;font-size:.95rem;display:flex;align-items:center;gap:.5rem}details summary:hover{background:#1a1f2e}details[open] summary{border-radius:6px 6px 0 0;border-bottom:0}details .body{padding:1.25rem;border:1px solid #1e293b;border-top:0;border-radius:0 0 6px 6px;background:#111827}table{width:100%;border-collapse:collapse;margin:.75rem 0;font-size:.875rem}th,td{padding:.4rem .6rem;text-align:left;border:1px solid #1e293b}th{background:#1a1f2e;color:#94a3b8;font-weight:600;font-size:.78rem;text-transform:uppercase}tr:nth-child(even){background:rgba(255,255,255,.02)}hr{border:none;border-top:1px solid #1e293b;margin:1.5rem 0}.m{display:inline-block;padding:.15rem .55rem;border-radius:4px;color:#fff;font-size:.72rem;font-weight:700}.mg{background:#22c55e}.mb{background:#3b82f6}.ma{background:#f59e0b}.mr{background:#ef4444}.desc{color:#94a3b8;margin-bottom:.5rem}.footer{text-align:center;color:#64748b;font-size:.82rem;padding:2rem 0}@media(max-width:768px){#side{display:none}#main{padding:1rem}}</style>
+</head>
+<body>
+<div id="side">
+<h1>API Endpoints</h1>
+<nav>
+<div class="sl">Public API</div>
+<a href="#health"><span class="m mg">GET</span> /health</a>
+<a href="#models"><span class="m mg">GET</span> /v1/models</a>
+<a href="#chat-completions"><span class="m mb">POST</span> /v1/chat/completions</a>
+<a href="#messages"><span class="m mb">POST</span> /v1/messages</a>
+<a href="#responses"><span class="m mb">POST</span> /v1/responses</a>
+<a href="#videos"><span class="m mb">POST</span> /v1/videos</a>
+<a href="#images"><span class="m mb">POST</span> /v1/images/generations</a>
+<div class="sl">Reference</div>
+<a href="#general">General Info</a>
+<a href="#providers">Provider Types</a>
+<a href="#routing">Routing &amp; Failover</a>
+<a href="#quota">Quota &amp; Security</a>
+</nav>
+</div>
+<div id="main">
+<h1>AI API Gateway &mdash; Public Endpoints</h1>
+<p class="desc">Base URL: <code>http://localhost:8080</code> (development)</p>
+<hr>
+<h2 id="general">General Information</h2>
+<h3>Authentication</h3>
+<table><tr><th>Type</th><th>Description</th></tr>
+<tr><td><strong>Gateway API Key</strong></td><td>Public endpoints: <code>Authorization: Bearer &lt;gateway-key&gt;</code></td></tr>
+<tr><td><strong>None</strong></td><td><code>/health</code> is public, no auth</td></tr>
+</table>
+<h3>Response Format</h3>
+<pre><code>{
+  "code": 200,
+  "message": "success",
+  "data": { ... }
+}</code></pre>
+<p>Error codes: 400 (bad request), 401 (unauthorized), 403 (forbidden), 404 (not found), 500 (server error).</p>
+<hr>
+<h2>Public API Endpoints</h2>
+<p class="desc">All require <code>Authorization: Bearer &lt;gateway-key&gt;</code> except <code>/health</code>.</p>
+<details id="health" open>
+<summary><span class="m mg">GET</span> <code>/health</code></summary>
+<div class="body">
+<pre><code>GET /health
+</code></pre>
+<p>无需认证。返回服务状态和核心配置数量。</p>
+<p><strong>响应示例：</strong></p>
+<pre><code>{
+  &quot;code&quot;: 200,
+  &quot;message&quot;: &quot;success&quot;,
+  &quot;data&quot;: {
+    &quot;status&quot;: &quot;UP&quot;,
+    &quot;database&quot;: &quot;UP&quot;,
+    &quot;installed&quot;: true,
+    &quot;schemaVersion&quot;: 15,
+    &quot;providerCount&quot;: 5,
+    &quot;enabledModelCount&quot;: 20
+  }
+}
+</code></pre>
+<table>
+<tr><td>字段</td><td>类型</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>status</code></td><td>String</td><td>服务状态</td></tr>
+<tr><td><code>database</code></td><td>String</td><td>数据库状态</td></tr>
+<tr><td><code>installed</code></td><td>Boolean</td><td>是否已安装</td></tr>
+<tr><td><code>schemaVersion</code></td><td>Integer</td><td>数据库 schema 版本</td></tr>
+<tr><td><code>providerCount</code></td><td>Integer</td><td>已配置的渠道数量</td></tr>
+<tr><td><code>enabledModelCount</code></td><td>Integer</td><td>已启用的模型数量</td></tr>
+</table>
+<hr>
+</div>
+</details>
+<details id="models" open>
+<summary><span class="m mg">GET</span> <code>/v1/models</code></summary>
+<div class="body">
+<pre><code>GET /v1/models
+</code></pre>
+<p>OpenAI 兼容的模型列表。</p>
+<p><strong>Headers：</strong></p>
+<table>
+<tr><td>Header</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>Authorization</code></td><td>是</td><td><code>Bearer &lt;gateway-api-key&gt;</code></td></tr>
+</table>
+<p><strong>响应示例：</strong></p>
+<pre><code>{
+  &quot;object&quot;: &quot;list&quot;,
+  &quot;data&quot;: [
+    {
+      &quot;id&quot;: &quot;gpt-4o&quot;,
+      &quot;object&quot;: &quot;model&quot;,
+      &quot;created&quot;: 1700000000,
+      &quot;owned_by&quot;: &quot;gateway&quot;
+    }
+  ]
+}
+</code></pre>
+<hr>
+</div>
+</details>
+<details id="chat-completions" open>
+<summary><span class="m mb">POST</span> <code>/v1/chat/completions</code></summary>
+<div class="body">
+<pre><code>POST /v1/chat/completions
+</code></pre>
+<p>OpenAI 兼容的聊天补全接口，支持 SSE 流式透传。</p>
+<p><strong>Headers：</strong></p>
+<table>
+<tr><td>Header</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>Authorization</code></td><td>是</td><td><code>Bearer &lt;gateway-api-key&gt;</code></td></tr>
+<tr><td><code>Content-Type</code></td><td>是</td><td><code>application/json</code></td></tr>
+</table>
+<p><strong>请求体：</strong></p>
+<pre><code>{
+  &quot;model&quot;: &quot;gpt-4o&quot;,
+  &quot;messages&quot;: [
+    {&quot;role&quot;: &quot;system&quot;, &quot;content&quot;: &quot;You are a helpful assistant.&quot;},
+    {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Hello!&quot;}
+  ],
+  &quot;stream&quot;: false,
+  &quot;temperature&quot;: 0.7,
+  &quot;max_tokens&quot;: 1024,
+  &quot;response_format&quot;: {
+    &quot;type&quot;: &quot;json_object&quot;
+  }
+}
+</code></pre>
+<table>
+<tr><td>字段</td><td>类型</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>model</code></td><td>String</td><td>是</td><td>模型名称（支持 <code>channel/model</code> 格式指定渠道）</td></tr>
+<tr><td><code>messages</code></td><td>Array</td><td>是</td><td>消息列表</td></tr>
+<tr><td><code>stream</code></td><td>Boolean</td><td>否</td><td>是否启用 SSE 流式输出，默认 <code>false</code></td></tr>
+<tr><td><code>temperature</code></td><td>Number</td><td>否</td><td>采样温度</td></tr>
+<tr><td><code>max_tokens</code></td><td>Integer</td><td>否</td><td>最大输出 token 数</td></tr>
+<tr><td><code>response_format</code></td><td>Object</td><td>否</td><td>响应格式（JSON 模式 / JSON Schema）</td></tr>
+<tr><td><code>tools</code></td><td>Array</td><td>否</td><td>工具/函数调用定义</td></tr>
+<tr><td><code>tool_choice</code></td><td>String/Object</td><td>否</td><td>工具选择策略</td></tr>
+</table>
+<p><strong>流式响应（<code>stream: true</code>）：</strong></p>
+<p>标准 OpenAI SSE 格式，每个 <code>data:</code> 行包含一个 <code>chat.completion.chunk</code> 对象。</p>
+<p><strong>非流式响应：</strong></p>
+<p>标准 OpenAI Chat Completions 响应格式。</p>
+<hr>
+</div>
+</details>
+<details id="messages" open>
+<summary><span class="m mb">POST</span> <code>/v1/messages</code></summary>
+<div class="body">
+<pre><code>POST /v1/messages
+</code></pre>
+<p>Anthropic Messages 兼容对话接口，支持 SSE 流式透传。</p>
+<p><strong>Headers：</strong></p>
+<table>
+<tr><td>Header</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>Authorization</code></td><td>是</td><td><code>Bearer &lt;gateway-api-key&gt;</code></td></tr>
+<tr><td><code>anthropic-version</code></td><td>是</td><td><code>2023-06-01</code></td></tr>
+<tr><td><code>Content-Type</code></td><td>是</td><td><code>application/json</code></td></tr>
+</table>
+<p><strong>请求体：</strong></p>
+<pre><code>{
+  &quot;model&quot;: &quot;claude-3-opus&quot;,
+  &quot;messages&quot;: [
+    {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Hello!&quot;}
+  ],
+  &quot;system&quot;: &quot;You are a helpful assistant.&quot;,
+  &quot;max_tokens&quot;: 1024,
+  &quot;stream&quot;: false
+}
+</code></pre>
+<table>
+<tr><td>字段</td><td>类型</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>model</code></td><td>String</td><td>是</td><td>模型名称（支持 <code>channel/model</code> 格式指定渠道）</td></tr>
+<tr><td><code>messages</code></td><td>Array</td><td>是</td><td>消息列表</td></tr>
+<tr><td><code>system</code></td><td>String</td><td>否</td><td>系统提示词</td></tr>
+<tr><td><code>max_tokens</code></td><td>Integer</td><td>是</td><td>最大输出 token 数</td></tr>
+<tr><td><code>stream</code></td><td>Boolean</td><td>否</td><td>是否启用 SSE 流式输出</td></tr>
+<tr><td><code>temperature</code></td><td>Number</td><td>否</td><td>采样温度</td></tr>
+<tr><td><code>thinking</code></td><td>Object</td><td>否</td><td>Thinking 扩展配置</td></tr>
+</table>
+<hr>
+</div>
+</details>
+<details id="responses" open>
+<summary><span class="m mb">POST</span> <code>/v1/responses</code></summary>
+<div class="body">
+<pre><code>POST /v1/responses
+</code></pre>
+<p>OpenAI Responses API 新协议，支持 SSE 流式透传。</p>
+<p><strong>Headers：</strong></p>
+<table>
+<tr><td>Header</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>Authorization</code></td><td>是</td><td><code>Bearer &lt;gateway-api-key&gt;</code></td></tr>
+<tr><td><code>Content-Type</code></td><td>是</td><td><code>application/json</code></td></tr>
+</table>
+<p><strong>请求体：</strong></p>
+<pre><code>{
+  &quot;model&quot;: &quot;gpt-4o&quot;,
+  &quot;input&quot;: &quot;Hello!&quot;,
+  &quot;stream&quot;: false
+}
+</code></pre>
+<table>
+<tr><td>字段</td><td>类型</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>model</code></td><td>String</td><td>是</td><td>模型名称</td></tr>
+<tr><td><code>input</code></td><td>String/Array</td><td>是</td><td>输入消息</td></tr>
+<tr><td><code>stream</code></td><td>Boolean</td><td>否</td><td>是否启用 SSE 流式输出</td></tr>
+<tr><td><code>instructions</code></td><td>String</td><td>否</td><td>系统指令</td></tr>
+<tr><td><code>tools</code></td><td>Array</td><td>否</td><td>工具列表</td></tr>
+</table>
+<hr>
+</div>
+</details>
+<details id="videos" open>
+<summary><span class="m mb">POST</span> <code>/v1/videos</code></summary>
+<div class="body">
+<pre><code>POST /v1/videos
+</code></pre>
+<p>OpenAI Videos API 视频生成，按模型路由到支持视频的 OpenAI 兼容提供商。</p>
+<p><strong>Headers：</strong></p>
+<table>
+<tr><td>Header</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>Authorization</code></td><td>是</td><td><code>Bearer &lt;gateway-api-key&gt;</code></td></tr>
+<tr><td><code>Content-Type</code></td><td>是</td><td><code>application/json</code></td></tr>
+</table>
+<p><strong>请求体：</strong></p>
+<pre><code>{
+  &quot;model&quot;: &quot;sora-2&quot;,
+  &quot;prompt&quot;: &quot;A cat walking on a sunny beach&quot;,
+  &quot;n&quot;: 1,
+  &quot;size&quot;: &quot;1920x1080&quot;
+}
+</code></pre>
+<table>
+<tr><td>字段</td><td>类型</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>model</code></td><td>String</td><td>是</td><td>模型名称</td></tr>
+<tr><td><code>prompt</code></td><td>String</td><td>是</td><td>视频生成提示词</td></tr>
+<tr><td><code>n</code></td><td>Integer</td><td>否</td><td>生成数量</td></tr>
+<tr><td><code>size</code></td><td>String</td><td>否</td><td>视频尺寸</td></tr>
+</table>
+<hr>
+</div>
+</details>
+<details id="images" open>
+<summary><span class="m mb">POST</span> <code>/v1/images/generations</code></summary>
+<div class="body">
+<pre><code>POST /v1/images/generations
+</code></pre>
+<p>OpenAI Images API 图片生成，按模型路由到支持图片的 OpenAI 兼容提供商。</p>
+<p><strong>Headers：</strong></p>
+<table>
+<tr><td>Header</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>Authorization</code></td><td>是</td><td><code>Bearer &lt;gateway-api-key&gt;</code></td></tr>
+<tr><td><code>Content-Type</code></td><td>是</td><td><code>application/json</code></td></tr>
+</table>
+<p><strong>请求体：</strong></p>
+<pre><code>{
+  &quot;model&quot;: &quot;dall-e-3&quot;,
+  &quot;prompt&quot;: &quot;A beautiful sunset over mountains&quot;,
+  &quot;n&quot;: 1,
+  &quot;size&quot;: &quot;1024x1024&quot;,
+  &quot;quality&quot;: &quot;standard&quot;
+}
+</code></pre>
+<table>
+<tr><td>字段</td><td>类型</td><td>必需</td><td>说明</td></tr>
+<tr><th>---</th><th>---</th><th>---</th><th>---</th></tr>
+<tr><td><code>model</code></td><td>String</td><td>是</td><td>模型名称</td></tr>
+<tr><td><code>prompt</code></td><td>String</td><td>是</td><td>图片生成提示词</td></tr>
+<tr><td><code>n</code></td><td>Integer</td><td>否</td><td>生成数量</td></tr>
+<tr><td><code>size</code></td><td>String</td><td>否</td><td>图片尺寸</td></tr>
+<tr><td><code>quality</code></td><td>String</td><td>否</td><td>图片质量</td></tr>
+</table>
+<hr>
+<p>## 管理端 API</p>
+<p>管理端 API 需先登录获取 Admin Token，通过 <code>Authorization: Bearer &lt;admin-token&gt;</code> 传递。</p>
+</div>
+</details>
+<hr>
+<h2 id="providers">Supported Provider Types</h2>
+<table><tr><th>Type</th><th>Auth</th><th>Protocol</th><th>Streaming</th><th>Description</th></tr>
+<tr><td>OPENAI_COMPATIBLE</td><td>Bearer</td><td>Chat Completions+Videos+Images</td><td>Yes</td><td>Universal</td></tr>
+<tr><td>ANTHROPIC</td><td>Bearer + version</td><td>Messages</td><td>Yes</td><td>Official Claude</td></tr>
+<tr><td>OPENAI_RESPONSES</td><td>Bearer</td><td>Responses API</td><td>Yes</td><td>Native</td></tr>
+<tr><td>GPT_AUTH</td><td>Bearer (auth.json)</td><td>Chat Completions+Videos+Images</td><td>Yes</td><td>OAuth</td></tr>
+<tr><td>CLAUDE_AUTH</td><td>Bearer (auth.json)</td><td>Messages</td><td>Yes</td><td>OAuth</td></tr>
+<tr><td>DEEPSEEK_CHAT</td><td>Bearer</td><td>Chat+reasoning</td><td>Yes</td><td>DeepSeek</td></tr>
+<tr><td>DEEPSEEK_ANTHROPIC</td><td>Bearer + version</td><td>Messages+thinking</td><td>Yes</td><td>DeepSeek</td></tr>
+<tr><td>GEMINI</td><td>x-goog-api-key</td><td>generateContent</td><td>No</td><td>Google</td></tr>
+<tr><td>LOCAL</td><td>local</td><td>-</td><td>-</td><td>Local</td></tr>
+</table>
+<h2 id="routing">Routing &amp; Failover</h2>
+<table><tr><th>Mode</th><th>Description</th></tr>
+<tr><td>RANDOM</td><td>Random selection</td></tr>
+<tr><td>ROUND_ROBIN</td><td>Round-robin</td></tr>
+<tr><td>WEIGHTED</td><td>Weighted</td></tr>
+<tr><td>SESSION_STICKY</td><td>Session stickiness</td></tr>
+</table>
+<p>channel/model format. Failover: retries other channels on upstream failure.</p>
+<h2 id="quota">Quota &amp; Security</h2>
+<table><tr><th>Feature</th><th>Description</th></tr>
+<tr><td>QUOTA</td><td>By amount, configurable window (HOUR/DAY)</td></tr>
+<tr><td>REQUEST_COUNT</td><td>By count, configurable window (HOUR/DAY)</td></tr>
+</table>
+<p>API Key masked (first4+****+last4), logs auto-sanitized.</p>
+<hr><div class="footer">api-convert AI API Gateway</div>
+</div>
+<script>(function(){var l=document.querySelectorAll("#side nav a");var o=new IntersectionObserver(function(e){e.forEach(function(e){if(e.isIntersecting){l.forEach(function(l){l.classList.remove("active")});var t=e.target.id;if(t){var n=document.querySelector("#side nav a[href=""+t+""]");if(n)n.classList.add("active")}}})},{rootMargin:"-20% 0px -60% 0px"});document.querySelectorAll("[id]").forEach(function(e){o.observe(e)})})();</script>
+</body>
+</html>

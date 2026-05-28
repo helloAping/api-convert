@@ -53,6 +53,7 @@ public class OpenAiChatCompletionResponse {
         private OpenAiMessage message;
         @JsonProperty("finish_reason")
         private String finishReason;
+        private final Map<String, Object> additionalProperties = new LinkedHashMap<>();
 
         public Integer getIndex() {
             return index;
@@ -77,6 +78,16 @@ public class OpenAiChatCompletionResponse {
         public void setFinishReason(String finishReason) {
             this.finishReason = finishReason;
         }
+
+        @JsonAnyGetter
+        public Map<String, Object> getAdditionalProperties() {
+            return additionalProperties;
+        }
+
+        @JsonAnySetter
+        public void setAdditionalProperty(String name, Object value) {
+            additionalProperties.put(name, value);
+        }
     }
 
     public static class CompletionTokensDetails {
@@ -86,6 +97,7 @@ public class OpenAiChatCompletionResponse {
         private Integer audioTokens;
         @JsonProperty("reasoning_tokens")
         private Integer reasoningTokens;
+        private final Map<String, Object> additionalProperties = new LinkedHashMap<>();
 
         public Integer getTextTokens() { return textTokens; }
         public void setTextTokens(Integer textTokens) { this.textTokens = textTokens; }
@@ -93,6 +105,16 @@ public class OpenAiChatCompletionResponse {
         public void setAudioTokens(Integer audioTokens) { this.audioTokens = audioTokens; }
         public Integer getReasoningTokens() { return reasoningTokens; }
         public void setReasoningTokens(Integer reasoningTokens) { this.reasoningTokens = reasoningTokens; }
+
+        @JsonAnyGetter
+        public Map<String, Object> getAdditionalProperties() {
+            return additionalProperties;
+        }
+
+        @JsonAnySetter
+        public void setAdditionalProperty(String name, Object value) {
+            additionalProperties.put(name, value);
+        }
     }
 
     public static class Usage {
@@ -193,6 +215,11 @@ public class OpenAiChatCompletionResponse {
     public static class TokenDetails {
         @JsonProperty("cached_tokens")
         private Integer cachedTokens;
+        @JsonProperty("audio_tokens")
+        private Integer audioTokens;
+        @JsonProperty("video_tokens")
+        private Integer videoTokens;
+        private final Map<String, Object> additionalProperties = new LinkedHashMap<>();
 
         public Integer getCachedTokens() {
             return cachedTokens;
@@ -200,6 +227,32 @@ public class OpenAiChatCompletionResponse {
 
         public void setCachedTokens(Integer cachedTokens) {
             this.cachedTokens = cachedTokens;
+        }
+
+        public Integer getAudioTokens() {
+            return audioTokens;
+        }
+
+        public void setAudioTokens(Integer audioTokens) {
+            this.audioTokens = audioTokens;
+        }
+
+        public Integer getVideoTokens() {
+            return videoTokens;
+        }
+
+        public void setVideoTokens(Integer videoTokens) {
+            this.videoTokens = videoTokens;
+        }
+
+        @JsonAnyGetter
+        public Map<String, Object> getAdditionalProperties() {
+            return additionalProperties;
+        }
+
+        @JsonAnySetter
+        public void setAdditionalProperty(String name, Object value) {
+            additionalProperties.put(name, value);
         }
     }
 }

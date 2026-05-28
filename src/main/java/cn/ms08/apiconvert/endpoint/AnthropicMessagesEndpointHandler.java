@@ -25,14 +25,16 @@ public class AnthropicMessagesEndpointHandler implements EndpointHandler {
     private final AnthropicRequestAdapter requestAdapter;
     private final AnthropicResponseAdapter responseAdapter;
     private final ChatGatewayService chatGatewayService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     public AnthropicMessagesEndpointHandler(AnthropicRequestAdapter requestAdapter,
                                             AnthropicResponseAdapter responseAdapter,
-                                            ChatGatewayService chatGatewayService) {
+                                            ChatGatewayService chatGatewayService,
+                                            ObjectMapper objectMapper) {
         this.requestAdapter = requestAdapter;
         this.responseAdapter = responseAdapter;
         this.chatGatewayService = chatGatewayService;
+        this.objectMapper = objectMapper;
     }
 
     @Override

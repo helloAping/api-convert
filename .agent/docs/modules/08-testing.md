@@ -19,6 +19,10 @@
 | `ResponsesToOpenAiCompatibleAdapterTests` | 8 | Responses → OpenAI/DeepSeek Chat 请求参数、工具调用响应、reasoning 续轮转换、工具调用与工具结果顺序修复、无结果工具调用裁剪 |
 | `ResponsesToAnthropicAdapterTests` | 2 | Responses → Anthropic `system`/`tools`/`tool_use`/`tool_result` 转换、连续工具调用合并 |
 | `RealTimeResponsesTransformerTests` | 4 | Codex SSE 兼容：累计文本去重、原生 Responses SSE 解析、Chat `reasoning_content`/`tool_calls` 转 Responses `reasoning`/`function_call`、流结束 JSON 合法性 |
+| `EndpointTypeTests` | 1 | 公开端点类型枚举与路径映射 |
+| `AiProviderClientTests` | 1 | Provider 默认不支持能力的异常边界 |
+| `DateTimeConfigTests` | 2 | 全局 `ObjectMapper` 支持超过 Jackson 默认上限的 base64 字符串，并兼容上游 Chat Completions 响应扩展字段 |
+| `LogSanitizerTests` | 1 | 大请求/响应正文直接输出摘要，避免日志脱敏阶段解析超大 JSON |
 
 ## 2. 运行测试
 
@@ -26,7 +30,7 @@
 JAVA_HOME="$JAVA_HOME_25" PATH="$JAVA_HOME_25/bin":$PATH mvn -q test
 ```
 
-当前总量：9 个测试类、49 个用例。
+当前总量：13 个测试类、54 个用例。
 
 ## 3. 已知问题
 
