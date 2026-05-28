@@ -239,10 +239,50 @@ docker run --rm -p 8080:8080 \
 docker pull crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.5
 ```
 
-反向代理时必须透传 `Authorization` 请求头：
+## Nginx 反向代理配置
+
+通过 Nginx 暴露服务时，建议按下面的 `location` 配置透传 `Authorization`、禁用代理缓存、放宽大请求体限制，并关闭 SSE 缓冲以保证流式响应即时回传。将 `http://your_host:port` 替换为实际后端地址，例如 `http://127.0.0.1:8080`；如果上游启用了 HTTPS，则改为 `https://your_host:port`。
 
 ```nginx
-proxy_set_header Authorization $http_authorization;
+location ^~ / {
+    proxy_pass http://your_host:port;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header REMOTE-HOST $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_pass_request_headers on;
+    proxy_set_header Authorization $http_authorization;
+    proxy_http_version 1.1;
+
+    add_header X-Cache $upstream_cache_status;
+    proxy_ssl_server_name off;
+    proxy_ssl_name $proxy_host;
+
+    # 禁用缓存，避免 304 或缓存命中影响 API 响应。
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    expires off;
+
+    # base64 大 payload 解码和上游处理可能需要较长时间。
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_connect_timeout 60s;
+
+    # 支持图片、视频等 base64 大请求体。
+    client_max_body_size 50m;
+
+    # 流式 SSE：关闭缓冲，让上游事件即时回传。
+    proxy_buffering off;
+    proxy_request_buffering off;
+    proxy_cache off;
+    proxy_set_header Connection '';
+    chunked_transfer_encoding on;
+}
 ```
 
 ## 构建与测试
