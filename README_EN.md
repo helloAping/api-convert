@@ -239,10 +239,50 @@ Release image example:
 docker pull crpi-vqmjtaxg5bb83uba.cn-guangzhou.personal.cr.aliyuncs.com/aping/api-convert:v1.0.5
 ```
 
-When using a reverse proxy, forward the `Authorization` header:
+## Nginx Reverse Proxy
+
+When exposing the service through Nginx, use a `location` block like the following to forward `Authorization`, disable proxy caching, allow larger request bodies, and disable buffering for real-time SSE streaming. Replace `http://your_host:port` with the actual backend address, for example `http://127.0.0.1:8080`; use `https://your_host:port` if the upstream backend runs HTTPS.
 
 ```nginx
-proxy_set_header Authorization $http_authorization;
+location ^~ / {
+    proxy_pass http://your_host:port;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header REMOTE-HOST $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_pass_request_headers on;
+    proxy_set_header Authorization $http_authorization;
+    proxy_http_version 1.1;
+
+    add_header X-Cache $upstream_cache_status;
+    proxy_ssl_server_name off;
+    proxy_ssl_name $proxy_host;
+
+    # Disable caching to avoid 304 responses or stale API results.
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    expires off;
+
+    # base64 payload decoding and upstream processing may take longer.
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_connect_timeout 60s;
+
+    # Support large base64 request bodies for image and video payloads.
+    client_max_body_size 50m;
+
+    # SSE streaming: disable buffering so upstream events are returned immediately.
+    proxy_buffering off;
+    proxy_request_buffering off;
+    proxy_cache off;
+    proxy_set_header Connection '';
+    chunked_transfer_encoding on;
+}
 ```
 
 ## Build and Test
