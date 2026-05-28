@@ -87,6 +87,7 @@
 - README 琛ュ厖绠€鍖栫増鍚姩璇存槑锛氬垱寤哄伐浣滅洰褰曞苟鍏嬮殕浠撳簱銆佹寜绯荤粺涓嬭浇骞惰В鍘?JDK 25銆侀€氳繃 `scripts/start.*` 鎸囧畾 JDK 璺緞鍜岀鐞嗗憳璐﹀彿瀵嗙爜鍚姩锛涘悓鏃朵繚鐣欐竻鍗?TUNA 鍥藉唴闀滃儚鐩綍璇存槑锛屽紑鍙戞枃妗ｈ烦杞埌 README銆?
 ### 鍓嶇
 
+- 控制台侧边栏移除独立“API 文档”菜单；API 文档入口收敛到控制台“接口调用信息”卡片右上角按钮和端点表“文档”操作列；Vite 本地开发代理 `/docs` 到后端静态文档，前后端分离调试不会再落到 5173 404。
 - Channel management exposes `GPT_AUTH`/`CLAUDE_AUTH`, hides API Key inputs for AUTH channels, provides `auth.json` upload + OAuth link generation.
 - Dashboard pie charts with hoverable SVG segments (name, tokens, count, share).
 - Vite manual chunks (Vue/Naive UI/Axios), explicit component registration.

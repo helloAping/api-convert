@@ -16,7 +16,7 @@ function New-AgentLink {
         if ($Item.LinkType) {
             Remove-Item $Target -Force
         } else {
-            Write-Warning "Skip .$Name: path already exists and is not a link: $Target"
+            Write-Warning "Skip .${Name}: path already exists and is not a link: $Target"
             return
         }
     }

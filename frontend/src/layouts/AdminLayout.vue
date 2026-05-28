@@ -19,7 +19,6 @@ const collapsed = ref(false)
 const username = ref(localStorage.getItem('admin-username') || 'admin')
 
 const menuOptions = [
-  { label: 'API 文档', key: '/api-docs', icon: DocumentTextOutline },
   { label: '控制台', key: '/', icon: SpeedometerOutline },
   { label: '渠道管理', key: '/channels', icon: ServerOutline },
   { label: '模型管理', key: '/models', icon: CubeOutline },

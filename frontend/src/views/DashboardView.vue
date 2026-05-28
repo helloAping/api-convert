@@ -53,6 +53,29 @@ const topOptions = [
   { label: 'Top 6', value: 6 },
   { label: 'Top 10', value: 10 },
 ]
+const apiDocsHref = computed(() => docsHref())
+
+// 将端点路径映射到静态 API 文档中的锚点，避免斜杠路径生成不可用的 fragment。
+function endpointDocHref(path: string) {
+  const anchorMap: Record<string, string> = {
+    '/health': 'health',
+    '/v1/models': 'models',
+    '/v1/chat/completions': 'chat-completions',
+    '/v1/messages': 'messages',
+    '/v1/responses': 'responses',
+    '/v1/videos': 'videos',
+    '/v1/images/generations': 'images',
+  }
+  const anchor = anchorMap[path]
+  return docsHref(anchor)
+}
+
+// 本地前后端分离时优先使用后端 baseUrl，加载前回退到 Vite /docs 代理。
+function docsHref(anchor?: string) {
+  const baseUrl = gatewayInfo.value.baseUrl?.replace(/\/$/, '') || ''
+  const hash = anchor ? `#${anchor}` : ''
+  return `${baseUrl}/docs/api-reference.html${hash}`
+}
 
 const endpointColumns: DataTableColumn<GatewayEndpointVO>[] = [
   {
@@ -71,6 +94,21 @@ const endpointColumns: DataTableColumn<GatewayEndpointVO>[] = [
   },
   { title: '鉴权', key: 'auth', width: 140 },
   { title: '说明', key: 'description', minWidth: 200 },
+  {
+    title: '文档',
+    key: 'docs',
+    width: 100,
+    render: (row) => h(
+      'a',
+      {
+        class: 'endpoint-doc-link',
+        href: endpointDocHref(row.path),
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      },
+      '查看',
+    ),
+  },
 ]
 
 const dailyTokenSeries = computed(() => tokenSeries(dashboard.value.dailyTokenUsage))
@@ -309,18 +347,18 @@ onMounted(load)
       </n-grid>
 
       <n-card title="接口调用信息">
+        <template #header-extra>
+          <a class="api-doc-button" :href="apiDocsHref" target="_blank" rel="noopener noreferrer">
+            <n-icon size="16"><DocumentOutline /></n-icon>
+            完整文档
+          </a>
+        </template>
         <n-space vertical :size="12">
           <n-descriptions bordered :column="1" label-placement="left">
             <n-descriptions-item label="后端 Base URL">
               <n-text code>{{ gatewayInfo.baseUrl || '-' }}</n-text>
             </n-descriptions-item>
           </n-descriptions>
-          <n-space justify="end" style="margin-bottom: 8px">
-            <n-a href="/docs/api-reference.html" target="_blank">
-              <n-icon size="18" style="vertical-align: middle"><DocumentOutline /></n-icon>
-              查看完整 API 文档
-            </n-a>
-          </n-space>
           <n-data-table
             :columns="endpointColumns"
             :data="gatewayInfo.endpoints"
@@ -332,3 +370,38 @@ onMounted(load)
     </n-space>
   </div>
 </template>
+
+<style scoped>
+.api-doc-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  color: #2563eb;
+  font-size: 13px;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.api-doc-button:hover,
+.endpoint-doc-link:hover {
+  color: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.endpoint-doc-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  height: 26px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  color: #2563eb;
+  font-size: 12px;
+  text-decoration: none;
+}
+</style>
