@@ -359,7 +359,8 @@ public class AdminChannelService {
                                 model.getProviderModel(), model.getModelAlias(),
                                 model.getVision(), model.getToolsSupport(), model.getJsonModeSupport(), model.getContextLength(),
                                 model.getEnabled(),
-                                model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion()))
+                                model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion(),
+                                model.getAllowedEndpointTypes()))
                         .toList()
         );
     }
@@ -397,6 +398,7 @@ public class AdminChannelService {
             model.setToolsSupport(modelForm.toolsSupport());
             model.setJsonModeSupport(modelForm.jsonModeSupport());
             model.setContextLength(modelForm.contextLength());
+            model.setAllowedEndpointTypes(modelForm.allowedEndpointTypes());
             model.setEnabled(true);
             channelModelMapper.insert(model);
         }
@@ -441,9 +443,10 @@ public class AdminChannelService {
             if (normalized.containsKey(publicName)) {
                 throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "公开模型名重复: " + publicName);
             }
-            normalized.put(publicName, new ChannelModelForm(publicName, providerModel, alias,
+                normalized.put(publicName, new ChannelModelForm(publicName, providerModel, alias,
                     model.inputQuotaPerMillion(), model.outputQuotaPerMillion(), model.cacheReadQuotaPerMillion(),
-                    model.vision(), model.toolsSupport(), model.jsonModeSupport(), model.contextLength()));
+                    model.vision(), model.toolsSupport(), model.jsonModeSupport(), model.contextLength(),
+                    model.allowedEndpointTypes()));
         }
         return new ArrayList<>(normalized.values());
     }

@@ -146,7 +146,7 @@ public class ChatGatewayService {
             if (stream) {
                 throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST, "stream is not supported yet");
             }
-            List<ModelRoute> routes = resolveChatRoutes(request, principal, sessionKey);
+            List<ModelRoute> routes = resolveChatRoutes(request, principal, sessionKey, endpointType);
             apiKeyQuotaService.recordRequest(principal.apiKeyId());
             for (int index = 0; index < routes.size(); index++) {
                 route = routes.get(index);
@@ -202,13 +202,14 @@ public class ChatGatewayService {
     /**
      * 按密钥开关决定请求是否解析同模型的多渠道失败切换候选。
      */
-    private List<ModelRoute> resolveChatRoutes(UnifiedChatRequest request, GatewayPrincipal principal, String sessionKey) {
+    private List<ModelRoute> resolveChatRoutes(UnifiedChatRequest request, GatewayPrincipal principal, String sessionKey,
+                                               EndpointType endpointType) {
         if (principal.supportsFailover()) {
             return routingService.resolveFailoverRoutes(request, principal.apiKeyId(), principal.allowedChannelCodes(),
-                    principal.allowedModelNames(), sessionKey);
+                    principal.allowedModelNames(), sessionKey, endpointType);
         }
         return List.of(routingService.resolve(request, principal.apiKeyId(), principal.allowedChannelCodes(),
-                principal.allowedModelNames(), sessionKey));
+                principal.allowedModelNames(), sessionKey, endpointType));
     }
 
     /**
@@ -261,7 +262,7 @@ public class ChatGatewayService {
         StreamResponseTransformer.WrappedStream wrappedStream = null;
         CountingOutputStream attemptOutput = null;
         try {
-            List<ModelRoute> routes = resolveChatRoutes(request, principal, sessionKey);
+            List<ModelRoute> routes = resolveChatRoutes(request, principal, sessionKey, endpointType);
             apiKeyQuotaService.recordRequest(principal.apiKeyId());
             for (int index = 0; index < routes.size(); index++) {
                 route = routes.get(index);

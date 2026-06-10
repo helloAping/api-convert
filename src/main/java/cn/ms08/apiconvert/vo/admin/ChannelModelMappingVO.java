@@ -17,6 +17,7 @@ import java.math.BigDecimal;
  * @param inputQuotaPerMillion 每 100 万普通输入 token 消耗的额度
  * @param outputQuotaPerMillion 每 100 万输出 token 消耗的额度
  * @param cacheReadQuotaPerMillion 每 100 万缓存读取输入 token 消耗的额度
+ * @param allowedEndpointTypes 逗号分隔的 EndpointType 名称；为空表示不限制
  */
 public record ChannelModelMappingVO(
         Long id,
@@ -30,6 +31,7 @@ public record ChannelModelMappingVO(
         Boolean enabled,
         BigDecimal inputQuotaPerMillion,
         BigDecimal outputQuotaPerMillion,
-        BigDecimal cacheReadQuotaPerMillion
+        BigDecimal cacheReadQuotaPerMillion,
+        String allowedEndpointTypes
 ) {
 }

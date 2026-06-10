@@ -208,8 +208,7 @@ export interface GatewayEndpointVO {
 
 export interface DashboardStatsVO {
   summary: DashboardSummaryVO
-  dailyTokenUsage: DashboardTokenPointVO[]
-  hourlyTokenUsage: DashboardTokenPointVO[]
+  tokenUsage: DashboardTokenPointVO[]
   modelDistribution: DashboardDimensionUsageVO[]
   channelDistribution: DashboardDimensionUsageVO[]
   apiKeyDistribution: DashboardDimensionUsageVO[]
@@ -320,6 +319,8 @@ export interface ChannelModelForm {
   jsonModeSupport?: boolean | null
   /** 最大上下文窗口（token 数）。 */
   contextLength?: number | null
+  /** 逗号分隔的 EndpointType 名称；为空或空字符串表示不限制端点类型。 */
+  allowedEndpointTypes?: string | null
 }
 
 /** 渠道详情中返回的模型映射项。 */
@@ -348,6 +349,8 @@ export interface ChannelModelMappingVO {
   jsonModeSupport: boolean | null
   /** 最大上下文窗口（token 数）。 */
   contextLength: number | null
+  /** 逗号分隔的 EndpointType 名称；为空表示不限制端点类型。 */
+  allowedEndpointTypes: string | null
 }
 
 /** 后端获取上游模型选项所需的未保存表单值。 */
@@ -452,11 +455,14 @@ export interface ModelCapabilitiesForm {
 export interface RequestLogSearchParam {
   requestId?: string
   gatewayApiKeyId?: number
+  gatewayApiKeyKeyword?: string
   sourceProtocol?: string
   requestType?: string
   providerCode?: string
   providerType?: string
   publicModel?: string
+  providerModel?: string
+  stream?: boolean
   success?: boolean
   startTime?: string
   endTime?: string
@@ -472,3 +478,11 @@ export const quotaWindowUnits = ['MINUTE', 'HOUR', 'DAY']
 /** 管理端当前开放的密钥限制类型，表结构保留未来扩展能力。 */
 export const apiKeyLimitTypes = ['QUOTA', 'REQUEST']
 export const routeModes = ['RANDOM', 'ROUND_ROBIN', 'WEIGHTED', 'SESSION_STICKY']
+/** 管理端可选的端点类型，用于按模型限制允许调用的端点。 */
+export const endpointTypeOptions = [
+  { label: 'Chat Completions', value: 'CHAT_COMPLETIONS' },
+  { label: 'Anthropic Messages', value: 'ANTHROPIC_MESSAGES' },
+  { label: 'Responses API', value: 'OPENAI_RESPONSES' },
+  { label: '视频生成', value: 'OPENAI_VIDEOS' },
+  { label: '图片生成', value: 'OPENAI_IMAGES' },
+]

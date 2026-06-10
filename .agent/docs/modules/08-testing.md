@@ -18,7 +18,9 @@
 | `OpenAiResponsesRequestAdapterTests` | 2 | Responses 原生参数保留、`function_call/function_call_output` 与统一工具消息互转 |
 | `ResponsesToOpenAiCompatibleAdapterTests` | 8 | Responses → OpenAI/DeepSeek Chat 请求参数、工具调用响应、reasoning 续轮转换、工具调用与工具结果顺序修复、无结果工具调用裁剪 |
 | `ResponsesToAnthropicAdapterTests` | 2 | Responses → Anthropic `system`/`tools`/`tool_use`/`tool_result` 转换、连续工具调用合并 |
-| `RealTimeResponsesTransformerTests` | 4 | Codex SSE 兼容：累计文本去重、原生 Responses SSE 解析、Chat `reasoning_content`/`tool_calls` 转 Responses `reasoning`/`function_call`、流结束 JSON 合法性 |
+| `ResponsesStreamTransformerTests` | 4 | Codex SSE 兼容：累计文本去重、原生 Responses SSE 解析、Chat `reasoning_content`/`tool_calls` 转 Responses `reasoning`/`function_call`、流结束 JSON 合法性 |
+| `AnthropicToOpenAiStreamTransformerTests` | 5 | Anthropic → OpenAI Chat 流式转换：文本流、工具调用、推理内容、上游错误、complete() 补发 |
+| `OpenAiToAnthropicStreamTransformerTests` | 6 | OpenAI Chat → Anthropic 流式转换：文本流、工具调用、推理内容、上游错误、complete() 补发、length→max_tokens 映射 |
 | `EndpointTypeTests` | 1 | 公开端点类型枚举与路径映射 |
 | `AiProviderClientTests` | 1 | Provider 默认不支持能力的异常边界 |
 | `DateTimeConfigTests` | 2 | 全局 `ObjectMapper` 支持超过 Jackson 默认上限的 base64 字符串，并兼容上游 Chat Completions 响应扩展字段 |
@@ -30,7 +32,7 @@
 JAVA_HOME="$JAVA_HOME_25" PATH="$JAVA_HOME_25/bin":$PATH mvn -q test
 ```
 
-当前总量：13 个测试类、54 个用例。
+当前总量：15 个测试类、65 个用例。
 
 ## 3. 已知问题
 

@@ -6,6 +6,7 @@ import cn.ms08.apiconvert.dto.ModelRoute;
 import cn.ms08.apiconvert.dto.RoutingConfig;
 import cn.ms08.apiconvert.dto.RoutingMode;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.entity.AiChannelEntity;
 import cn.ms08.apiconvert.entity.AiChannelModelEntity;
 import cn.ms08.apiconvert.exception.ErrorCode;
@@ -83,7 +84,7 @@ public class RoutingService {
      * 按模型名、密钥渠道授权范围和模型授权范围解析路由。
      */
     public ModelRoute resolve(String requestedModel, Set<String> allowedChannelCodes, Set<String> allowedModelNames) {
-        return resolve(requestedModel, null, allowedChannelCodes, allowedModelNames, false, null);
+        return resolve(requestedModel, null, allowedChannelCodes, allowedModelNames, false, null, null);
     }
 
     /**
@@ -91,7 +92,15 @@ public class RoutingService {
      */
     public ModelRoute resolveModel(String requestedModel, Long apiKeyId, Set<String> allowedChannelCodes,
                                    Set<String> allowedModelNames) {
-        return resolve(requestedModel, apiKeyId, allowedChannelCodes, allowedModelNames, false, null);
+        return resolve(requestedModel, apiKeyId, allowedChannelCodes, allowedModelNames, false, null, null);
+    }
+
+    /**
+     * 按端点类型解析路由，用于需要端点类型过滤的非对话端点（视频、图片等）。
+     */
+    public ModelRoute resolveModel(String requestedModel, Long apiKeyId, Set<String> allowedChannelCodes,
+                                   Set<String> allowedModelNames, EndpointType endpointType) {
+        return resolve(requestedModel, apiKeyId, allowedChannelCodes, allowedModelNames, false, null, endpointType);
     }
 
     /**
@@ -105,7 +114,7 @@ public class RoutingService {
      * 按统一请求、密钥 ID 和会话标识解析路由，供网关主链路使用。
      */
     public ModelRoute resolve(UnifiedChatRequest request, Long apiKeyId, Set<String> allowedChannelCodes, String sessionKey) {
-        return resolve(request, apiKeyId, allowedChannelCodes, Set.of(), sessionKey);
+        return resolve(request, apiKeyId, allowedChannelCodes, Set.of(), sessionKey, null);
     }
 
     /**
@@ -113,10 +122,18 @@ public class RoutingService {
      */
     public ModelRoute resolve(UnifiedChatRequest request, Long apiKeyId, Set<String> allowedChannelCodes,
                               Set<String> allowedModelNames, String sessionKey) {
+        return resolve(request, apiKeyId, allowedChannelCodes, allowedModelNames, sessionKey, null);
+    }
+
+    /**
+     * 携带端点类型的路由解析，过滤只允许特定端点的渠道模型。
+     */
+    public ModelRoute resolve(UnifiedChatRequest request, Long apiKeyId, Set<String> allowedChannelCodes,
+                              Set<String> allowedModelNames, String sessionKey, EndpointType endpointType) {
         if (request == null) {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "request is required");
         }
-        return resolve(request.model(), apiKeyId, allowedChannelCodes, allowedModelNames, hasTools(request.rawOptions()), sessionKey);
+        return resolve(request.model(), apiKeyId, allowedChannelCodes, allowedModelNames, hasTools(request.rawOptions()), sessionKey, endpointType);
     }
 
     /**
@@ -124,10 +141,18 @@ public class RoutingService {
      */
     public List<ModelRoute> resolveFailoverRoutes(UnifiedChatRequest request, Long apiKeyId, Set<String> allowedChannelCodes,
                                                   Set<String> allowedModelNames, String sessionKey) {
+        return resolveFailoverRoutes(request, apiKeyId, allowedChannelCodes, allowedModelNames, sessionKey, null);
+    }
+
+    /**
+     * 携带端点类型的失败切换候选路由解析。
+     */
+    public List<ModelRoute> resolveFailoverRoutes(UnifiedChatRequest request, Long apiKeyId, Set<String> allowedChannelCodes,
+                                                  Set<String> allowedModelNames, String sessionKey, EndpointType endpointType) {
         if (request == null) {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "request is required");
         }
-        return resolveRoutes(request.model(), apiKeyId, allowedChannelCodes, allowedModelNames, hasTools(request.rawOptions()), sessionKey);
+        return resolveRoutes(request.model(), apiKeyId, allowedChannelCodes, allowedModelNames, hasTools(request.rawOptions()), sessionKey, endpointType);
     }
 
     /**
@@ -167,18 +192,19 @@ public class RoutingService {
     }
 
     private ModelRoute resolve(String requestedModel, Long apiKeyId, Set<String> allowedChannelCodes,
-                               Set<String> allowedModelNames, boolean requiresTools, String sessionKey) {
-        return resolveRoutes(requestedModel, apiKeyId, allowedChannelCodes, allowedModelNames, requiresTools, sessionKey).getFirst();
+                               Set<String> allowedModelNames, boolean requiresTools, String sessionKey, EndpointType endpointType) {
+        return resolveRoutes(requestedModel, apiKeyId, allowedChannelCodes, allowedModelNames, requiresTools, sessionKey, endpointType).getFirst();
     }
 
     private List<ModelRoute> resolveRoutes(String requestedModel, Long apiKeyId, Set<String> allowedChannelCodes,
-                                           Set<String> allowedModelNames, boolean requiresTools, String sessionKey) {
+                                            Set<String> allowedModelNames, boolean requiresTools, String sessionKey,
+                                            EndpointType endpointType) {
         if (!StringUtils.hasText(requestedModel)) {
             throw new GatewayException(ErrorCode.INVALID_REQUEST, HttpStatus.BAD_REQUEST, "model is required");
         }
         Set<String> allowed = allowedChannelCodes == null ? Set.of() : allowedChannelCodes;
         Set<String> allowedModels = allowedModelNames == null ? Set.of() : allowedModelNames;
-        List<RouteCandidate> candidates = resolveCandidates(requestedModel, allowed, allowedModels);
+        List<RouteCandidate> candidates = resolveCandidates(requestedModel, allowed, allowedModels, endpointType);
         if (candidates.isEmpty()) {
             throw new GatewayException(ErrorCode.MODEL_NOT_FOUND, HttpStatus.BAD_REQUEST,
                     "Model not found or no active channel: " + requestedModel);
@@ -205,7 +231,7 @@ public class RoutingService {
      * 支持按对外模型名解析，也支持 channel/model 形式直接指定渠道和上游模型。
      */
     private List<RouteCandidate> resolveCandidates(String requestedModel, Set<String> allowedChannelCodes,
-                                                   Set<String> allowedModelNames) {
+                                                   Set<String> allowedModelNames, EndpointType endpointType) {
         int separator = requestedModel.indexOf('/');
         if (separator > 0 && separator < requestedModel.length() - 1) {
             String channelCode = requestedModel.substring(0, separator);
@@ -214,7 +240,7 @@ public class RoutingService {
                     .eq(AiChannelModelEntity::getChannelCode, channelCode)
                     .eq(AiChannelModelEntity::getProviderModel, providerModel)
                     .eq(AiChannelModelEntity::getEnabled, true));
-            List<RouteCandidate> directCandidates = activeCandidates(directModels, allowedChannelCodes, allowedModelNames);
+            List<RouteCandidate> directCandidates = activeCandidates(directModels, allowedChannelCodes, allowedModelNames, endpointType);
             if (!directCandidates.isEmpty()) {
                 return directCandidates;
             }
@@ -222,20 +248,23 @@ public class RoutingService {
         List<AiChannelModelEntity> models = modelMapper.selectList(new LambdaQueryWrapper<AiChannelModelEntity>()
                 .eq(AiChannelModelEntity::getPublicName, requestedModel)
                 .eq(AiChannelModelEntity::getEnabled, true));
-        return activeCandidates(models, allowedChannelCodes, allowedModelNames);
+        return activeCandidates(models, allowedChannelCodes, allowedModelNames, endpointType);
     }
 
     /**
-     * 过滤出启用、ACTIVE 且配置了上游密钥的渠道。
+     * 过滤出启用、ACTIVE 且配置了上游密钥的渠道，同时按端点类型限制过滤。
      */
     private List<RouteCandidate> activeCandidates(List<AiChannelModelEntity> models, Set<String> allowedChannelCodes,
-                                                  Set<String> allowedModelNames) {
+                                                  Set<String> allowedModelNames, EndpointType endpointType) {
         List<RouteCandidate> candidates = new ArrayList<>();
         for (AiChannelModelEntity model : models) {
             if (!allowedChannelCodes.isEmpty() && !allowedChannelCodes.contains(model.getChannelCode())) {
                 continue;
             }
             if (!allowedModelNames.isEmpty() && !allowedModelNames.contains(model.getPublicName())) {
+                continue;
+            }
+            if (endpointType != null && !isEndpointAllowed(model.getAllowedEndpointTypes(), endpointType)) {
                 continue;
             }
             AiChannelEntity channel = channelMapper.selectOne(new LambdaQueryWrapper<AiChannelEntity>()
@@ -248,6 +277,21 @@ public class RoutingService {
             }
         }
         return sorted(candidates);
+    }
+
+    /**
+     * 检查渠道模型是否允许当前端点类型调用。allowedEndpointTypes 为空表示不限制。
+     */
+    private boolean isEndpointAllowed(String allowedEndpointTypes, EndpointType endpointType) {
+        if (allowedEndpointTypes == null || allowedEndpointTypes.isBlank()) {
+            return true;
+        }
+        for (String allowed : allowedEndpointTypes.split(",")) {
+            if (allowed.trim().equals(endpointType.name())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<RouteCandidate> preferToolCapableCandidates(List<RouteCandidate> candidates, boolean requiresTools) {

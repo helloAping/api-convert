@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS ai_channel_model (
   input_quota_per_million DECIMAL(20,6) NULL COMMENT '每 100 万普通输入 token 消耗的额度',
   output_quota_per_million DECIMAL(20,6) NULL COMMENT '每 100 万输出 token 消耗的额度',
   cache_read_quota_per_million DECIMAL(20,6) NULL COMMENT '每 100 万缓存读取输入 token 消耗的额度',
+  allowed_endpoint_types TEXT NULL COMMENT '逗号分隔的 EndpointType 名称，为空表示不限制端点类型',
   enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '模型映射是否启用',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -148,3 +149,4 @@ VALUES
   ('routing.sticky_ttl_minutes', '1440', '会话粘性绑定保留分钟数');
 
 INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (15, 'Add channel image and video endpoint paths');
+INSERT IGNORE INTO gateway_schema_version(version, description) VALUES (16, 'Add allowed endpoint types per channel model');

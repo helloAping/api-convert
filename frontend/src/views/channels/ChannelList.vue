@@ -1,9 +1,10 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { h, onMounted, ref } from 'vue'
 import { useMessage, NButton, NTag } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
 import { channelTypes } from '@/types'
 import type { ChannelForm, ChannelModelForm, ChannelQuotaVO, ChannelVO } from '@/types'
+import { endpointTypeOptions } from '@/types'
 import { createChannel, deleteChannel, fetchChannelModels, fetchChannelQuota, getChannels, startChannelAuth, submitChannelAuthCallbackUrl, updateChannel, uploadChannelAuth } from '@/api/channels'
 
 const message = useMessage()
@@ -13,7 +14,9 @@ const loading = ref(false)
 const data = ref<ChannelVO[]>([])
 // 控制创建/编辑弹窗是否展示。
 const showModal = ref(false)
-// 编辑模式下的当前渠道 ID；null 表示创建模式。
+// 弹窗模式：create=新增、edit=编辑、copy=复制。
+const modalMode = ref<'create' | 'edit' | 'copy'>('create')
+// 编辑模式下的当前渠道 ID；null 表示创建或复制模式。
 const editingId = ref<number | null>(null)
 // 跟踪上游模型发现请求，让获取按钮展示加载状态。
 const fetchingModels = ref(false)
@@ -66,9 +69,11 @@ const columns: DataTableColumn<ChannelVO>[] = [
   {
     title: '操作',
     key: 'actions',
-    width: 180,
+    width: 240,
+    fixed: 'right',
     render: (row) => h('div', { style: 'display:flex;gap:8px' }, [
       h(NButton, { size: 'small', onClick: () => edit(row) }, { default: () => '编辑' }),
+      h(NButton, { size: 'small', onClick: () => copyChannel(row) }, { default: () => '复制' }),
       h(NButton, { size: 'small', type: 'error', onClick: () => remove(row.id) }, { default: () => '删除' }),
     ]),
   },
@@ -210,6 +215,12 @@ function normalizeModelAlias(model: ChannelModelForm) {
   model.publicName = model.modelAlias
 }
 
+// 将逗号分隔的端点类型字符串解析为数组，供 n-select 多选使用。
+function parseEndpointTypes(value: string | null | undefined): string[] {
+  if (!value) return []
+  return value.split(',').map(s => s.trim()).filter(Boolean)
+}
+
 // 优先展示后端校验或上游错误详情，便于管理员排查供应商失败。
 function errorMessage(error: unknown, fallback: string) {
   const response = (error as { response?: { data?: { message?: string } } })?.response
@@ -250,6 +261,7 @@ async function refreshQuota(row: ChannelVO) {
 // 以创建模式打开弹窗，并清空之前的模型选项。
 function showCreate() {
   editingId.value = null
+  modalMode.value = 'create'
   form.value = emptyForm()
   selectedProviderModels.value = []
   modelOptions.value = []
@@ -261,6 +273,7 @@ function showCreate() {
 // 以编辑模式打开弹窗；apiKey 留空表示不替换现有密钥。
 function edit(item: ChannelVO) {
   editingId.value = item.id
+  modalMode.value = 'edit'
   oauthAuthorizationUrl.value = ''
   oauthCallbackUrl.value = ''
   form.value = {
@@ -286,8 +299,48 @@ function edit(item: ChannelVO) {
       inputQuotaPerMillion: model.inputQuotaPerMillion,
       outputQuotaPerMillion: model.outputQuotaPerMillion,
       cacheReadQuotaPerMillion: model.cacheReadQuotaPerMillion,
+      allowedEndpointTypes: model.allowedEndpointTypes || '',
     })),
     enabled: item.enabled,
+  }
+  selectedProviderModels.value = uniqueProviderModels(form.value.models.map((model) => model.providerModel))
+  modelOptions.value = []
+  ensureModelOptions(selectedProviderModels.value)
+  showModal.value = true
+}
+
+// 以复制模式打开弹窗；复制除编码、名称、密钥外的所有参数。
+function copyChannel(source: ChannelVO) {
+  editingId.value = null
+  modalMode.value = 'copy'
+  oauthAuthorizationUrl.value = ''
+  oauthCallbackUrl.value = ''
+  form.value = {
+    code: '',
+    name: '',
+    type: source.type,
+    baseUrl: source.baseUrl,
+    chatPath: source.chatPath,
+    videoPath: source.videoPath || '/v1/videos',
+    imagePath: source.imagePath || '/v1/images/generations',
+    modelsPath: source.modelsPath,
+    apiKey: '',
+    authMode: source.authMode || (isAuthType(source.type) ? 'AUTH_FILE' : 'API_KEY'),
+    priority: source.priority,
+    status: source.status,
+    publicModel: '',
+    providerModel: '',
+    modelPrefix: '',
+    models: source.models.map((model) => ({
+      publicName: model.modelAlias || '',
+      providerModel: model.providerModel,
+      modelAlias: model.modelAlias || '',
+      inputQuotaPerMillion: model.inputQuotaPerMillion,
+      outputQuotaPerMillion: model.outputQuotaPerMillion,
+      cacheReadQuotaPerMillion: model.cacheReadQuotaPerMillion,
+      allowedEndpointTypes: model.allowedEndpointTypes || '',
+    })),
+    enabled: source.enabled,
   }
   selectedProviderModels.value = uniqueProviderModels(form.value.models.map((model) => model.providerModel))
   modelOptions.value = []
@@ -445,10 +498,10 @@ onMounted(load)
         选择供应商后填写上游 Base URL、实际请求路径和 API Key。模型支持多选和手动输入；别名非必填，填写后模型管理中会按别名单独展示，未填写时使用”模型前缀/上游模型名”。
       </n-alert>
 
-      <n-data-table :columns="columns" :data="data" :loading="loading" :pagination="false" />
+      <n-data-table :columns="columns" :data="data" :loading="loading" :pagination="false" :scroll-x="2120" />
     </n-space>
 
-    <n-modal v-model:show="showModal" :title="editingId ? '编辑渠道' : '新增渠道'">
+    <n-modal v-model:show="showModal" :title="modalMode === 'copy' ? '复制渠道' : editingId ? '编辑渠道' : '新增渠道'">
       <n-card style="width: 760px">
         <n-form :model="form" label-placement="left" label-width="120">
           <n-form-item label="渠道编码">
@@ -484,7 +537,7 @@ onMounted(load)
               v-model:value="form.apiKey"
               type="password"
               show-password-on="click"
-              :placeholder="editingId ? '留空表示不修改密钥' : '请输入上游 API Key'"
+              :placeholder="editingId ? '留空表示不修改密钥' : modalMode === 'copy' ? '复制的渠道需重新输入密钥' : '请输入上游 API Key'"
             />
           </n-form-item>
           <n-form-item v-else label="授权文件">
@@ -541,6 +594,7 @@ onMounted(load)
               <div class="model-alias-row model-alias-head">
                 <div>模型名称</div>
                 <div>模型别名</div>
+                <div>允许端点</div>
               </div>
               <div
                 v-for="model in form.models"
@@ -552,6 +606,14 @@ onMounted(load)
                   v-model:value="model.modelAlias"
                   :placeholder="`默认：${buildPublicModelName(model.providerModel, form.modelPrefix)}`"
                   @blur="normalizeModelAlias(model)"
+                />
+                <n-select
+                  :value="parseEndpointTypes(model.allowedEndpointTypes)"
+                  :options="endpointTypeOptions"
+                  multiple
+                  clearable
+                  placeholder="不限"
+                  @update:value="(val: string[]) => { model.allowedEndpointTypes = val.join(',') }"
                 />
               </div>
             </div>
@@ -582,7 +644,7 @@ onMounted(load)
 
 .model-alias-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr);
   gap: 12px;
   align-items: center;
   padding: 10px 12px;

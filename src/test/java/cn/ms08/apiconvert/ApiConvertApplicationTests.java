@@ -148,8 +148,7 @@ class ApiConvertApplicationTests {
         try {
             String response = mockMvc.perform(get("/api/admin/dashboard/stats")
                             .header("Authorization", "Bearer " + token)
-                            .param("days", "3")
-                            .param("hours", "24")
+                            .param("range", "7d")
                             .param("topN", "10"))
                     .andExpect(status().isOk())
                     .andReturn()
@@ -161,8 +160,7 @@ class ApiConvertApplicationTests {
             assertDashboardDimension(data.path("modelDistribution"), model, 3_500_000L);
             assertDashboardDimension(data.path("channelDistribution"), channel, 3_500_000L);
             assertDashboardDimension(data.path("apiKeyDistribution"), String.valueOf(apiKeyId), 3_500_000L, apiKeyName);
-            assertThat(data.path("dailyTokenUsage")).isNotEmpty();
-            assertThat(data.path("hourlyTokenUsage")).isNotEmpty();
+            assertThat(data.path("tokenUsage")).isNotEmpty();
             assertThat(data.path("modelSeries").toString()).contains(model);
         } finally {
             requestLogMapper.deleteById(first.getId());

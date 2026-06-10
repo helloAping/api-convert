@@ -119,9 +119,41 @@ public class AdminRequestLogService {
         if (StringUtils.hasText(param.providerCode())) wrapper.eq(RequestLogEntity::getProviderCode, param.providerCode());
         if (StringUtils.hasText(param.providerType())) wrapper.eq(RequestLogEntity::getProviderType, param.providerType());
         if (StringUtils.hasText(param.publicModel())) wrapper.eq(RequestLogEntity::getPublicModel, param.publicModel());
+        if (StringUtils.hasText(param.providerModel())) wrapper.eq(RequestLogEntity::getProviderModel, param.providerModel());
+        if (param.stream() != null) wrapper.eq(RequestLogEntity::getStream, param.stream());
         if (param.success() != null) wrapper.eq(RequestLogEntity::getSuccess, param.success());
         if (param.startTime() != null) wrapper.ge(RequestLogEntity::getCreatedAt, param.startTime());
         if (param.endTime() != null) wrapper.le(RequestLogEntity::getCreatedAt, param.endTime());
+        if (StringUtils.hasText(param.gatewayApiKeyKeyword())) {
+            applyApiKeyKeyword(wrapper, param.gatewayApiKeyKeyword().trim());
+        }
         return wrapper;
+    }
+
+    /**
+     * 密钥关键字搜索：输入数字时按 ID 精确匹配，否则按密钥名称模糊匹配。
+     * 两者取并集（OR），匹配到的密钥 ID 列表用于过滤日志。
+     */
+    private void applyApiKeyKeyword(LambdaQueryWrapper<RequestLogEntity> wrapper, String keyword) {
+        List<Long> matchById = new java.util.ArrayList<>();
+        try {
+            matchById.add(Long.parseLong(keyword));
+        } catch (NumberFormatException ignored) {
+            // 非数字，不按 ID 匹配
+        }
+        var nameQuery = new LambdaQueryWrapper<GatewayApiKeyEntity>()
+                .like(GatewayApiKeyEntity::getName, keyword)
+                .select(GatewayApiKeyEntity::getId);
+        List<Long> matchByName = gatewayApiKeyMapper.selectList(nameQuery).stream()
+                .map(GatewayApiKeyEntity::getId)
+                .toList();
+        java.util.Set<Long> allIds = new java.util.LinkedHashSet<>(matchById);
+        allIds.addAll(matchByName);
+        if (allIds.isEmpty()) {
+            // 无匹配结果，强制返回空
+            wrapper.and(w -> w.apply("1 = 0"));
+        } else {
+            wrapper.in(RequestLogEntity::getGatewayApiKeyId, allIds);
+        }
     }
 }

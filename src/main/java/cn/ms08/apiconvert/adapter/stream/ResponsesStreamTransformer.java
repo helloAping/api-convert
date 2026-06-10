@@ -1,9 +1,12 @@
 package cn.ms08.apiconvert.adapter.stream;
 
+import cn.ms08.apiconvert.endpoint.EndpointType;
+import cn.ms08.apiconvert.provider.ProviderType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,20 +18,26 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 /**
- * 将上游 Chat Completions SSE 流转为 Responses API SSE 事件的实时转换器。
+ * Responses API 流式响应转换器，将上游 SSE 流实时转换为 Responses API SSE 格式。
  * <p>
- * 作为 OutputStream 拦截器工作，直接包装 servlet response 的输出流。
- * 在上游 SSE 字节到达时即时转换：先在首个字节到达时写出初始事件
- * （response.created / in_progress / output_item.added / content_part.added），
- * 然后对每个 data 行实时转换为 response.output_text.delta 事件并 flush。
+ * 支持以下 (端点, 供应商) 组合的上游 SSE 实时转换：
+ * </p>
+ * <ul>
+ *   <li>{@code OPENAI_RESPONSES → OPENAI_COMPATIBLE} — 上游 Chat Completions SSE → Responses API SSE</li>
+ *   <li>{@code OPENAI_RESPONSES → ANTHROPIC} — 上游 Anthropic SSE → Responses API SSE</li>
+ *   <li>{@code OPENAI_RESPONSES → DEEPSEEK_CHAT} — 上游 DeepSeek Chat SSE → Responses API SSE</li>
+ *   <li>{@code OPENAI_RESPONSES → DEEPSEEK_ANTHROPIC} — 上游 DeepSeek Anthropic SSE → Responses API SSE</li>
+ * </ul>
  * <p>
- * 与旧的批处理方式不同，此实现确保客户端能接收到增量 token 流，
- * 而不是所有事件一次性到达。
+ * 同时支持 OpenAI 和 Anthropic 两种 SSE 输入格式，通过 event: 行或 type 字段自动检测。
+ * 作为 {@link OutputStream} 拦截器工作，在上游 SSE 字节到达时即时转换为 Responses API 事件。
+ * </p>
  */
-public class RealTimeResponsesTransformer extends OutputStream {
+@Component
+public class ResponsesStreamTransformer extends OutputStream implements StreamResponseTransformer {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Logger log = LoggerFactory.getLogger(RealTimeResponsesTransformer.class);
+    private static final Logger log = LoggerFactory.getLogger(ResponsesStreamTransformer.class);
 
     /** 真实的 HTTP 响应输出流。 */
     private final OutputStream target;
@@ -103,14 +112,64 @@ public class RealTimeResponsesTransformer extends OutputStream {
      * @param model      模型名
      * @param createdAt  创建时间戳（秒）
      */
-    public RealTimeResponsesTransformer(OutputStream target, String responseId,
-                                         String model, long createdAt) {
+    public ResponsesStreamTransformer(OutputStream target, String responseId,
+                                          String model, long createdAt) {
         this.target = target;
         this.responseId = responseId;
         this.model = model;
         this.createdAt = createdAt;
         this.itemId = "item_" + UUID.randomUUID().toString().replace("-", "");
         this.reasoningItemId = "rs_" + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    public ResponsesStreamTransformer() {
+        this(OutputStream.nullOutputStream(), null, null, 0);
+    }
+
+    @Override
+    public boolean supports(EndpointType endpoint, ProviderType provider) {
+        return endpoint == EndpointType.OPENAI_RESPONSES
+                && (provider == ProviderType.OPENAI_COMPATIBLE
+                || provider == ProviderType.ANTHROPIC
+                || provider == ProviderType.DEEPSEEK_CHAT
+                || provider == ProviderType.DEEPSEEK_ANTHROPIC);
+    }
+
+    @Override
+    public WrappedStream wrap(OutputStream target, String responseId, String model, long createdAt) {
+        return new ResponsesWrappedStream(
+                new ResponsesStreamTransformer(target, responseId, model, createdAt));
+    }
+
+    private static class ResponsesWrappedStream implements WrappedStream {
+
+        private final ResponsesStreamTransformer transformer;
+
+        ResponsesWrappedStream(ResponsesStreamTransformer transformer) {
+            this.transformer = transformer;
+        }
+
+        @Override
+        public OutputStream outputStream() {
+            return transformer;
+        }
+
+        @Override
+        public void sendInitialEvents() throws IOException {
+            transformer.sendInitialEvents();
+        }
+
+        @Override
+        public void complete() throws IOException {
+            transformer.complete();
+        }
+
+        @Override
+        public void writeErrorEvent(String message) throws IOException {
+            if (!transformer.isCompletedEventSent()) {
+                transformer.writeErrorWithMessage(message);
+            }
+        }
     }
 
     /**

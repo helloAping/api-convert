@@ -33,11 +33,7 @@ import java.util.stream.Collectors;
 @Service
 public class AdminDashboardService {
 
-    private static final int DEFAULT_DAYS = 7;
-    private static final int DEFAULT_HOURS = 24;
     private static final int DEFAULT_TOP_N = 6;
-    private static final int MAX_DAYS = 90;
-    private static final int MAX_HOURS = 168;
     private static final int MAX_TOP_N = 20;
     private static final DateTimeFormatter DAY_FORMATTER = DateTimeFormatter.ofPattern("MM-dd");
     private static final DateTimeFormatter HOUR_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:00");
@@ -46,9 +42,6 @@ public class AdminDashboardService {
     private final GatewayApiKeyMapper gatewayApiKeyMapper;
     private final ZoneId projectZoneId;
 
-    /**
-     * 注入请求日志 Mapper、密钥 Mapper 和项目统一时区。
-     */
     public AdminDashboardService(RequestLogMapper requestLogMapper, GatewayApiKeyMapper gatewayApiKeyMapper,
                                  ZoneId projectZoneId) {
         this.requestLogMapper = requestLogMapper;
@@ -57,89 +50,69 @@ public class AdminDashboardService {
     }
 
     /**
-     * 获取仪表盘统计数据。按天、按小时和维度分组都在同一个时间窗口内完成，避免重复查询。
+     * 获取仪表盘统计数据。根据 range 参数自动决定按天或按小时聚合。
+     * <ul>
+     *   <li>24h / 48h / 72h → 按小时聚合</li>
+     *   <li>7d / 14d / 30d / 90d → 按天聚合</li>
+     * </ul>
      */
     public DashboardStatsVO stats(DashboardStatsParam param) {
-        int days = bounded(param.days(), DEFAULT_DAYS, 1, MAX_DAYS);
-        int hours = bounded(param.hours(), DEFAULT_HOURS, 1, MAX_HOURS);
         int topN = bounded(param.topN(), DEFAULT_TOP_N, 1, MAX_TOP_N);
+        RangeConfig range = parseRange(param.range());
 
         LocalDateTime now = LocalDateTime.now(projectZoneId);
-        LocalDate dailyStartDay = now.toLocalDate().minusDays(days - 1L);
-        LocalDateTime dailyStart = dailyStartDay.atStartOfDay();
-        LocalDateTime hourlyStart = now.minusHours(hours - 1L).withMinute(0).withSecond(0).withNano(0);
-        LocalDateTime queryStart = dailyStart.isBefore(hourlyStart) ? dailyStart : hourlyStart;
+        LocalDateTime start = range.daily
+                ? now.toLocalDate().minusDays(range.value - 1L).atStartOfDay()
+                : now.minusHours(range.value - 1L).withMinute(0).withSecond(0).withNano(0);
 
         List<RequestLogEntity> logs = requestLogMapper.selectList(new LambdaQueryWrapper<RequestLogEntity>()
                 .eq(RequestLogEntity::getSuccess, true)
-                .ge(RequestLogEntity::getCreatedAt, queryStart)
+                .ge(RequestLogEntity::getCreatedAt, start)
                 .le(RequestLogEntity::getCreatedAt, now)
                 .orderByAsc(RequestLogEntity::getCreatedAt));
-        List<RequestLogEntity> dailyLogs = logs.stream()
-                .filter(log -> log.getCreatedAt() != null && !log.getCreatedAt().isBefore(dailyStart))
-                .toList();
-        List<RequestLogEntity> hourlyLogs = logs.stream()
-                .filter(log -> log.getCreatedAt() != null && !log.getCreatedAt().isBefore(hourlyStart))
-                .toList();
 
-        List<String> dayLabels = dayLabels(dailyStartDay, days);
-        List<String> hourLabels = hourLabels(hourlyStart, hours);
-        Map<Long, String> apiKeyNames = apiKeyNames(dailyLogs);
-        List<DashboardDimensionUsageVO> modelDistribution = topDimensions(dailyLogs, Dimension.MODEL, topN, apiKeyNames);
-        List<DashboardDimensionUsageVO> channelDistribution = topDimensions(dailyLogs, Dimension.CHANNEL, topN, apiKeyNames);
-        List<DashboardDimensionUsageVO> apiKeyDistribution = topDimensions(dailyLogs, Dimension.API_KEY, topN, apiKeyNames);
+        List<String> labels = range.daily
+                ? dayLabels(now.toLocalDate().minusDays(range.value - 1L), range.value)
+                : hourLabels(start, range.value);
+
+        Map<Long, String> apiKeyNames = apiKeyNames(logs);
+        List<DashboardDimensionUsageVO> modelDistribution = topDimensions(logs, Dimension.MODEL, topN, apiKeyNames);
+        List<DashboardDimensionUsageVO> channelDistribution = topDimensions(logs, Dimension.CHANNEL, topN, apiKeyNames);
+        List<DashboardDimensionUsageVO> apiKeyDistribution = topDimensions(logs, Dimension.API_KEY, topN, apiKeyNames);
 
         return new DashboardStatsVO(
-                summary(dailyLogs),
-                tokenPointsByDay(dailyLogs, dayLabels),
-                tokenPointsByHour(hourlyLogs, hourLabels),
+                summary(logs),
+                tokenPoints(logs, labels, range.daily),
                 modelDistribution,
                 channelDistribution,
                 apiKeyDistribution,
-                dimensionSeries(dailyLogs, Dimension.MODEL, modelDistribution, dayLabels),
-                dimensionSeries(dailyLogs, Dimension.CHANNEL, channelDistribution, dayLabels),
-                dimensionSeries(dailyLogs, Dimension.API_KEY, apiKeyDistribution, dayLabels)
+                dimensionSeries(logs, Dimension.MODEL, modelDistribution, labels, range.daily),
+                dimensionSeries(logs, Dimension.CHANNEL, channelDistribution, labels, range.daily),
+                dimensionSeries(logs, Dimension.API_KEY, apiKeyDistribution, labels, range.daily)
         );
     }
 
     private DashboardSummaryVO summary(List<RequestLogEntity> logs) {
-        Accumulator accumulator = new Accumulator();
-        logs.forEach(accumulator::add);
-        return accumulator.toSummary();
+        Accumulator acc = new Accumulator();
+        logs.forEach(acc::add);
+        return acc.toSummary();
     }
 
-    private List<DashboardTokenPointVO> tokenPointsByDay(List<RequestLogEntity> logs, List<String> labels) {
+    private List<DashboardTokenPointVO> tokenPoints(List<RequestLogEntity> logs, List<String> labels, boolean daily) {
         Map<String, Accumulator> buckets = emptyBuckets(labels);
         for (RequestLogEntity log : logs) {
-            if (log.getCreatedAt() == null) {
-                continue;
-            }
-            String label = log.getCreatedAt().toLocalDate().format(DAY_FORMATTER);
-            Accumulator accumulator = buckets.get(label);
-            if (accumulator != null) {
-                accumulator.add(log);
-            }
-        }
-        return toTokenPoints(buckets);
-    }
-
-    private List<DashboardTokenPointVO> tokenPointsByHour(List<RequestLogEntity> logs, List<String> labels) {
-        Map<String, Accumulator> buckets = emptyBuckets(labels);
-        for (RequestLogEntity log : logs) {
-            if (log.getCreatedAt() == null) {
-                continue;
-            }
-            String label = log.getCreatedAt().withMinute(0).withSecond(0).withNano(0).format(HOUR_FORMATTER);
-            Accumulator accumulator = buckets.get(label);
-            if (accumulator != null) {
-                accumulator.add(log);
-            }
+            if (log.getCreatedAt() == null) continue;
+            String label = daily
+                    ? log.getCreatedAt().toLocalDate().format(DAY_FORMATTER)
+                    : log.getCreatedAt().withMinute(0).withSecond(0).withNano(0).format(HOUR_FORMATTER);
+            Accumulator acc = buckets.get(label);
+            if (acc != null) acc.add(log);
         }
         return toTokenPoints(buckets);
     }
 
     private List<DashboardDimensionUsageVO> topDimensions(List<RequestLogEntity> logs, Dimension dimension, int topN,
-                                                         Map<Long, String> apiKeyNames) {
+                                                          Map<Long, String> apiKeyNames) {
         Map<String, DimensionAccumulator> grouped = new LinkedHashMap<>();
         for (RequestLogEntity log : logs) {
             String key = dimension.key(log);
@@ -147,30 +120,32 @@ public class AdminDashboardService {
             grouped.computeIfAbsent(key, ignored -> new DimensionAccumulator(key, name)).add(log);
         }
         return grouped.values().stream()
-                .sorted(Comparator.comparingLong((DimensionAccumulator accumulator) -> accumulator.totalTokens).reversed()
-                        .thenComparing(accumulator -> accumulator.name))
+                .sorted(Comparator.comparingLong((DimensionAccumulator a) -> a.totalTokens).reversed()
+                        .thenComparing(a -> a.name))
                 .limit(topN)
                 .map(DimensionAccumulator::toVO)
                 .toList();
     }
 
     private List<DashboardSeriesVO> dimensionSeries(List<RequestLogEntity> logs, Dimension dimension,
-                                                    List<DashboardDimensionUsageVO> topDimensions, List<String> labels) {
+                                                    List<DashboardDimensionUsageVO> topItems,
+                                                    List<String> labels, boolean daily) {
         List<DashboardSeriesVO> series = new ArrayList<>();
-        for (DashboardDimensionUsageVO item : topDimensions) {
+        for (DashboardDimensionUsageVO item : topItems) {
             Map<String, Long> buckets = new LinkedHashMap<>();
             labels.forEach(label -> buckets.put(label, 0L));
             for (RequestLogEntity log : logs) {
-                if (log.getCreatedAt() == null || !item.key().equals(dimension.key(log))) {
-                    continue;
-                }
-                String label = log.getCreatedAt().toLocalDate().format(DAY_FORMATTER);
-                if (buckets.containsKey(label)) {
-                    buckets.put(label, buckets.get(label) + tokenTotal(log));
+                if (log.getCreatedAt() == null || !item.key().equals(dimension.key(log))) continue;
+                String label = daily
+                        ? log.getCreatedAt().toLocalDate().format(DAY_FORMATTER)
+                        : log.getCreatedAt().withMinute(0).withSecond(0).withNano(0).format(HOUR_FORMATTER);
+                Long prev = buckets.get(label);
+                if (prev != null) {
+                    buckets.put(label, prev + tokenTotal(log));
                 }
             }
             List<DashboardSeriesPointVO> points = buckets.entrySet().stream()
-                    .map(entry -> new DashboardSeriesPointVO(entry.getKey(), entry.getValue()))
+                    .map(e -> new DashboardSeriesPointVO(e.getKey(), e.getValue()))
                     .toList();
             series.add(new DashboardSeriesVO(item.key(), item.name(), points));
         }
@@ -178,15 +153,11 @@ public class AdminDashboardService {
     }
 
     private Map<Long, String> apiKeyNames(List<RequestLogEntity> logs) {
-        List<Long> apiKeyIds = logs.stream()
+        List<Long> ids = logs.stream()
                 .map(RequestLogEntity::getGatewayApiKeyId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        if (apiKeyIds.isEmpty()) {
-            return Map.of();
-        }
-        return gatewayApiKeyMapper.selectBatchIds(apiKeyIds).stream()
+                .filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) return Map.of();
+        return gatewayApiKeyMapper.selectBatchIds(ids).stream()
                 .collect(Collectors.toMap(GatewayApiKeyEntity::getId, this::apiKeyDisplayName));
     }
 
@@ -202,7 +173,7 @@ public class AdminDashboardService {
 
     private List<DashboardTokenPointVO> toTokenPoints(Map<String, Accumulator> buckets) {
         return buckets.entrySet().stream()
-                .map(entry -> entry.getValue().toTokenPoint(entry.getKey()))
+                .map(e -> e.getValue().toTokenPoint(e.getKey()))
                 .toList();
     }
 
@@ -223,11 +194,8 @@ public class AdminDashboardService {
     }
 
     private int bounded(Integer value, int defaultValue, int min, int max) {
-        int normalized = value == null ? defaultValue : value;
-        if (normalized < min) {
-            return min;
-        }
-        return Math.min(normalized, max);
+        int v = value == null ? defaultValue : value;
+        return Math.max(min, Math.min(v, max));
     }
 
     private static long longValue(Integer value) {
@@ -235,52 +203,46 @@ public class AdminDashboardService {
     }
 
     private static long tokenTotal(RequestLogEntity log) {
-        if (log.getTotalTokens() != null) {
-            return log.getTotalTokens().longValue();
-        }
+        if (log.getTotalTokens() != null) return log.getTotalTokens().longValue();
         return longValue(log.getInputTokens()) + longValue(log.getOutputTokens());
     }
 
+    /**
+     * 解析 range 参数为聚合配置：小时级范围用按小时聚合，天级范围用按天聚合。
+     */
+    private static RangeConfig parseRange(String range) {
+        if (range == null) range = "";
+        return switch (range) {
+            case "24h" -> new RangeConfig(24, false);
+            case "48h" -> new RangeConfig(48, false);
+            case "72h" -> new RangeConfig(72, false);
+            case "14d" -> new RangeConfig(14, true);
+            case "30d" -> new RangeConfig(30, true);
+            case "90d" -> new RangeConfig(90, true);
+            default -> new RangeConfig(7, true);
+        };
+    }
+
+    private record RangeConfig(int value, boolean daily) {}
+
     private enum Dimension {
         MODEL {
-            @Override
-            String key(RequestLogEntity log) {
-                return textOrDefault(log.getPublicModel(), "unknown-model");
-            }
-
-            @Override
-            String name(RequestLogEntity log, Map<Long, String> apiKeyNames) {
-                return textOrDefault(log.getPublicModel(), "未记录模型");
-            }
+            String key(RequestLogEntity log) { return textOrDefault(log.getPublicModel(), "unknown-model"); }
+            String name(RequestLogEntity log, Map<Long, String> apiKeyNames) { return textOrDefault(log.getPublicModel(), "未记录模型"); }
         },
         CHANNEL {
-            @Override
-            String key(RequestLogEntity log) {
-                return textOrDefault(log.getProviderCode(), "unrouted");
-            }
-
-            @Override
-            String name(RequestLogEntity log, Map<Long, String> apiKeyNames) {
-                return textOrDefault(log.getProviderCode(), "未路由");
-            }
+            String key(RequestLogEntity log) { return textOrDefault(log.getProviderCode(), "unrouted"); }
+            String name(RequestLogEntity log, Map<Long, String> apiKeyNames) { return textOrDefault(log.getProviderCode(), "未路由"); }
         },
         API_KEY {
-            @Override
-            String key(RequestLogEntity log) {
-                return log.getGatewayApiKeyId() == null ? "anonymous" : String.valueOf(log.getGatewayApiKeyId());
-            }
-
-            @Override
+            String key(RequestLogEntity log) { return log.getGatewayApiKeyId() == null ? "anonymous" : String.valueOf(log.getGatewayApiKeyId()); }
             String name(RequestLogEntity log, Map<Long, String> apiKeyNames) {
-                if (log.getGatewayApiKeyId() == null) {
-                    return "未鉴权";
-                }
+                if (log.getGatewayApiKeyId() == null) return "未鉴权";
                 return apiKeyNames.getOrDefault(log.getGatewayApiKeyId(), "Key #" + log.getGatewayApiKeyId());
             }
         };
 
         abstract String key(RequestLogEntity log);
-
         abstract String name(RequestLogEntity log, Map<Long, String> apiKeyNames);
 
         static String textOrDefault(String value, String defaultValue) {
@@ -289,47 +251,39 @@ public class AdminDashboardService {
     }
 
     private static class Accumulator {
-        protected long requestCount;
-        protected long successCount;
-        protected long failureCount;
-        protected long inputTokens;
-        protected long cacheReadInputTokens;
-        protected long outputTokens;
-        protected long totalTokens;
+        long requestCount, successCount, failureCount;
+        long inputTokens, cacheReadInputTokens, outputTokens, totalTokens;
 
-        protected void add(RequestLogEntity log) {
+        void add(RequestLogEntity log) {
             requestCount++;
-            if (Boolean.TRUE.equals(log.getSuccess())) {
-                successCount++;
-            } else {
-                failureCount++;
-            }
+            if (Boolean.TRUE.equals(log.getSuccess())) successCount++; else failureCount++;
             inputTokens += longValue(log.getInputTokens());
             cacheReadInputTokens += longValue(log.getCacheReadInputTokens());
             outputTokens += longValue(log.getOutputTokens());
             totalTokens += tokenTotal(log);
         }
 
-        private DashboardSummaryVO toSummary() {
-            return new DashboardSummaryVO(requestCount, successCount, failureCount, inputTokens,
-                    cacheReadInputTokens, outputTokens, totalTokens);
+        DashboardSummaryVO toSummary() {
+            return new DashboardSummaryVO(requestCount, successCount, failureCount,
+                    inputTokens, cacheReadInputTokens, outputTokens, totalTokens);
         }
 
-        private DashboardTokenPointVO toTokenPoint(String label) {
-            return new DashboardTokenPointVO(label, requestCount, inputTokens, cacheReadInputTokens, outputTokens, totalTokens);
+        DashboardTokenPointVO toTokenPoint(String label) {
+            return new DashboardTokenPointVO(label, requestCount, inputTokens,
+                    cacheReadInputTokens, outputTokens, totalTokens);
         }
     }
 
     private static class DimensionAccumulator extends Accumulator {
-        private final String key;
-        private final String name;
+        final String key;
+        final String name;
 
-        private DimensionAccumulator(String key, String name) {
+        DimensionAccumulator(String key, String name) {
             this.key = key;
             this.name = name;
         }
 
-        private DashboardDimensionUsageVO toVO() {
+        DashboardDimensionUsageVO toVO() {
             return new DashboardDimensionUsageVO(key, name, requestCount, successCount, failureCount,
                     inputTokens, cacheReadInputTokens, outputTokens, totalTokens);
         }
