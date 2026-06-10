@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS ai_channel_model (
   input_quota_per_million NUMERIC,
   output_quota_per_million NUMERIC,
   cache_read_quota_per_million NUMERIC,
+  allowed_endpoint_types TEXT,
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -171,3 +172,4 @@ VALUES
   ('routing.sticky_ttl_minutes', '1440', '会话粘性绑定保留分钟数');
 
 INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (15, 'Add channel image and video endpoint paths');
+INSERT OR IGNORE INTO gateway_schema_version(version, description) VALUES (16, 'Add allowed endpoint types per channel model');

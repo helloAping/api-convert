@@ -2,6 +2,7 @@ package cn.ms08.apiconvert.service;
 
 import cn.ms08.apiconvert.dto.ModelRoute;
 import cn.ms08.apiconvert.dto.OpenAiImageRequest;
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.GatewayException;
 import cn.ms08.apiconvert.exception.ProviderException;
@@ -53,7 +54,7 @@ public class ImageGatewayService {
         try {
             validate(request);
             route = routingService.resolveModel(request.getModel(), principal.apiKeyId(),
-                    principal.allowedChannelCodes(), principal.allowedModelNames());
+                    principal.allowedChannelCodes(), principal.allowedModelNames(), EndpointType.OPENAI_IMAGES);
             apiKeyQuotaService.recordRequest(principal.apiKeyId());
             OpenAiImageResponse response = providerClientRegistry.get(route.providerType())
                     .generateImage(route, request);

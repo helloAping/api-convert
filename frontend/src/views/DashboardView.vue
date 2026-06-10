@@ -6,13 +6,10 @@ import request from '@/api/request'
 import { getDashboardStats } from '@/api/dashboard'
 import { getGatewayInfo } from '@/api/gatewayInfo'
 import LineChart from '@/components/charts/LineChart.vue'
-import PieChart from '@/components/charts/PieChart.vue'
 import { DocumentOutline } from '@vicons/ionicons5'
 import type {
-  DashboardDimensionUsageVO,
   DashboardSeriesVO,
   DashboardStatsVO,
-  DashboardTokenPointVO,
   GatewayEndpointVO,
   GatewayInfoVO,
 } from '@/types'
@@ -28,34 +25,33 @@ interface HealthStats {
 }
 
 const stats = ref<HealthStats>({})
-const gatewayInfo = ref<GatewayInfoVO>({
-  baseUrl: '',
-  endpoints: [],
-})
+const gatewayInfo = ref<GatewayInfoVO>({ baseUrl: '', endpoints: [] })
 const dashboard = ref<DashboardStatsVO>(emptyDashboard())
 const loading = ref(false)
-const days = ref(7)
-const hours = ref(24)
+const range = ref('7d')
 const topN = ref(6)
+const trendDimension = ref<'model' | 'channel' | 'apiKey'>('model')
 
-const dayOptions = [
-  { label: '最近 7 天', value: 7 },
-  { label: '最近 14 天', value: 14 },
-  { label: '最近 30 天', value: 30 },
-]
-const hourOptions = [
-  { label: '最近 24 小时', value: 24 },
-  { label: '最近 48 小时', value: 48 },
-  { label: '最近 72 小时', value: 72 },
+const rangeOptions = [
+  { label: '最近 24 小时', value: '24h' },
+  { label: '最近 48 小时', value: '48h' },
+  { label: '最近 7 天', value: '7d' },
+  { label: '最近 14 天', value: '14d' },
+  { label: '最近 30 天', value: '30d' },
 ]
 const topOptions = [
   { label: 'Top 5', value: 5 },
   { label: 'Top 6', value: 6 },
   { label: 'Top 10', value: 10 },
 ]
+const dimensionOptions = [
+  { label: '模型', value: 'model' },
+  { label: '渠道', value: 'channel' },
+  { label: '密钥', value: 'apiKey' },
+]
+
 const apiDocsHref = computed(() => docsHref())
 
-// 将端点路径映射到静态 API 文档中的锚点，避免斜杠路径生成不可用的 fragment。
 function endpointDocHref(path: string) {
   const anchorMap: Record<string, string> = {
     '/health': 'health',
@@ -66,11 +62,9 @@ function endpointDocHref(path: string) {
     '/v1/videos': 'videos',
     '/v1/images/generations': 'images',
   }
-  const anchor = anchorMap[path]
-  return docsHref(anchor)
+  return docsHref(anchorMap[path])
 }
 
-// 本地前后端分离时优先使用后端 baseUrl，加载前回退到 Vite /docs 代理。
 function docsHref(anchor?: string) {
   const baseUrl = gatewayInfo.value.baseUrl?.replace(/\/$/, '') || ''
   const hash = anchor ? `#${anchor}` : ''
@@ -90,7 +84,7 @@ const endpointColumns: DataTableColumn<GatewayEndpointVO>[] = [
     title: '调用地址',
     key: 'url',
     minWidth: 320,
-    render: (row) => `${gatewayInfo.value.baseUrl}${row.path}`,
+    render: () => `${gatewayInfo.value.baseUrl}${'path'}`,
   },
   { title: '鉴权', key: 'auth', width: 140 },
   { title: '说明', key: 'description', minWidth: 200 },
@@ -100,45 +94,37 @@ const endpointColumns: DataTableColumn<GatewayEndpointVO>[] = [
     width: 100,
     render: (row) => h(
       'a',
-      {
-        class: 'endpoint-doc-link',
-        href: endpointDocHref(row.path),
-        target: '_blank',
-        rel: 'noopener noreferrer',
-      },
+      { class: 'endpoint-doc-link', href: endpointDocHref(row.path), target: '_blank', rel: 'noopener noreferrer' },
       '查看',
     ),
   },
 ]
 
-const dailyTokenSeries = computed(() => tokenSeries(dashboard.value.dailyTokenUsage))
-const hourlyTokenSeries = computed(() => tokenSeries(dashboard.value.hourlyTokenUsage))
-const modelLineSeries = computed(() => dimensionLineSeries(dashboard.value.modelSeries))
-const channelLineSeries = computed(() => dimensionLineSeries(dashboard.value.channelSeries))
-const apiKeyLineSeries = computed(() => dimensionLineSeries(dashboard.value.apiKeySeries))
-const dailyModelTooltipDetails = computed(() => dimensionTooltipDetails(dashboard.value.modelSeries))
-const modelPieItems = computed(() => pieItems(dashboard.value.modelDistribution))
-const channelPieItems = computed(() => pieItems(dashboard.value.channelDistribution))
-const apiKeyPieItems = computed(() => pieItems(dashboard.value.apiKeyDistribution))
+const tokenSeries = computed(() => {
+  const points = dashboard.value.tokenUsage
+  return [
+    { name: '总 Token', color: palette[0], points: points.map(p => ({ label: p.label, value: p.totalTokens })) },
+    { name: '输入', color: palette[1], points: points.map(p => ({ label: p.label, value: p.inputTokens })) },
+    { name: '输出', color: palette[2], points: points.map(p => ({ label: p.label, value: p.outputTokens })) },
+    { name: '缓存读取', color: palette[3], points: points.map(p => ({ label: p.label, value: p.cacheReadInputTokens })) },
+  ]
+})
+
+const trendSeries = computed(() => {
+  const seriesMap = { model: dashboard.value.modelSeries, channel: dashboard.value.channelSeries, apiKey: dashboard.value.apiKeySeries }
+  return dimensionLineSeries(seriesMap[trendDimension.value])
+})
+
 const successRate = computed(() => {
-  const summary = dashboard.value.summary
-  if (!summary.requestCount) return '0%'
-  return `${((summary.successCount / summary.requestCount) * 100).toFixed(1)}%`
+  const s = dashboard.value.summary
+  if (!s.requestCount) return '0%'
+  return `${((s.successCount / s.requestCount) * 100).toFixed(1)}%`
 })
 
 function emptyDashboard(): DashboardStatsVO {
   return {
-    summary: {
-      requestCount: 0,
-      successCount: 0,
-      failureCount: 0,
-      inputTokens: 0,
-      cacheReadInputTokens: 0,
-      outputTokens: 0,
-      totalTokens: 0,
-    },
-    dailyTokenUsage: [],
-    hourlyTokenUsage: [],
+    summary: { requestCount: 0, successCount: 0, failureCount: 0, inputTokens: 0, cacheReadInputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    tokenUsage: [],
     modelDistribution: [],
     channelDistribution: [],
     apiKeyDistribution: [],
@@ -148,65 +134,16 @@ function emptyDashboard(): DashboardStatsVO {
   }
 }
 
-function tokenSeries(points: DashboardTokenPointVO[]) {
-  return [
-    {
-      name: '总 Token',
-      color: palette[0],
-      points: points.map((point) => ({ label: point.label, value: point.totalTokens })),
-    },
-    {
-      name: '输入',
-      color: palette[1],
-      points: points.map((point) => ({ label: point.label, value: point.inputTokens })),
-    },
-    {
-      name: '输出',
-      color: palette[2],
-      points: points.map((point) => ({ label: point.label, value: point.outputTokens })),
-    },
-    {
-      name: '缓存读取',
-      color: palette[3],
-      points: points.map((point) => ({ label: point.label, value: point.cacheReadInputTokens })),
-    },
-  ]
-}
-
 function dimensionLineSeries(series: DashboardSeriesVO[]) {
   return series.map((item, index) => ({
     name: item.name,
     color: palette[index % palette.length],
-    points: item.points.map((point) => ({ label: point.label, value: point.totalTokens })),
-  }))
-}
-
-function dimensionTooltipDetails(series: DashboardSeriesVO[]) {
-  const details: Record<string, { name: string; value: number; color: string }[]> = {}
-  series.forEach((item, index) => {
-    const color = palette[index % palette.length]
-    item.points.forEach((point) => {
-      if (!point.totalTokens) return
-      const bucket = details[point.label] || []
-      bucket.push({ name: item.name, value: point.totalTokens, color })
-      details[point.label] = bucket
-    })
-  })
-  Object.values(details).forEach((items) => items.sort((a, b) => b.value - a.value))
-  return details
-}
-
-function pieItems(items: DashboardDimensionUsageVO[]) {
-  return items.map((item) => ({
-    name: item.name,
-    totalTokens: item.totalTokens,
-    requestCount: item.requestCount,
+    points: item.points.map(p => ({ label: p.label, value: p.totalTokens })),
   }))
 }
 
 function formatNumber(value: number | null | undefined) {
-  const normalized = value || 0
-  return normalized.toLocaleString()
+  return (value || 0).toLocaleString()
 }
 
 async function load() {
@@ -215,7 +152,7 @@ async function load() {
     const [healthRes, gatewayInfoRes, dashboardRes] = await Promise.all([
       request.get<HealthStats>('/health'),
       getGatewayInfo(),
-      getDashboardStats({ days: days.value, hours: hours.value, topN: topN.value }),
+      getDashboardStats({ range: range.value, topN: topN.value }),
     ])
     stats.value = healthRes.data
     gatewayInfo.value = gatewayInfoRes.data.data
@@ -236,8 +173,7 @@ onMounted(load)
       <n-space justify="space-between" align="center">
         <n-h2>控制台</n-h2>
         <n-space align="center">
-          <n-select v-model:value="days" :options="dayOptions" size="small" style="width: 130px" />
-          <n-select v-model:value="hours" :options="hourOptions" size="small" style="width: 150px" />
+          <n-select v-model:value="range" :options="rangeOptions" size="small" style="width: 150px" />
           <n-select v-model:value="topN" :options="topOptions" size="small" style="width: 100px" />
           <n-button size="small" :loading="loading" @click="load">刷新</n-button>
         </n-space>
@@ -305,43 +241,19 @@ onMounted(load)
 
       <n-grid :cols="2" :x-gap="16" :y-gap="16" responsive="screen">
         <n-grid-item>
-          <n-card title="按天 Token 消耗">
-            <LineChart :series="dailyTokenSeries" :tooltip-details="dailyModelTooltipDetails" />
+          <n-card title="Token 消耗趋势">
+            <LineChart :series="tokenSeries" />
           </n-card>
         </n-grid-item>
         <n-grid-item>
-          <n-card title="按小时 Token 消耗">
-            <LineChart :series="hourlyTokenSeries" />
-          </n-card>
-        </n-grid-item>
-        <n-grid-item>
-          <n-card title="模型 Token 趋势">
-            <LineChart :series="modelLineSeries" />
-          </n-card>
-        </n-grid-item>
-        <n-grid-item>
-          <n-card title="渠道 Token 趋势">
-            <LineChart :series="channelLineSeries" />
-          </n-card>
-        </n-grid-item>
-        <n-grid-item>
-          <n-card title="密钥 Token 趋势">
-            <LineChart :series="apiKeyLineSeries" />
-          </n-card>
-        </n-grid-item>
-        <n-grid-item>
-          <n-card title="模型 Token 占比">
-            <PieChart :items="modelPieItems" />
-          </n-card>
-        </n-grid-item>
-        <n-grid-item>
-          <n-card title="渠道 Token 占比">
-            <PieChart :items="channelPieItems" />
-          </n-card>
-        </n-grid-item>
-        <n-grid-item>
-          <n-card title="密钥 Token 占比">
-            <PieChart :items="apiKeyPieItems" />
+          <n-card>
+            <template #header>
+              <n-space align="center" :size="8">
+                <span>维度趋势</span>
+                <n-select v-model:value="trendDimension" :options="dimensionOptions" size="tiny" style="width: 90px" />
+              </n-space>
+            </template>
+            <LineChart :series="trendSeries" />
           </n-card>
         </n-grid-item>
       </n-grid>
@@ -359,12 +271,7 @@ onMounted(load)
               <n-text code>{{ gatewayInfo.baseUrl || '-' }}</n-text>
             </n-descriptions-item>
           </n-descriptions>
-          <n-data-table
-            :columns="endpointColumns"
-            :data="gatewayInfo.endpoints"
-            :loading="loading"
-            :pagination="false"
-          />
+          <n-data-table :columns="endpointColumns" :data="gatewayInfo.endpoints" :loading="loading" :pagination="false" />
         </n-space>
       </n-card>
     </n-space>

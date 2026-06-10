@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { useMessage, NButton, NTag } from 'naive-ui'
+import { useMessage, NButton, NTag, dateZhCN } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
 import { searchRequestLogs } from '@/api/requestLogs'
 import type { RequestLogVO, RequestLogSearchParam } from '@/types'
@@ -12,25 +12,47 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const search = ref<RequestLogSearchParam>({ success: undefined })
-// 时间范围只用于查询条件，不会写入日志数据。
 const dateRange = ref<[string, string] | null>(null)
+const showAdvanced = ref(false)
 
-// 将后端协议常量翻译为中文，便于运营排查调用来源。
+const dateLocale = dateZhCN
+
+const protocolOptions = [
+  { label: '全部', value: undefined },
+  { label: 'OpenAI', value: 'openai' },
+  { label: 'Anthropic', value: 'anthropic' },
+]
+
+const requestTypeOptions = [
+  { label: '全部', value: undefined },
+  { label: '对话补全', value: 'chat_completions' },
+  { label: '消息接口', value: 'messages' },
+]
+
+const successOptions = [
+  { label: '全部', value: undefined },
+  { label: '成功', value: true },
+  { label: '失败', value: false },
+]
+
+const streamOptions = [
+  { label: '全部', value: undefined },
+  { label: '是', value: true },
+  { label: '否', value: false },
+]
+
 function protocolLabel(value: string | null) {
   return ({ openai: 'OpenAI', anthropic: 'Anthropic' } as Record<string, string>)[value || ''] || value || '-'
 }
 
-// 将接口类型翻译为中文。
 function requestTypeLabel(value: string | null) {
   return ({ chat_completions: '对话补全', messages: '消息接口' } as Record<string, string>)[value || ''] || value || '-'
 }
 
-// 空值统一展示为短横线，避免数字列出现 undefined。
 function textOrDash(value: unknown) {
   return value === null || value === undefined || value === '' ? '-' : String(value)
 }
 
-// 输入 token 列合并展示缓存读取量，方便对比总输入和缓存命中。
 function inputTokenView(row: RequestLogVO) {
   return h('div', [
     h('div', textOrDash(row.inputTokens)),
@@ -40,7 +62,6 @@ function inputTokenView(row: RequestLogVO) {
   ])
 }
 
-// 密钥列展示管理端名称和稳定 ID，不展示明文密钥。
 function apiKeyView(row: RequestLogVO) {
   if (!row.gatewayApiKeyId && !row.gatewayApiKeyName) return '-'
   const name = row.gatewayApiKeyName || `Key #${row.gatewayApiKeyId}`
@@ -91,8 +112,14 @@ async function load() {
 
 function handlePageChange(p: number) { page.value = p; load() }
 
-// 查询时回到第一页，避免当前页超过过滤后的总页数。
 function handleSearch() {
+  page.value = 1
+  load()
+}
+
+function handleReset() {
+  search.value = { success: undefined }
+  dateRange.value = null
   page.value = 1
   load()
 }
@@ -104,18 +131,41 @@ onMounted(load)
   <div>
     <n-space vertical>
       <n-h2>请求日志</n-h2>
-      <n-space>
+
+      <n-space align="center">
         <n-input v-model:value="search.requestId" placeholder="请求编号" style="width:160px" />
-        <n-input-number v-model:value="search.gatewayApiKeyId" placeholder="密钥ID" :show-button="false" clearable style="width:120px" />
-        <n-select v-model:value="search.sourceProtocol" clearable :options="[{ label: 'OpenAI', value: 'openai' }, { label: 'Anthropic', value: 'anthropic' }]" placeholder="协议" style="width:130px" />
-        <n-select v-model:value="search.requestType" clearable :options="[{ label: '对话补全', value: 'chat_completions' }, { label: '消息接口', value: 'messages' }]" placeholder="接口类型" style="width:140px" />
-        <n-input v-model:value="search.providerCode" placeholder="渠道" style="width:120px" />
-        <n-input v-model:value="search.publicModel" placeholder="模型" style="width:120px" />
-        <n-select v-model:value="search.success" :options="[{ label: '全部', value: undefined }, { label: '成功', value: true }, { label: '失败', value: false }]" style="width:120px" />
-        <n-date-picker v-model:formatted-value="dateRange" type="datetimerange" value-format="yyyy-MM-dd HH:mm:ss" clearable style="width:360px" />
+        <n-input v-model:value="search.gatewayApiKeyKeyword" placeholder="密钥名称或ID" style="width:140px" />
+        <n-select v-model:value="search.success" :options="successOptions" placeholder="结果" style="width:100px" />
+        <n-date-picker v-model:formatted-value="dateRange" type="datetimerange" value-format="yyyy-MM-dd HH:mm:ss" clearable :locale="dateLocale" style="width:360px" />
         <n-button type="primary" @click="handleSearch">查询</n-button>
+        <n-button @click="handleReset">重置</n-button>
+        <n-button quaternary @click="showAdvanced = !showAdvanced">
+          {{ showAdvanced ? '收起' : '展开' }}
+        </n-button>
       </n-space>
-      <n-data-table :columns="columns" :data="data" :loading="loading" :pagination="false" :scroll-x="1900" />
+
+      <n-space v-if="showAdvanced" align="center">
+        <n-select v-model:value="search.sourceProtocol" clearable :options="protocolOptions" placeholder="协议" style="width:130px" />
+        <n-select v-model:value="search.requestType" clearable :options="requestTypeOptions" placeholder="接口类型" style="width:130px" />
+        <n-input v-model:value="search.providerCode" placeholder="渠道" clearable style="width:120px" />
+        <n-input v-model:value="search.publicModel" placeholder="对外模型" clearable style="width:120px" />
+        <n-input v-model:value="search.providerModel" placeholder="上游模型" clearable style="width:120px" />
+        <n-select v-model:value="search.providerType" clearable placeholder="供应商类型" style="width:150px"
+          :options="[
+            { label: '全部', value: undefined },
+            { label: 'OpenAI 兼容', value: 'OPENAI_COMPATIBLE' },
+            { label: 'Anthropic', value: 'ANTHROPIC' },
+            { label: 'DeepSeek Chat', value: 'DEEPSEEK_CHAT' },
+            { label: 'DeepSeek Anthropic', value: 'DEEPSEEK_ANTHROPIC' },
+            { label: 'GPT-AUTH', value: 'GPT_AUTH' },
+            { label: 'CLAUDE-AUTH', value: 'CLAUDE_AUTH' },
+            { label: 'Gemini', value: 'GEMINI' },
+          ]"
+        />
+        <n-select v-model:value="search.stream" clearable :options="streamOptions" placeholder="流式" style="width:90px" />
+      </n-space>
+
+      <n-data-table :columns="columns" :data="data" :loading="loading" :pagination="false" :scroll-x="2120" />
       <n-pagination v-model:page="page" :page-size="pageSize" :item-count="total" @update:page="handlePageChange" />
     </n-space>
   </div>

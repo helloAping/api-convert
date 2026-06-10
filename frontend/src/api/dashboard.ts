@@ -2,8 +2,7 @@ import request from './request'
 import type { ApiResponse, DashboardStatsVO } from '@/types'
 
 export interface DashboardStatsParam {
-  days?: number
-  hours?: number
+  range?: string
   topN?: number
 }
 

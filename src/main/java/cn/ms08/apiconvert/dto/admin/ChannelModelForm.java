@@ -15,6 +15,7 @@ import java.math.BigDecimal;
  * @param toolsSupport 是否支持工具/函数调用
  * @param jsonModeSupport 是否支持 JSON 输出模式
  * @param contextLength 最大上下文窗口（token 数）
+ * @param allowedEndpointTypes 逗号分隔的 EndpointType 名称；为空表示不限制
  */
 public record ChannelModelForm(
         String publicName,
@@ -26,19 +27,20 @@ public record ChannelModelForm(
         Boolean vision,
         Boolean toolsSupport,
         Boolean jsonModeSupport,
-        Long contextLength
+        Long contextLength,
+        String allowedEndpointTypes
 ) {
     /**
      * 兼容仍然只传 publicName/providerModel 的旧调用方。
      */
     public ChannelModelForm(String publicName, String providerModel) {
-        this(publicName, providerModel, null, null, null, null, null, null, null, null);
+        this(publicName, providerModel, null, null, null, null, null, null, null, null, null);
     }
 
     /**
      * 兼容已支持别名、但尚未支持额度单价和能力的调用方。
      */
     public ChannelModelForm(String publicName, String providerModel, String modelAlias) {
-        this(publicName, providerModel, modelAlias, null, null, null, null, null, null, null);
+        this(publicName, providerModel, modelAlias, null, null, null, null, null, null, null, null);
     }
 }

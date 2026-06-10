@@ -12,7 +12,9 @@
 |---|---|
 | `StreamResponseTransformer` 接口 | `wrap(OutputStream)` 返回包装后的输出流；将上游 SSE 字节流实时转换为目标协议 SSE |
 | `StreamTransformerRegistry` | 按 `(EndpointType, ProviderType)` 查找对应的 `StreamResponseTransformer` |
-| `RealTimeResponsesTransformer` | 核心实现：将上游 Chat Completions SSE 实时转为 Responses API SSE |
+| `ResponsesStreamTransformer` | 将上游 Chat Completions / Anthropic / Responses SSE 实时转为 Responses API SSE（支持 OPENAI_COMPATIBLE / ANTHROPIC / DEEPSEEK_CHAT / DEEPSEEK_ANTHROPIC） |
+| `AnthropicToOpenAiStreamTransformer` | 将上游 Anthropic SSE 实时转为 OpenAI Chat Completions SSE（支持 ANTHROPIC / CLAUDE_AUTH / DEEPSEEK_ANTHROPIC） |
+| `OpenAiToAnthropicStreamTransformer` | 将上游 OpenAI Chat SSE 实时转为 Anthropic Messages SSE（支持 OPENAI_COMPATIBLE / GPT_AUTH / DEEPSEEK_CHAT） |
 
 ## 2. SSE 字节级透传
 
@@ -62,3 +64,59 @@
 - 由 `StreamingResponseBodyReturnValueHandler` 在异步线程中写出 SSE
 - 直接在 `HttpServletResponse` 上设置头部
 - 不能用 `ResponseEntity<StreamingResponseBody>`，否则 Spring 会尝试序列化导致 `HttpMediaTypeNotAcceptableException`
+
+## 4. AnthropicToOpenAiStreamTransformer 转换逻辑
+
+将上游 Anthropic Messages SSE 实时转为 OpenAI Chat Completions SSE，用于 `CHAT_COMPLETIONS → ANTHROPIC` 跨协议流式路由。
+
+### 4.1 事件映射
+
+| Anthropic 输入 | OpenAI Chat 输出 |
+|---|---|
+| `message_start`（提取 id/model/input_tokens） | 无直接输出 |
+| `content_block_start`（text） | 首个 delta 到达时输出 `delta.role` chunk |
+| `content_block_delta`（text_delta） | `delta.content` chunk |
+| `content_block_start`（tool_use） | `delta.tool_calls` chunk（含 id/name） |
+| `content_block_delta`（input_json_delta） | `delta.tool_calls[].function.arguments` chunk |
+| `content_block_start`（thinking） | `delta.reasoning_content` chunk |
+| `content_block_delta`（thinking_delta） | `delta.reasoning_content` chunk |
+| `message_delta`（stop_reason） | `finish_reason` chunk（end_turn→stop, tool_use→tool_calls, max_tokens→length） |
+| `message_stop` | `data: [DONE]` |
+| `error` | `data: {"error":{...}}` + `data: [DONE]` |
+
+### 4.2 完成与错误
+
+- `complete()`：若 `message_stop` 未到达，补发 finish_reason + usage + `[DONE]`
+- `writeErrorEvent()`：写出 OpenAI 格式错误事件
+
+## 5. OpenAiToAnthropicStreamTransformer 转换逻辑
+
+将上游 OpenAI Chat Completions SSE 实时转为 Anthropic Messages SSE，用于 `ANTHROPIC_MESSAGES → OPENAI_COMPATIBLE` 跨协议流式路由。
+
+### 5.1 事件映射
+
+| OpenAI Chat 输入 | Anthropic 输出 |
+|---|---|
+| 首个 content delta | `message_start` + `content_block_start`（text）+ `content_block_delta`（text_delta） |
+| 后续 content delta | `content_block_delta`（text_delta） |
+| `delta.reasoning_content` | `content_block_start`（thinking）+ `content_block_delta`（thinking_delta） |
+| `delta.tool_calls`（首次） | `content_block_start`（tool_use，含 id/name） |
+| `delta.tool_calls[].function.arguments` | `content_block_delta`（input_json_delta） |
+| `finish_reason: "stop"` | `content_block_stop` + `message_delta`（stop_reason: end_turn）+ `message_stop` |
+| `finish_reason: "tool_calls"` | `content_block_stop` + `message_delta`（stop_reason: tool_use）+ `message_stop` |
+| `finish_reason: "length"` | `content_block_stop` + `message_delta`（stop_reason: max_tokens）+ `message_stop` |
+| `data: [DONE]` | 若 `message_stop` 未发，补发 |
+| `{"error":{...}}` | `event: error` + `data: {"type":"error","error":{...}}` |
+
+### 5.2 完成与错误
+
+- `complete()`：若 `message_stop` 未到达，补发 content_block_stop + message_delta + message_stop
+- `writeErrorEvent()`：写出 Anthropic 格式错误事件
+
+## 6. 转换器覆盖矩阵
+
+| 端点 ↓ \ 供应商 → | OPENAI_COMPATIBLE | ANTHROPIC | DEEPSEEK_CHAT | DEEPSEEK_ANTHROPIC |
+|---|---|---|---|---|
+| **CHAT_COMPLETIONS** | passthrough | ✅ AnthropicToOpenAi | passthrough | ✅ AnthropicToOpenAi |
+| **ANTHROPIC_MESSAGES** | ✅ OpenAiToAnthropic | passthrough | ✅ OpenAiToAnthropic | passthrough |
+| **OPENAI_RESPONSES** | ✅ ResponsesTransformer | ✅ ResponsesTransformer | ✅ ResponsesTransformer | ✅ ResponsesTransformer |

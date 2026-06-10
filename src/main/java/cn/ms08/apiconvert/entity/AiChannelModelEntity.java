@@ -80,6 +80,10 @@ public class AiChannelModelEntity {
      */
     private Boolean enabled;
     /**
+     * 逗号分隔的 EndpointType 名称；为空表示不限制端点类型。
+     */
+    private String allowedEndpointTypes;
+    /**
      * 模型映射创建时间，由项目上海时区自动填充。
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

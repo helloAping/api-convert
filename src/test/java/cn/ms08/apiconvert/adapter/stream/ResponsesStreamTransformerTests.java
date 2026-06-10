@@ -9,15 +9,15 @@ import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class RealTimeResponsesTransformerTests {
+class ResponsesStreamTransformerTests {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
     void convertsCumulativeChatChunksToIncrementalResponsesDeltas() throws Exception {
         ByteArrayOutputStream target = new ByteArrayOutputStream();
-        RealTimeResponsesTransformer transformer =
-                new RealTimeResponsesTransformer(target, "resp_test", "doubao-seed-2.0-code", 1L);
+        ResponsesStreamTransformer transformer =
+                new ResponsesStreamTransformer(target, "resp_test", "doubao-seed-2.0-code", 1L);
         transformer.sendInitialEvents();
 
         writeLine(transformer, "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"},\"finish_reason\":null}]}");
@@ -42,8 +42,8 @@ class RealTimeResponsesTransformerTests {
     @Test
     void acceptsNativeResponsesSseAndStillEmitsCompletedEvent() throws Exception {
         ByteArrayOutputStream target = new ByteArrayOutputStream();
-        RealTimeResponsesTransformer transformer =
-                new RealTimeResponsesTransformer(target, "resp_test", "doubao-seed-2.0-code", 1L);
+        ResponsesStreamTransformer transformer =
+                new ResponsesStreamTransformer(target, "resp_test", "doubao-seed-2.0-code", 1L);
         transformer.sendInitialEvents();
 
         writeLine(transformer, "event: response.output_text.delta");
@@ -65,8 +65,8 @@ class RealTimeResponsesTransformerTests {
     @Test
     void convertsChatToolCallDeltasToResponsesFunctionCallEvents() throws Exception {
         ByteArrayOutputStream target = new ByteArrayOutputStream();
-        RealTimeResponsesTransformer transformer =
-                new RealTimeResponsesTransformer(target, "resp_test", "doubao-seed-2.0-code", 1L);
+        ResponsesStreamTransformer transformer =
+                new ResponsesStreamTransformer(target, "resp_test", "doubao-seed-2.0-code", 1L);
         transformer.sendInitialEvents();
 
         writeLine(transformer, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"type\":\"function\",\"function\":{\"name\":\"shell\",\"arguments\":\"{\\\"cmd\\\"\"}}]},\"finish_reason\":null}]}");
@@ -100,8 +100,8 @@ class RealTimeResponsesTransformerTests {
     @Test
     void preservesReasoningBeforeChatToolCallInCompletedResponsesOutput() throws Exception {
         ByteArrayOutputStream target = new ByteArrayOutputStream();
-        RealTimeResponsesTransformer transformer =
-                new RealTimeResponsesTransformer(target, "resp_test", "deepseek-v4-flash", 1L);
+        ResponsesStreamTransformer transformer =
+                new ResponsesStreamTransformer(target, "resp_test", "deepseek-v4-flash", 1L);
         transformer.sendInitialEvents();
 
         writeLine(transformer, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"need a shell command\"},\"finish_reason\":null}]}");
@@ -125,7 +125,7 @@ class RealTimeResponsesTransformerTests {
         assertThat(outputItems.get(1).path("call_id").asText()).isEqualTo("call_123");
     }
 
-    private static void writeLine(RealTimeResponsesTransformer transformer, String line) throws Exception {
+    private static void writeLine(ResponsesStreamTransformer transformer, String line) throws Exception {
         byte[] bytes = (line + "\n").getBytes(StandardCharsets.UTF_8);
         transformer.write(bytes);
     }
