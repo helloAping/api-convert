@@ -80,10 +80,13 @@ public class ChatCompletionsToAnthropicAdapter implements EndpointProviderAdapte
         // 2. 将 OpenAI 格式的 tool_calls/tool 消息转为 Anthropic content block 格式
         adaptedMessages = convertToolMessages(adaptedMessages);
 
-        // 3. 清理和转换 rawOptions
+        // 3. 将 OpenAI Chat 格式的 image_url 内容块转为 Anthropic image 块
+        adaptedMessages = convertMultimodalContent(adaptedMessages);
+
+        // 4. 清理和转换 rawOptions
         Map<String, Object> cleaned = cleanRawOptions(request.rawOptions());
 
-        // 4. Anthropic 要求 max_tokens 为必填非空整数
+        // 5. Anthropic 要求 max_tokens 为必填非空整数
         Integer maxTokens = request.maxTokens();
         if (maxTokens == null) {
             maxTokens = 4096;
@@ -265,6 +268,46 @@ public class ChatCompletionsToAnthropicAdapter implements EndpointProviderAdapte
     }
 
     // convertToolsToAnthropic / convertToolChoice 已提取到 AnthropicTools 共享工具类
+
+    /**
+     * 将 OpenAI Chat image_url 内容块转为 Anthropic image 内容块。
+     * 仅修改 content 为 List 且包含 image_url 类型条目的消息；其他消息直接透传。
+     */
+    private List<UnifiedMessage> convertMultimodalContent(List<UnifiedMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return messages;
+        }
+        List<UnifiedMessage> result = new ArrayList<>();
+        for (UnifiedMessage message : messages) {
+            if (message.content() instanceof List<?> contentList) {
+                List<Object> converted = new ArrayList<>();
+                boolean changed = false;
+                for (Object part : contentList) {
+                    if (part instanceof Map<?, ?> map) {
+                        String type = map.get("type") != null ? String.valueOf(map.get("type")) : "text";
+                        if ("image_url".equals(type)) {
+                            Map<String, Object> anthropicBlock = AnthropicTools.convertImageToAnthropic(map);
+                            if (anthropicBlock != null) {
+                                converted.add(anthropicBlock);
+                                changed = true;
+                                continue;
+                            }
+                        }
+                    }
+                    converted.add(part);
+                }
+                if (changed) {
+                    result.add(new UnifiedMessage(message.role(), converted, message.name(),
+                            message.finishReason(), message.options()));
+                } else {
+                    result.add(message);
+                }
+            } else {
+                result.add(message);
+            }
+        }
+        return result;
+    }
 
     /**
      * 响应适配：将 Anthropic Messages 风格统一响应转为 Chat Completions 格式。

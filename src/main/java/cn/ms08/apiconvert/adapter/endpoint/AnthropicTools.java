@@ -17,6 +17,58 @@ final class AnthropicTools {
     }
 
     /**
+     * 将 OpenAI/Responses 端点的图片内容块转为 Anthropic image 内容块。
+     * <p>
+     * 输入格式：
+     * <ul>
+     *   <li>Chat: {@code {type:"image_url", image_url:{url:"data:image/png;base64,..."}}}</li>
+     *   <li>Responses: {@code {type:"input_image", image_url:"data:image/png;base64,..."}}</li>
+     * </ul>
+     * 输出 data: URL：{@code {type:"image", source:{type:"base64", media_type:"image/png", data:"..."}}}<br>
+     * 输出 https URL：{@code {type:"image", source:{type:"url", url:"https://..."}}}
+     *
+     * @return 转换后的 Anthropic image 块；若 part 中没有可解析 URL 则返回 null
+     */
+    static Map<String, Object> convertImageToAnthropic(Map<?, ?> part) {
+        Object imageUrl = part.get("image_url");
+        Object url = imageUrl instanceof Map<?, ?> map ? map.get("url") : imageUrl;
+        if (url == null) {
+            url = part.get("url");
+        }
+        if (url == null) {
+            return null;
+        }
+        String urlStr = String.valueOf(url);
+        Map<String, Object> source = urlStr.startsWith("data:")
+                ? parseDataUrlSource(urlStr)
+                : Map.of("type", "url", "url", urlStr);
+        return Map.of("type", "image", "source", source);
+    }
+
+    /**
+     * 将 data: URL 解析为 Anthropic base64 source 格式。
+     * <p>
+     * {@code data:image/png;base64,iVBOR...} 转为
+     * {@code {type:"base64", media_type:"image/png", data:"iVBOR..."}}
+     */
+    static Map<String, Object> parseDataUrlSource(String dataUrl) {
+        int commaIndex = dataUrl.indexOf(',');
+        if (commaIndex < 0) {
+            return Map.of("type", "url", "url", dataUrl);
+        }
+        String header = dataUrl.substring(5, commaIndex); // skip "data:"
+        String data = dataUrl.substring(commaIndex + 1);
+        String mediaType = "application/octet-stream";
+        int semicolonIndex = header.indexOf(';');
+        if (semicolonIndex > 0) {
+            mediaType = header.substring(0, semicolonIndex);
+        } else if (!header.isEmpty()) {
+            mediaType = header;
+        }
+        return Map.of("type", "base64", "media_type", mediaType, "data", data);
+    }
+
+    /**
      * 将 OpenAI 格式的工具列表转为 Anthropic 格式。
      * <p>
      * 输入格式（兼容两种风格）：

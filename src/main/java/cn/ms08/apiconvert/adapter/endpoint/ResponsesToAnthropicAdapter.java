@@ -314,14 +314,9 @@ public class ResponsesToAnthropicAdapter implements EndpointProviderAdapter {
             return;
         }
         if ("input_image".equals(type) || "image_url".equals(type)) {
-            Object imageUrl = part.get("image_url");
-            Object url = imageUrl instanceof Map<?, ?> map ? map.get("url") : imageUrl;
-            if (url == null) {
-                url = part.get("url");
-            }
-            if (url != null) {
-                blocks.add(Map.of("type", "image", "source",
-                        Map.of("type", "url", "url", String.valueOf(url))));
+            Map<String, Object> anthropicBlock = AnthropicTools.convertImageToAnthropic(part);
+            if (anthropicBlock != null) {
+                blocks.add(anthropicBlock);
             }
             return;
         }
