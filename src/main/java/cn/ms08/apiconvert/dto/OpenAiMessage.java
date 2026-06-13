@@ -2,6 +2,7 @@ package cn.ms08.apiconvert.dto;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.LinkedHashMap;
@@ -13,6 +14,7 @@ import java.util.Map;
  * tool_calls、tool_call_id、reasoning_content 按 OpenAI 标准显式声明，
  * 非标准字段通过 additionalProperties 透传。
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class OpenAiMessage {
 
     private String role;

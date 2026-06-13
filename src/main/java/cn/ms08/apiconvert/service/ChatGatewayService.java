@@ -688,7 +688,7 @@ public class ChatGatewayService {
             // 通用网络断开（非 Tomcat 环境）
             if (t instanceof java.io.IOException ioe) {
                 String msg = ioe.getMessage();
-                if (msg != null && (msg.contains("Broken pipe") || msg.contains("Connection reset") || msg.contains("connection was forcibly closed"))) {
+                if (msg != null && (msg.contains("Broken pipe") || msg.contains("Connection reset") || msg.contains("connection was forcibly closed") || msg.contains("closed"))) {
                     return true;
                 }
             }

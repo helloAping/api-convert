@@ -90,7 +90,9 @@ public class OpenAiRequestAdapter {
         OpenAiChatCompletionRequest providerRequest = new OpenAiChatCompletionRequest();
         providerRequest.setModel(providerModel);
         providerRequest.setMessages(request.messages().stream().map(this::toOpenAiMessage).toList());
-        providerRequest.setStream(stream);
+        if (stream) {
+            providerRequest.setStream(true);
+        }
         providerRequest.setTemperature(request.temperature());
         providerRequest.setMaxTokens(request.maxTokens());
         providerRequest.setResponseFormat(request.responseFormat());
