@@ -16,6 +16,7 @@
 | 03 | **路由与调度** | `modules/03-routing.md` | 模型路由解析（RANDOM/ROUND_ROBIN/WEIGHTED/SESSION_STICKY）、工具优先、错误避让、请求日志 |
 | 04 | **端点与协议适配** | `modules/04-endpoints.md` | 6 个公开端点（CHAT_COMPLETIONS/ANTHROPIC_MESSAGES/OPENAI_RESPONSES/OPENAI_VIDEOS/OPENAI_IMAGES/OPENAI_MODELS）、12 个跨协议适配器、两层策略模式 |
 | 05 | **Provider 厂商实现** | `modules/05-providers.md` | 8 个 Provider 类型（OPENAI_COMPATIBLE/ANTHROPIC/OPENAI_RESPONSES/GPT_AUTH/CLAUDE_AUTH/DEEPSEEK_CHAT/DEEPSEEK_ANTHROPIC/GEMINI） |
+| 05 | **Provider 厂商实现** | `modules/05-providers.md` | 7 个 Provider 类型（能力维度重构）（OPENAI_COMPATIBLE/ANTHROPIC/OPENAI_RESPONSES/GPT_AUTH/CLAUDE_AUTH/DEEPSEEK_CHAT/DEEPSEEK_ANTHROPIC/GEMINI/VOLC_CODINGPLAN_CHAT/VOLC_CODINGPLAN_ANTHROPIC） |
 | 06 | **流式传输与 SSE 转换** | `modules/06-streaming.md` | SSE 字节级透传、`RealTimeResponsesTransformer` Codex 兼容转换 |
 | 07 | **管理端与前端** | `modules/07-admin.md` | 9 个管理端控制器、Sa-Token 鉴权、Dashboard 统计、Vue 3.5 前端 |
 | 08 | **测试体系** | `modules/08-testing.md` | 15 个测试类、65 个用例、运行命令 |
@@ -64,6 +65,10 @@
 | `DEEPSEEK_CHAT` | Bearer | Chat + reasoning | ✅ | DeepSeek Chat 风格 |
 | `DEEPSEEK_ANTHROPIC` | Bearer + version | Messages + thinking | ✅ | DeepSeek Claude 风格 |
 | `GEMINI` | `x-goog-api-key` | `generateContent` | ❌ | Google Gemini |
+| `VOLC_CODINGPLAN_CHAT` | Bearer | Chat Completions | ✅ | 火山 CodingPlan OpenAI 兼容 |
+| `VOLC_CODINGPLAN_ANTHROPIC` | Bearer | Messages | ✅ | 火山 CodingPlan Anthropic 兼容 |
+| `OPENCODE_CHAT` | Bearer | Chat Completions | ✅ | OpenCode OpenAI 兼容 |
+| `OPENCODE_ANTHROPIC` | Bearer | Messages | ✅ | OpenCode Anthropic 兼容 |
 
 ---
 
@@ -100,6 +105,8 @@
 
 ### 后端
 
+- **OpenCode 供应商**：新增 `OPENCODE_CHAT` 和 `OPENCODE_ANTHROPIC` 两种 Provider 类型，支持 OpenCode 的 OpenAI 兼容和 Anthropic 兼容上游接口，使用标准 API Key 鉴权。
+- **火山 CodingPlan 供应商**：新增 `VOLC_CODINGPLAN_CHAT` 和 `VOLC_CODINGPLAN_ANTHROPIC` 两种 Provider 类型，分别对接火山引擎 CodingPlan 的 OpenAI 兼容接口（`https://ark.cn-beijing.volces.com/api/coding/v3`）和 Anthropic 兼容接口（`https://ark.cn-beijing.volces.com/api/coding`），使用标准 API Key 鉴权。
 - **Anthropic ↔ OpenAI Chat 流式 SSE 实时转换**：新增 `AnthropicToOpenAiStreamTransformer`（上游 Anthropic SSE → OpenAI Chat SSE）和 `OpenAiToAnthropicStreamTransformer`（上游 OpenAI Chat SSE → Anthropic SSE），补全 `CHAT_COMPLETIONS → ANTHROPIC` 和 `ANTHROPIC_MESSAGES → OPENAI_COMPATIBLE` 两条跨协议流式路径的实时格式转换能力；支持文本、工具调用、推理内容（thinking/reasoning_content）的逐 chunk 转换，自动映射 stop_reason/finish_reason，错误事件格式转换。
 - **V15 多模态端点路由**：渠道表新增 `video_path`、`image_path`，前端渠道管理支持保存视频生成和图片生成 API 路径；新增 `POST /v1/videos` 视频生成端点和 `POST /v1/images/generations` 图片生成端点，`AiProviderClient.generateVideo()`/`generateImage()` 默认不支持，`OPENAI_COMPATIBLE` 与 `GPT_AUTH` 按渠道保存路径透传。
 - JSON 解析兼容：全局 `ObjectMapper` 的 Jackson 单个字符串最大长度默认提升到 `100000000`，并通过 `API_CONVERT_JACKSON_MAX_STRING_LENGTH` 可配置；公开端点和 `RestClient` JSON 转换器统一使用该 mapper，支持 base64 图片/视频请求和响应透传，并兼容上游 OpenAI 兼容响应中的供应商扩展字段与 MiMo `audio_tokens`/`video_tokens` 用量明细。

@@ -149,7 +149,7 @@ public class AdminChannelService {
     public List<UpstreamModelVO> fetchModels(ChannelModelFetchRequest request) {
         requireText(request.baseUrl(), "Base URL 不能为空");
         String modelsPath = StringUtils.hasText(request.modelsPath()) ? request.modelsPath() : DEFAULT_MODELS_PATH;
-        ProviderType providerType = StringUtils.hasText(request.type()) ? ProviderType.valueOf(request.type()) : ProviderType.OPENAI_COMPATIBLE;
+        ProviderType providerType = StringUtils.hasText(request.type()) ? ProviderType.valueOf(request.type()) : ProviderType.OPENAI;
         String apiKey = resolveModelFetchApiKey(request, providerType);
         return providerClientRegistry.get(providerType)
                 .models(new ProviderModelFetchRequest(request.baseUrl(), modelsPath, apiKey))
@@ -489,11 +489,9 @@ public class AdminChannelService {
     private String defaultPath(String type, String path) {
         if (StringUtils.hasText(path)) return path;
         return switch (type) {
-            case "ANTHROPIC", "DEEPSEEK_ANTHROPIC" -> DEFAULT_ANTHROPIC_PATH;
-            case "OPENAI_RESPONSES" -> "/v1/responses";
+            case "OPENAI", "DEEPSEEK", "VOLC_CODINGPLAN", "OPENCODE" -> DEFAULT_CHAT_PATH;
             case "GPT_AUTH" -> DEFAULT_CHAT_PATH;
             case "CLAUDE_AUTH" -> DEFAULT_ANTHROPIC_PATH;
-            case "DEEPSEEK_CHAT" -> DEFAULT_CHAT_PATH;
             case "GEMINI" -> "/v1beta/models";
             default -> DEFAULT_CHAT_PATH;
         };

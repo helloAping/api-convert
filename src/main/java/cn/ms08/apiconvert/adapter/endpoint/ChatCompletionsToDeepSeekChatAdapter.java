@@ -30,7 +30,7 @@ public class ChatCompletionsToDeepSeekChatAdapter implements EndpointProviderAda
 
     @Override
     public ProviderType targetProvider() {
-        return ProviderType.DEEPSEEK_CHAT;
+        return ProviderType.DEEPSEEK;
     }
 
     @Override

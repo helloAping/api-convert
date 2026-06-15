@@ -24,7 +24,7 @@ public class ResponsesToDeepSeekChatAdapter extends ResponsesToOpenAiCompatibleA
 
     @Override
     public ProviderType targetProvider() {
-        return ProviderType.DEEPSEEK_CHAT;
+        return ProviderType.DEEPSEEK;
     }
 
     /**

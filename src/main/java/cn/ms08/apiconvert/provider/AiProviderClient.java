@@ -10,6 +10,7 @@ import cn.ms08.apiconvert.dto.ProviderQuotaFetchRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
 import cn.ms08.apiconvert.dto.UnifiedUsage;
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.ProviderException;
 import cn.ms08.apiconvert.vo.OpenAiImageResponse;
@@ -18,9 +19,11 @@ import org.springframework.http.HttpStatus;
 
 import java.io.OutputStream;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 供应商特定适配边界，负责对话转发和模型发现。
+ * 供应商通过 {@link #capabilities()} 声明自己支持哪些端点能力。
  */
 public interface AiProviderClient {
 
@@ -30,12 +33,25 @@ public interface AiProviderClient {
     ProviderType type();
 
     /**
-     * 将标准化对话请求发送到上游供应商。
+     * 返回该供应商支持的端点能力映射。
+     * Key 为端点类型，Value 为该端点的能力实现。
      */
-    UnifiedChatResponse chat(ModelRoute route, UnifiedChatRequest request);
+    default Map<EndpointType, EndpointCapability> capabilities() {
+        return Map.of();
+    }
+
+    /**
+     * 将标准化对话请求发送到上游供应商。
+     * @deprecated 请使用 {@link #capabilities()} 按端点分发。
+     */
+    default UnifiedChatResponse chat(ModelRoute route, UnifiedChatRequest request) {
+        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                "chat() not supported for provider type " + type());
+    }
 
     /**
      * 当前供应商客户端是否支持直接透传上游 SSE 流。
+     * @deprecated 请使用 {@link #capabilities()} 按端点分发。
      */
     default boolean supportsStreaming() {
         return false;
@@ -43,9 +59,11 @@ public interface AiProviderClient {
 
     /**
      * 将流式对话请求发送到上游，把 SSE 字节流直接写回调用方，并在上游返回时提取 token 用量。
+     * @deprecated 请使用 {@link #capabilities()} 按端点分发。
      */
     default UnifiedUsage streamChat(ModelRoute route, UnifiedChatRequest request, OutputStream outputStream) {
-        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST, "stream is not supported for provider type " + type());
+        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                "streamChat() not supported for provider type " + type());
     }
 
     /**

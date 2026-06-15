@@ -14,6 +14,7 @@ import cn.ms08.apiconvert.exception.GatewayException;
 import cn.ms08.apiconvert.exception.ProviderException;
 import cn.ms08.apiconvert.logging.LogSanitizer;
 import cn.ms08.apiconvert.provider.AiProviderClient;
+import cn.ms08.apiconvert.provider.EndpointCapability;
 import cn.ms08.apiconvert.provider.ProviderClientRegistry;
 import cn.ms08.apiconvert.provider.ProviderType;
 import cn.ms08.apiconvert.security.GatewayApiKeyFilter;
@@ -153,7 +154,7 @@ public class ChatGatewayService {
                 try {
                     apiKeyQuotaService.assertEnough(principal.apiKeyId(), route, estimatedUsage);
                     UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, route);
-                    UnifiedChatResponse response = providerClientRegistry.get(route.providerType()).chat(route, adaptedRequest);
+                    UnifiedChatResponse response = providerClientRegistry.getCapability(route.providerType(), endpointType).chat(route, adaptedRequest);
                     UnifiedChatResponse adaptedResponse = applyAdapter(response, endpointType, route);
                     routingService.recordSuccess(principal.apiKeyId(), route);
                     apiKeyQuotaService.deduct(principal.apiKeyId(), route, adaptedResponse.usage(), estimatedUsage);
@@ -288,8 +289,8 @@ public class ChatGatewayService {
                             targetStream = wrappedStream.outputStream();
                         }
                     }
-                    AiProviderClient client = providerClientRegistry.get(route.providerType());
-                    if (!client.supportsStreaming()) {
+                    EndpointCapability streamCap = providerClientRegistry.getCapability(route.providerType(), endpointType);
+                    if (!streamCap.supportsStreaming()) {
                         throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
                                 "stream is not supported for provider type " + route.providerType());
                     }
@@ -298,7 +299,7 @@ public class ChatGatewayService {
                             formatSanitizedHeaders(route),
                             route.providerType(), route.providerCode(),
                             serializeRequest(adaptedRequest));
-                    UnifiedUsage usage = client.streamChat(route, adaptedRequest, targetStream);
+                    UnifiedUsage usage = streamCap.streamChat(route, adaptedRequest, targetStream);
                     // 流式响应转换完成
                     if (wrappedStream != null) {
                         wrappedStream.complete();
@@ -631,8 +632,8 @@ public class ChatGatewayService {
 
     private ProviderType adapterProvider(ProviderType providerType) {
         return switch (providerType) {
-            case GPT_AUTH -> ProviderType.OPENAI_COMPATIBLE;
-            case CLAUDE_AUTH -> ProviderType.ANTHROPIC;
+            case GPT_AUTH -> ProviderType.OPENAI;
+            case CLAUDE_AUTH -> ProviderType.OPENAI;
             default -> providerType;
         };
     }

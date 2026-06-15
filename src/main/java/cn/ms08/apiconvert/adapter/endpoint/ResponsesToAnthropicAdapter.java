@@ -48,7 +48,7 @@ public class ResponsesToAnthropicAdapter implements EndpointProviderAdapter {
 
     @Override
     public ProviderType targetProvider() {
-        return ProviderType.ANTHROPIC;
+        return ProviderType.OPENAI;
     }
 
     @Override

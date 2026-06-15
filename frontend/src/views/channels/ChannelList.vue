@@ -84,7 +84,7 @@ function emptyForm(): ChannelForm {
   return {
     code: '',
     name: '',
-    type: 'OPENAI_COMPATIBLE',
+    type: 'OPENAI',
     baseUrl: '',
     chatPath: '/v1/chat/completions',
     videoPath: '/v1/videos',
@@ -122,6 +122,10 @@ function channelTypeLabel(type: string) {
     DEEPSEEK_CHAT: 'DeepSeek Chat',
     DEEPSEEK_ANTHROPIC: 'DeepSeek Anthropic',
     GEMINI: 'Google Gemini',
+    VOLC_CODINGPLAN_CHAT: '火山 CodingPlan Chat',
+    VOLC_CODINGPLAN_ANTHROPIC: '火山 CodingPlan Anthropic',
+    OPENCODE_CHAT: 'OpenCode Chat',
+    OPENCODE_ANTHROPIC: 'OpenCode Anthropic',
   }[type] || type
 }
 
@@ -133,10 +137,14 @@ function handleTypeChange(type: string) {
     OPENAI_RESPONSES: { baseUrl: '', chatPath: '/v1/responses', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
     GPT_AUTH: { baseUrl: 'https://api.openai.com', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
     CLAUDE_AUTH: { baseUrl: 'https://api.anthropic.com', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
-    DEEPSEEK_CHAT: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
-    DEEPSEEK_ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
-    GEMINI: { baseUrl: '', chatPath: '/v1beta/models', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1beta/models' },
-  }
+   DEEPSEEK_CHAT: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+   DEEPSEEK_ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+   GEMINI: { baseUrl: '', chatPath: '/v1beta/models', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1beta/models' },
+    VOLC_CODINGPLAN_CHAT: { baseUrl: 'https://ark.cn-beijing.volces.com/api/coding/v3', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    VOLC_CODINGPLAN_ANTHROPIC: { baseUrl: 'https://ark.cn-beijing.volces.com/api/coding', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    OPENCODE_CHAT: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    OPENCODE_ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+ }
   // 收集所有默认路径，用于判断用户是否手动修改过
   const defaultPaths = new Set(Object.values(defaults).flatMap(d => [d.chatPath, d.videoPath, d.imagePath, d.modelsPath]))
   const newDefault = defaults[type]

@@ -11,6 +11,6 @@ public class AnthropicToDeepSeekChatAdapter extends AnthropicToOpenAiCompatibleA
 
     @Override
     public ProviderType targetProvider() {
-        return ProviderType.DEEPSEEK_CHAT;
+        return ProviderType.DEEPSEEK;
     }
 }

@@ -118,9 +118,9 @@ public class OpenAiToAnthropicStreamTransformer extends OutputStream implements 
     @Override
     public boolean supports(EndpointType endpoint, ProviderType provider) {
         return endpoint == EndpointType.ANTHROPIC_MESSAGES
-                && (provider == ProviderType.OPENAI_COMPATIBLE
+                && (provider == ProviderType.OPENAI
                 || provider == ProviderType.GPT_AUTH
-                || provider == ProviderType.DEEPSEEK_CHAT);
+                || provider == ProviderType.DEEPSEEK);
     }
 
     @Override

@@ -117,7 +117,12 @@ public class OpenAiRequestAdapter {
                         if (value instanceof Number n) providerRequest.setTopP(n.doubleValue());
                     }
                     case "max_completion_tokens" -> {
-                        if (value instanceof Number n) providerRequest.setMaxCompletionTokens(n.intValue());
+                        // 多数非 OpenAI 供应商不支持此字段，统一转为 max_tokens
+                        if (value instanceof Number n) {
+                            if (providerRequest.getMaxTokens() == null) {
+                                providerRequest.setMaxTokens(n.intValue());
+                            }
+                        }
                     }
                     case "stop" -> {
                         @SuppressWarnings("unchecked")
@@ -125,9 +130,11 @@ public class OpenAiRequestAdapter {
                         if (stopList != null) providerRequest.setStop(stopList);
                     }
                     case "user" -> providerRequest.setUser(String.valueOf(value));
-                    case "reasoning_effort" -> providerRequest.setReasoningEffort(String.valueOf(value));
+                    case "reasoning_effort" -> {
+                        // OpenAI 特有字段，不发送给第三方供应商
+                    }
                     case "seed" -> {
-                        if (value instanceof Number n) providerRequest.setSeed(n.longValue());
+                        // OpenAI 特有字段，不发送给第三方供应商
                     }
                     case "presence_penalty" -> {
                         if (value instanceof Number n) providerRequest.setPresencePenalty(n.doubleValue());

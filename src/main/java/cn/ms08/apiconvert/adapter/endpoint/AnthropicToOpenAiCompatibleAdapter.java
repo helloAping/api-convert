@@ -47,7 +47,7 @@ public class AnthropicToOpenAiCompatibleAdapter implements EndpointProviderAdapt
 
     @Override
     public ProviderType targetProvider() {
-        return ProviderType.OPENAI_COMPATIBLE;
+        return ProviderType.OPENAI;
     }
 
     /**

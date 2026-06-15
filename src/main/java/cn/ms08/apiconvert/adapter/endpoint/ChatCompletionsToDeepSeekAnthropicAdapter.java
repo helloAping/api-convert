@@ -16,6 +16,6 @@ public class ChatCompletionsToDeepSeekAnthropicAdapter extends ChatCompletionsTo
 
     @Override
     public ProviderType targetProvider() {
-        return ProviderType.DEEPSEEK_ANTHROPIC;
+        return ProviderType.DEEPSEEK;
     }
 }

@@ -27,7 +27,7 @@ public class AnthropicMessagesToDeepSeekAnthropicAdapter implements EndpointProv
 
     @Override
     public ProviderType targetProvider() {
-        return ProviderType.DEEPSEEK_ANTHROPIC;
+        return ProviderType.DEEPSEEK;
     }
 
     @Override

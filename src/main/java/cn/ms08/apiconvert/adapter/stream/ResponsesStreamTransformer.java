@@ -129,10 +129,10 @@ public class ResponsesStreamTransformer extends OutputStream implements StreamRe
     @Override
     public boolean supports(EndpointType endpoint, ProviderType provider) {
         return endpoint == EndpointType.OPENAI_RESPONSES
-                && (provider == ProviderType.OPENAI_COMPATIBLE
-                || provider == ProviderType.ANTHROPIC
-                || provider == ProviderType.DEEPSEEK_CHAT
-                || provider == ProviderType.DEEPSEEK_ANTHROPIC);
+                && (provider == ProviderType.OPENAI
+                || provider == ProviderType.OPENAI
+                || provider == ProviderType.DEEPSEEK
+                || provider == ProviderType.DEEPSEEK);
     }
 
     @Override

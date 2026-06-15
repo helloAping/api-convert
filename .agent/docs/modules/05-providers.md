@@ -27,6 +27,10 @@
 | `DEEPSEEK_CHAT` | Bearer `Authorization` | OpenAI Chat Completions（含 `reasoning_content`） | ✅ | ❌ | ❌ | DeepSeek Chat 风格 |
 | `DEEPSEEK_ANTHROPIC` | Bearer `Authorization` + `anthropic-version` | Anthropic Messages（含 thinking 块） | ✅ | ❌ | ❌ | DeepSeek Claude 风格 |
 | `GEMINI` | `x-goog-api-key` | Gemini `generateContent` | ❌ | ✅（过滤 `generateContent`） | ❌ | `contents` + `system_instruction` |
+| `VOLC_CODINGPLAN_CHAT` | Bearer `Authorization` | OpenAI Chat Completions | ✅ | ❌ | ❌ | 火山 CodingPlan OpenAI 兼容，v3 端点 |
+| `VOLC_CODINGPLAN_ANTHROPIC` | Bearer `Authorization` + `anthropic-version` | Anthropic Messages | ✅ | ❌ | ❌ | 火山 CodingPlan Anthropic 兼容 |
+| `OPENCODE_CHAT` | Bearer `Authorization` | OpenAI Chat Completions | ✅ | ❌ | ❌ | OpenCode OpenAI 兼容 |
+| `OPENCODE_ANTHROPIC` | Bearer `Authorization` + `anthropic-version` | Anthropic Messages | ✅ | ❌ | ❌ | OpenCode Anthropic 兼容 |
 
 ## 3. DeepSeek 特殊处理
 
