@@ -37,9 +37,20 @@ const columns: DataTableColumn<ChannelVO>[] = [
   { title: '渠道名称', key: 'name', width: 160 },
   { title: '供应商', key: 'type', width: 150, render: (row) => channelTypeLabel(row.type) },
   { title: 'Base URL', key: 'baseUrl', ellipsis: { tooltip: true } },
-  { title: '请求路径', key: 'chatPath', width: 180 },
-  { title: '视频接口路径', key: 'videoPath', width: 170 },
-  { title: '图片接口路径', key: 'imagePath', width: 190 },
+  {
+    title: '能力',
+    key: 'capabilities',
+    minWidth: 280,
+    render: (row) => {
+      const caps = row.capabilities || []
+      if (caps.length === 0) return h('span', { style: 'color:#94a3b8' }, '未配置')
+      return h('div', { class: 'capability-tags' }, caps.map((cap) =>
+        h(NTag, { type: 'info', size: 'small', round: true, bordered: true, title: cap.path || '' }, {
+          default: () => endpointLabels[cap.type] || cap.type,
+        })
+      ))
+    },
+  },
   { title: '模型数', key: 'modelCount', width: 90 },
   { title: '密钥', key: 'apiKey', width: 140 },
   {
@@ -763,5 +774,12 @@ onMounted(load)
   font-size: 13px;
   font-weight: 600;
   background: #f8fafc;
+}
+
+.capability-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
 }
 </style>

@@ -308,7 +308,7 @@ public class ChatGatewayService {
                                 "stream is not supported for provider type " + route.providerType());
                     }
                     log.info("上游请求：POST {} {}、渠道类型：{}、渠道编码：{}、请求体：{}",
-                            route.baseUrl() + route.chatPath(),
+                            route.baseUrl() + route.resolvedChatPath(upstreamEndpoint),
                             formatSanitizedHeaders(route),
                             route.providerType(), route.providerCode(),
                             serializeRequest(adaptedRequest));

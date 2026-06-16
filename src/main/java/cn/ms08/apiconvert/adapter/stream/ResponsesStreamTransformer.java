@@ -238,10 +238,11 @@ public class ResponsesStreamTransformer extends OutputStream implements StreamRe
     public void flush() throws IOException {
         // 保护性发送：若流已标记完成但 completed 事件未发出（如上游未返回 finish_reason/usage），
         // 在最终 flush 时补发确保客户端收到完成信号
-        if (initialEventsWritten && !completedEventSent) {
+        if (!completedEventSent) {
             if (log.isDebugEnabled()) {
                 log.debug("flush() 时补发 completed 事件: finishReasonSeen={}, completed={}", finishReasonSeen, completed);
             }
+            finishReasonSeen = true;
             trySendCompleted();
         }
         target.flush();
