@@ -9,6 +9,11 @@ import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * V17 后 OpenAI 兼容上游统一由 {@link OpenAiChatCapability} 承载，原
+ * OpenAiCompatibleProviderClient 已并入。本测试验证流式透传与最终 usage 解析
+ * 仍然正确。
+ */
 class OpenAiCompatibleProviderClientTests {
 
     /**
@@ -16,7 +21,7 @@ class OpenAiCompatibleProviderClientTests {
      */
     @Test
     void copyOpenAiStreamParsesFinalUsageChunk() {
-        OpenAiCompatibleProviderClient client = new OpenAiCompatibleProviderClient(null, null, null);
+        OpenAiChatCapability capability = new OpenAiChatCapability(null, null, null);
         String sse = """
                 data: {"id":"chatcmpl-test","choices":[{"delta":{"content":"hi"}}]}
 
@@ -27,7 +32,7 @@ class OpenAiCompatibleProviderClientTests {
                 """;
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
-        UnifiedUsage usage = client.copyOpenAiStream(
+        UnifiedUsage usage = capability.copyOpenAiStream(
                 new ByteArrayInputStream(sse.getBytes(StandardCharsets.UTF_8)),
                 outputStream
         );

@@ -6,6 +6,7 @@ import cn.ms08.apiconvert.dto.OpenAiChatCompletionRequest;
 import cn.ms08.apiconvert.dto.OpenAiImageRequest;
 import cn.ms08.apiconvert.dto.OpenAiVideoRequest;
 import cn.ms08.apiconvert.dto.ModelRoute;
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
 import cn.ms08.apiconvert.dto.UnifiedUsage;
@@ -68,7 +69,7 @@ public class OpenAiChatCapability implements EndpointCapability {
                     .baseUrl(route.baseUrl())
                     .build()
                     .post()
-                    .uri(route.chatPath())
+                    .uri(route.resolvedChatPath(EndpointType.CHAT_COMPLETIONS))
                     .header("Authorization", "Bearer " + route.apiKey())
                     .body(providerRequest)
                     .retrieve()
@@ -104,7 +105,7 @@ public class OpenAiChatCapability implements EndpointCapability {
                     .baseUrl(route.baseUrl())
                     .build()
                     .post()
-                    .uri(route.chatPath())
+                    .uri(route.resolvedChatPath(EndpointType.CHAT_COMPLETIONS))
                     .accept(MediaType.TEXT_EVENT_STREAM)
                     .header("Authorization", "Bearer " + route.apiKey())
                     .body(providerRequest)

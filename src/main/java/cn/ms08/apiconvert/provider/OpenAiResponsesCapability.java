@@ -3,6 +3,7 @@ package cn.ms08.apiconvert.provider;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesResponseAdapter;
 import cn.ms08.apiconvert.dto.ModelRoute;
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.dto.OpenAiResponsesRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
@@ -51,7 +52,7 @@ public class OpenAiResponsesCapability implements EndpointCapability {
                     .baseUrl(route.baseUrl())
                     .build()
                     .post()
-                    .uri(route.chatPath())
+                    .uri(route.resolvedChatPath(EndpointType.OPENAI_RESPONSES))
                     .header("Authorization", "Bearer " + route.apiKey())
                     .body(providerRequest)
                     .retrieve()
@@ -86,7 +87,7 @@ public class OpenAiResponsesCapability implements EndpointCapability {
                     .baseUrl(route.baseUrl())
                     .build()
                     .post()
-                    .uri(route.chatPath())
+                    .uri(route.resolvedChatPath(EndpointType.OPENAI_RESPONSES))
                     .accept(MediaType.TEXT_EVENT_STREAM)
                     .header("Authorization", "Bearer " + route.apiKey())
                     .body(providerRequest)

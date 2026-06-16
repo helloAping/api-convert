@@ -9,6 +9,7 @@ import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
 import cn.ms08.apiconvert.dto.UnifiedMessage;
 import cn.ms08.apiconvert.dto.UnifiedUsage;
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.ProviderException;
 import cn.ms08.apiconvert.logging.LogSanitizer;
@@ -26,12 +27,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import cn.ms08.apiconvert.endpoint.EndpointType;
 
-/**
- * Google Gemini API 供应商客户端。
- * Gemini 使用 x-goog-api-key 鉴权，对话路径为 /v1beta/models/{model}:generateContent。
- */
 @Component
 public class GeminiProviderClient implements AiProviderClient {
 
@@ -39,9 +35,11 @@ public class GeminiProviderClient implements AiProviderClient {
 
     private final RestClient.Builder restClientBuilder;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final GeminiChatCapability chatCapability;
 
     public GeminiProviderClient(RestClient.Builder restClientBuilder) {
         this.restClientBuilder = restClientBuilder;
+        this.chatCapability = new GeminiChatCapability();
     }
 
     @Override
@@ -49,154 +47,14 @@ public class GeminiProviderClient implements AiProviderClient {
         return ProviderType.GEMINI;
     }
 
-    /**
-     * 将统一请求转为 Gemini 格式并调用 generateContent 端点。
-     * Gemini 的模型名内嵌在 URL 路径中，因此会忽略 route.chatPath()，使用 /v1beta/models/{model}:generateContent。
-     */
     @Override
-    public UnifiedChatResponse chat(ModelRoute route, UnifiedChatRequest request) {
-        String url = "/v1beta/models/" + route.providerModel() + GENERATE_CONTENT_ACTION;
-        try {
-            String body = restClientBuilder.clone()
-                    .baseUrl(route.baseUrl())
-                    .build()
-                    .post()
-                    .uri(url)
-                    .header("x-goog-api-key", route.apiKey())
-                    .body(buildGeminiRequest(request))
-                    .retrieve()
-                    .body(String.class);
-            if (body == null || body.isBlank()) {
-                throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY, "Gemini returned empty response");
-            }
-            return parseGeminiResponse(body, route.providerModel());
-        } catch (ProviderException exception) {
-            throw exception;
-        } catch (RestClientResponseException exception) {
-            int status = exception.getStatusCode().value();
-            throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
-                    upstreamError(prefix(status), exception));
-        } catch (RestClientException exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
-                    "Gemini request failed: " + exception.getMessage());
-        }
+    public Map<EndpointType, EndpointCapability> capabilities() {
+        return Map.of(
+                EndpointType.CHAT_COMPLETIONS, chatCapability,
+                EndpointType.ANTHROPIC_MESSAGES, chatCapability
+        );
     }
 
-    /**
-     * 将 UnifiedChatRequest 转为 Gemini contents 和 system_instruction。
-     */
-    private ObjectNode buildGeminiRequest(UnifiedChatRequest request) {
-        ObjectNode root = objectMapper.createObjectNode();
-
-        // 分离 system 消息作为 system_instruction
-        List<UnifiedMessage> contents = new ArrayList<>();
-        StringBuilder systemText = new StringBuilder();
-        for (UnifiedMessage msg : request.messages()) {
-            if ("system".equals(msg.role())) {
-                if (systemText.length() > 0) systemText.append("\n");
-                systemText.append(msg.content());
-            } else {
-                contents.add(msg);
-            }
-        }
-        if (systemText.length() > 0) {
-            ObjectNode instruction = objectMapper.createObjectNode();
-            instruction.put("text", systemText.toString());
-            root.set("system_instruction", objectMapper.createObjectNode().set("parts", objectMapper.createArrayNode().add(instruction)));
-        }
-
-        // 构建 contents 数组
-        ArrayNode contentsArray = objectMapper.createArrayNode();
-        for (UnifiedMessage msg : contents) {
-            ObjectNode content = objectMapper.createObjectNode();
-            content.put("role", "user".equals(msg.role()) ? "user" : "model");
-            ArrayNode parts = objectMapper.createArrayNode();
-            ObjectNode part = objectMapper.createObjectNode();
-            String textContent = msg.content() != null ? msg.content().toString() : "";
-            part.put("text", textContent);
-            parts.add(part);
-            content.set("parts", parts);
-            contentsArray.add(content);
-        }
-        root.set("contents", contentsArray);
-
-        // generationConfig
-        ObjectNode config = objectMapper.createObjectNode();
-        if (request.maxTokens() != null) {
-            config.put("maxOutputTokens", request.maxTokens());
-        }
-        if (request.temperature() != null) {
-            config.put("temperature", request.temperature());
-        }
-        root.set("generationConfig", config);
-
-        return root;
-    }
-
-    /**
-     * 解析 Gemini generateContent 响应为 UnifiedChatResponse。
-     */
-    private UnifiedChatResponse parseGeminiResponse(String body, String model) {
-        try {
-            JsonNode root = objectMapper.readTree(body);
-            JsonNode candidates = root.path("candidates");
-            StringBuilder text = new StringBuilder();
-            if (candidates.isArray()) {
-                for (JsonNode candidate : candidates) {
-                    JsonNode parts = candidate.path("content").path("parts");
-                    if (parts.isArray()) {
-                        for (JsonNode part : parts) {
-                            String partText = part.path("text").asText("");
-                            if (!partText.isEmpty()) {
-                                if (text.length() > 0) text.append("\n");
-                                text.append(partText);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 提取 token 用量
-            JsonNode usageMeta = root.path("usageMetadata");
-            UnifiedUsage usage = null;
-            if (!usageMeta.isMissingNode()) {
-                usage = new UnifiedUsage(
-                        integer(usageMeta, "promptTokenCount"),
-                        integer(usageMeta, "candidatesTokenCount"),
-                        integer(usageMeta, "totalTokenCount"),
-                        integer(usageMeta, "cachedContentTokenCount")
-                );
-            }
-
-            List<UnifiedMessage> responseMessages = List.of(
-                    new UnifiedMessage("assistant", text.toString(), null)
-            );
-
-            Map<String, Object> rawResponse = new LinkedHashMap<>();
-            rawResponse.put("id", "gemini-" + java.util.UUID.randomUUID().toString().substring(0, 8));
-            rawResponse.put("model", model);
-
-            return new UnifiedChatResponse(
-                    "gemini-" + java.util.UUID.randomUUID().toString().substring(0, 8),
-                    model,
-                    responseMessages,
-                    usage,
-                    rawResponse
-            );
-        } catch (Exception exception) {
-            throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY,
-                    "Failed to parse Gemini response: " + LogSanitizer.sanitizeBody(body) + ": " + exception.getMessage());
-        }
-    }
-
-    @Override
-    public boolean supportsStreaming() {
-        return false;
-    }
-
-    /**
-     * 调用 GET /v1beta/models 获取 Gemini 可用模型，仅返回支持 generateContent 的模型。
-     */
     @Override
     public List<ProviderModel> models(ProviderModelFetchRequest request) {
         try {
@@ -219,9 +77,11 @@ public class GeminiProviderClient implements AiProviderClient {
         }
     }
 
-    /**
-     * Gemini 模型的默认路径为 /v1beta/models，响应嵌套在 models 数组中。
-     */
+    @Override
+    public ProviderQuota quota(ProviderQuotaFetchRequest request) {
+        return new ProviderQuota(false, "Google Gemini 当前没有通用额度查询接口，请在 Google Cloud 控制台查看。", null, null, null, "", "");
+    }
+
     private List<ProviderModel> parseGeminiModelList(String body) {
         try {
             JsonNode root = objectMapper.readTree(body);
@@ -239,9 +99,7 @@ public class GeminiProviderClient implements AiProviderClient {
                     id = item.path("id").asText("");
                 }
                 if (!id.isBlank()) {
-                    // Gemini 的 name 格式为 "models/gemini-pro"，简短化为 "gemini-pro"
                     String displayName = id.startsWith("models/") ? id.substring(7) : id;
-                    // 只返回支持 generateContent 的模型
                     JsonNode methods = item.path("supportedGenerationMethods");
                     if (methods.isArray()) {
                         boolean supportsGenerate = false;
@@ -262,14 +120,6 @@ public class GeminiProviderClient implements AiProviderClient {
         } catch (Exception exception) {
             throw new IllegalArgumentException("Failed to parse Gemini model list response: " + LogSanitizer.sanitizeBody(body), exception);
         }
-    }
-
-    /**
-     * Gemini 无通用额度查询接口。
-     */
-    @Override
-    public ProviderQuota quota(ProviderQuotaFetchRequest request) {
-        return new ProviderQuota(false, "Google Gemini 当前没有通用额度查询接口，请在 Google Cloud 控制台查看。", null, null, null, "", "");
     }
 
     private Integer integer(JsonNode node, String field) {
@@ -313,5 +163,139 @@ public class GeminiProviderClient implements AiProviderClient {
             return prefix + ": status=" + status;
         }
         return prefix + ": status=" + status + ", body=" + body;
+    }
+
+    private class GeminiChatCapability implements EndpointCapability {
+
+        @Override
+        public UnifiedChatResponse chat(ModelRoute route, UnifiedChatRequest request) {
+            String url = "/v1beta/models/" + route.providerModel() + GENERATE_CONTENT_ACTION;
+            try {
+                String body = restClientBuilder.clone()
+                        .baseUrl(route.baseUrl())
+                        .build()
+                        .post()
+                        .uri(url)
+                        .header("x-goog-api-key", route.apiKey())
+                        .body(buildGeminiRequest(request))
+                        .retrieve()
+                        .body(String.class);
+                if (body == null || body.isBlank()) {
+                    throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY, "Gemini returned empty response");
+                }
+                return parseGeminiResponse(body, route.providerModel());
+            } catch (ProviderException exception) {
+                throw exception;
+            } catch (RestClientResponseException exception) {
+                int status = exception.getStatusCode().value();
+                throw new ProviderException(httpStatusToErrorCode(status), HttpStatus.BAD_GATEWAY,
+                        upstreamError(prefix(status), exception));
+            } catch (RestClientException exception) {
+                throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
+                        "Gemini request failed: " + exception.getMessage());
+            }
+        }
+
+        @Override
+        public boolean supportsStreaming() {
+            return false;
+        }
+
+        private ObjectNode buildGeminiRequest(UnifiedChatRequest request) {
+            ObjectNode root = objectMapper.createObjectNode();
+
+            List<UnifiedMessage> contents = new ArrayList<>();
+            StringBuilder systemText = new StringBuilder();
+            for (UnifiedMessage msg : request.messages()) {
+                if ("system".equals(msg.role())) {
+                    if (systemText.length() > 0) systemText.append("\n");
+                    systemText.append(msg.content());
+                } else {
+                    contents.add(msg);
+                }
+            }
+            if (systemText.length() > 0) {
+                ObjectNode instruction = objectMapper.createObjectNode();
+                instruction.put("text", systemText.toString());
+                root.set("system_instruction", objectMapper.createObjectNode().set("parts", objectMapper.createArrayNode().add(instruction)));
+            }
+
+            ArrayNode contentsArray = objectMapper.createArrayNode();
+            for (UnifiedMessage msg : contents) {
+                ObjectNode content = objectMapper.createObjectNode();
+                content.put("role", "user".equals(msg.role()) ? "user" : "model");
+                ArrayNode parts = objectMapper.createArrayNode();
+                ObjectNode part = objectMapper.createObjectNode();
+                String textContent = msg.content() != null ? msg.content().toString() : "";
+                part.put("text", textContent);
+                parts.add(part);
+                content.set("parts", parts);
+                contentsArray.add(content);
+            }
+            root.set("contents", contentsArray);
+
+            ObjectNode config = objectMapper.createObjectNode();
+            if (request.maxTokens() != null) {
+                config.put("maxOutputTokens", request.maxTokens());
+            }
+            if (request.temperature() != null) {
+                config.put("temperature", request.temperature());
+            }
+            root.set("generationConfig", config);
+
+            return root;
+        }
+
+        private UnifiedChatResponse parseGeminiResponse(String body, String model) {
+            try {
+                JsonNode root = objectMapper.readTree(body);
+                JsonNode candidates = root.path("candidates");
+                StringBuilder text = new StringBuilder();
+                if (candidates.isArray()) {
+                    for (JsonNode candidate : candidates) {
+                        JsonNode parts = candidate.path("content").path("parts");
+                        if (parts.isArray()) {
+                            for (JsonNode part : parts) {
+                                String partText = part.path("text").asText("");
+                                if (!partText.isEmpty()) {
+                                    if (text.length() > 0) text.append("\n");
+                                    text.append(partText);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                JsonNode usageMeta = root.path("usageMetadata");
+                UnifiedUsage usage = null;
+                if (!usageMeta.isMissingNode()) {
+                    usage = new UnifiedUsage(
+                            integer(usageMeta, "promptTokenCount"),
+                            integer(usageMeta, "candidatesTokenCount"),
+                            integer(usageMeta, "totalTokenCount"),
+                            integer(usageMeta, "cachedContentTokenCount")
+                    );
+                }
+
+                List<UnifiedMessage> responseMessages = List.of(
+                        new UnifiedMessage("assistant", text.toString(), null)
+                );
+
+                Map<String, Object> rawResponse = new LinkedHashMap<>();
+                rawResponse.put("id", "gemini-" + java.util.UUID.randomUUID().toString().substring(0, 8));
+                rawResponse.put("model", model);
+
+                return new UnifiedChatResponse(
+                        "gemini-" + java.util.UUID.randomUUID().toString().substring(0, 8),
+                        model,
+                        responseMessages,
+                        usage,
+                        rawResponse
+                );
+            } catch (Exception exception) {
+                throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY,
+                        "Failed to parse Gemini response: " + LogSanitizer.sanitizeBody(body) + ": " + exception.getMessage());
+            }
+        }
     }
 }

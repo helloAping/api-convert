@@ -55,8 +55,10 @@ export interface ChannelVO {
   status: string
   /** 缁戝畾鍒拌娓犻亾鐨勬ā鍨嬫槧灏勬暟閲忋€?*/
   modelCount: number
-  /** 娓犻亾宸蹭繚瀛樼殑妯″瀷鏄犲皠鍒楄〃銆?*/
+  /** 渠道已保存的模型映射列表。 */
   models: ChannelModelMappingVO[]
+  /** 渠道能力配置列表，每项对应一种上游端点类型及其独立请求路径。 */
+  capabilities: ChannelCapability[]
 }
 
 /** 鐢ㄦ埛鐐瑰嚮鍒锋柊鏃跺疄鏃惰幏鍙栫殑娓犻亾棰濆害锛屼笉鎸佷箙鍖栥€?*/
@@ -260,41 +262,51 @@ export interface DashboardSeriesPointVO {
 }
 
 /** 鍒涘缓鎴栨洿鏂版笭閬撹仛鍚堥厤缃殑琛ㄥ崟杞借嵎銆?*/
-export interface ChannelForm {
-  /** 绋冲畾鐨勬笭閬撶紪鐮侊紝鍒涘缓鍚庝笉鍏佽淇敼銆?*/
-  code: string
-  /** 绠＄悊椤甸潰灞曠ず鍚嶇О銆?*/
-  name: string
-  /** 渚涘簲鍟嗙被鍨嬶紙ProviderType锛夛紝鐢ㄤ簬閫夋嫨鍚庣渚涘簲鍟嗗疄鐜般€?*/
+
+/** 渠道能力配置项，每项对应一种上游端点类型及其独立请求路径。 */
+export interface ChannelCapability {
+  /** 端点类型名称，对应 EndpointType 枚举值 */
   type: string
-  /** 涓婃父鏈嶅姟 Base URL銆?*/
+  /** 该能力对应的上游请求路径 */
+  path: string
+}
+export interface ChannelForm {
+  /** 稳定的渠道编码，创建后不允许修改。 */
+  code: string
+  /** 管理页面展示名称。 */
+  name: string
+  /** 供应商类型（ProviderType），用于选择后端供应商实现。 */
+  type: string
+  /** 上游服务 Base URL。 */
   baseUrl: string
-  /** 渚涘簲鍟嗙壒瀹氱殑瀵硅瘽鎴栨秷鎭姹傝矾寰勩€?*/
+  /** 供应商特定的对话或消息请求路径。 */
   chatPath: string
-  /** 渚涘簲鍟嗙壒瀹氱殑瑙嗛鐢熸垚璇锋眰璺緞銆?*/
+  /** 供应商特定的视频生成请求路径。 */
   videoPath: string
-  /** 渚涘簲鍟嗙壒瀹氱殑鍥剧墖鐢熸垚璇锋眰璺緞銆?*/
+  /** 供应商特定的图片生成请求路径。 */
   imagePath: string
-  /** 渚涘簲鍟嗙壒瀹氱殑妯″瀷鍒楄〃璇锋眰璺緞銆?*/
+  /** 供应商特定的模型列表请求路径。 */
   modelsPath: string
-  /** 鍘熷渚涘簲鍟嗗瘑閽ワ紱鏇存柊鏃朵负绌鸿〃绀轰繚鐣欑幇鏈夊瘑閽ャ€?*/
+  /** 原始供应商密钥；更新时为空表示保留现有密钥。 */
   apiKey: string
-  /** 娓犻亾閴存潈妯″紡锛孉UTH 绫诲瀷榛樿涓?AUTH_FILE銆?*/
+  /** 渠道鉴权模式，AUTH 类型默认为 AUTH_FILE。 */
   authMode?: string
-  /** 娓犻亾璺敱鏉冮噸锛屽姞鏉冩ā寮忎笅鏁板€艰秺楂樺垎閰嶆祦閲忚秺澶氥€?*/
+  /** 渠道路由权重，加权模式下数值越高分配流量越多。 */
   priority: number
-  /** 娓犻亾鐘舵€侊紝渚嬪 ACTIVE 鎴?DISABLED銆?*/
+  /** 渠道状态，例如 ACTIVE 或 DISABLED。 */
   status: string
-  /** 鍗曟ā鍨嬪吋瀹瑰瓧娈碉紝鎵归噺妯″瀷鍒楄〃涓虹┖鏃朵娇鐢ㄣ€?*/
+  /** 单模型兼容字段，批量模型列表为空时使用。 */
   publicModel: string
-  /** 鍗曟ā鍨嬪吋瀹瑰瓧娈碉紝鎵归噺妯″瀷鍒楄〃涓虹┖鏃朵娇鐢ㄣ€?*/
+  /** 单模型兼容字段，批量模型列表为空时使用。 */
   providerModel: string
-  /** 淇濆瓨妯″瀷鏃舵嫾鍒板澶栨ā鍨嬪悕鍓嶆柟鐨勫彲閫夊墠缂€銆?*/
+  /** 保存模型时拼到对外模型名前方的可选前缀。 */
   modelPrefix: string
-  /** 鎵归噺淇濆瓨鐨勬ā鍨嬫槧灏勫垪琛紝浼樺厛浜庡崟妯″瀷鍏煎瀛楁銆?*/
+  /** 批量保存的模型映射列表，优先于单模型兼容字段。 */
   models: ChannelModelForm[]
-  /** 娓犻亾鏄惁鍚敤銆?*/
+  /** 渠道是否启用。 */
   enabled: boolean
+  /** 渠道能力配置列表，每项对应一种上游端点类型及其独立请求路径。 */
+  capabilities?: ChannelCapability[]
 }
 
 /** 娓犻亾琛ㄥ崟涓殑鍗曚釜妯″瀷鏄犲皠椤广€?*/
@@ -470,8 +482,8 @@ export interface RequestLogSearchParam {
   pageSize?: number
 }
 
-/** 娓犻亾鑱氬悎琛ㄥ崟褰撳墠鏀寔鐨勪緵搴斿晢绛栫暐绫诲瀷銆?*/
-export const channelTypes = ['OPENAI', 'DEEPSEEK', 'VOLC_CODINGPLAN', 'OPENCODE', 'GPT_AUTH', 'CLAUDE_AUTH', 'GEMINI']
+/** 渠道聚合表单当前支持的供应商策略类型。 */
+export const channelTypes = ['OPENAI', 'DEEPSEEK', 'VOLC_CODINGPLAN', 'OPENCODE', 'GEMINI', 'GPT_AUTH', 'CLAUDE_AUTH']
 export const activeStatuses = ['ACTIVE', 'DISABLED', 'EXPIRED']
 /** 绠＄悊绔彲閫夌殑婊戝姩绐楀彛鍗曚綅锛岃姹傛暟鍙敤鍒嗛挓锛岄搴︾晫闈細闅愯棌鍒嗛挓銆?*/
 export const quotaWindowUnits = ['MINUTE', 'HOUR', 'DAY']
@@ -479,10 +491,79 @@ export const quotaWindowUnits = ['MINUTE', 'HOUR', 'DAY']
 export const apiKeyLimitTypes = ['QUOTA', 'REQUEST']
 export const routeModes = ['RANDOM', 'ROUND_ROBIN', 'WEIGHTED', 'SESSION_STICKY']
 /** 绠＄悊绔彲閫夌殑绔偣绫诲瀷锛岀敤浜庢寜妯″瀷闄愬埗鍏佽璋冪敤鐨勭鐐广€?*/
+/** 每个供应商默认支持的端点列表（能力维度），新建渠道时自动预选。 */
+export const supplierDefaultEndpoints: Record<string, string[]> = {
+  OPENAI: ['CHAT_COMPLETIONS', 'OPENAI_RESPONSES', 'OPENAI_VIDEOS', 'OPENAI_IMAGES'],
+  DEEPSEEK: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  VOLC_CODINGPLAN: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  OPENCODE: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  GEMINI: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  GPT_AUTH: ['CHAT_COMPLETIONS', 'OPENAI_VIDEOS', 'OPENAI_IMAGES'],
+  CLAUDE_AUTH: ['ANTHROPIC_MESSAGES'],
+}
+
+/** 端点类型中文标签，用于管理界面展示。 */
+export const endpointLabels: Record<string, string> = {
+  CHAT_COMPLETIONS: 'Chat Completions',
+  ANTHROPIC_MESSAGES: 'Anthropic Messages',
+  OPENAI_RESPONSES: 'Responses API',
+  OPENAI_VIDEOS: '视频生成',
+  OPENAI_IMAGES: '图像生成',
+}
+
+/** 各端点类型在各供应商下的默认请求路径，用于新建渠道时自动填充。 */
+export const capabilityDefaultPaths: Record<string, Record<string, string>> = {
+  CHAT_COMPLETIONS: {
+    OPENAI: '/v1/chat/completions',
+    DEEPSEEK: '/v1/chat/completions',
+    VOLC_CODINGPLAN: '/v3/chat/completions',
+    OPENCODE: '/v1/chat/completions',
+    GEMINI: '/v1beta/models',
+    GPT_AUTH: '/v1/chat/completions',
+    CLAUDE_AUTH: '/v1/chat/completions',
+  },
+  ANTHROPIC_MESSAGES: {
+    OPENAI: '/v1/messages',
+    DEEPSEEK: '/v1/messages',
+    VOLC_CODINGPLAN: '/v1/messages',
+    OPENCODE: '/v1/messages',
+    GEMINI: '/v1beta/models',
+    GPT_AUTH: '/v1/messages',
+    CLAUDE_AUTH: '/v1/messages',
+  },
+  OPENAI_RESPONSES: {
+    OPENAI: '/v1/responses',
+    DEEPSEEK: '/v1/responses',
+    VOLC_CODINGPLAN: '/v1/responses',
+    OPENCODE: '/v1/responses',
+    GEMINI: '/v1/responses',
+    GPT_AUTH: '/v1/responses',
+    CLAUDE_AUTH: '/v1/responses',
+  },
+  OPENAI_VIDEOS: {
+    OPENAI: '/v1/videos',
+    DEEPSEEK: '/v1/videos',
+    VOLC_CODINGPLAN: '/v1/videos',
+    OPENCODE: '/v1/videos',
+    GEMINI: '/v1/videos',
+    GPT_AUTH: '/v1/videos',
+    CLAUDE_AUTH: '/v1/videos',
+  },
+  OPENAI_IMAGES: {
+    OPENAI: '/v1/images/generations',
+    DEEPSEEK: '/v1/images/generations',
+    VOLC_CODINGPLAN: '/v1/images/generations',
+    OPENCODE: '/v1/images/generations',
+    GEMINI: '/v1/images/generations',
+    GPT_AUTH: '/v1/images/generations',
+    CLAUDE_AUTH: '/v1/images/generations',
+  },
+}
+
 export const endpointTypeOptions = [
   { label: 'Chat Completions', value: 'CHAT_COMPLETIONS' },
   { label: 'Anthropic Messages', value: 'ANTHROPIC_MESSAGES' },
   { label: 'Responses API', value: 'OPENAI_RESPONSES' },
-  { label: '瑙嗛鐢熸垚', value: 'OPENAI_VIDEOS' },
-  { label: '鍥剧墖鐢熸垚', value: 'OPENAI_IMAGES' },
+  { label: '视频生成', value: 'OPENAI_VIDEOS' },
+  { label: '图像生成', value: 'OPENAI_IMAGES' },
 ]

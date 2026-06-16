@@ -65,6 +65,6 @@ public class ClaudeAuthProviderClient implements AiProviderClient {
         return new ModelRoute(route.publicModel(), route.providerCode(), route.providerType(),
                 route.providerModel(), route.baseUrl(), route.chatPath(), route.videoPath(), route.imagePath(),
                 accessToken, route.authMode(), route.authFilePath(),
-                route.inputQuotaPerMillion(), route.outputQuotaPerMillion(), route.cacheReadQuotaPerMillion());
+                route.inputQuotaPerMillion(), route.outputQuotaPerMillion(), route.cacheReadQuotaPerMillion(), route.capabilities());
     }
 }

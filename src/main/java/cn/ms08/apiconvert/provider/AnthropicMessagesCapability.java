@@ -4,6 +4,7 @@ import cn.ms08.apiconvert.adapter.protocol.AnthropicRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.AnthropicResponseAdapter;
 import cn.ms08.apiconvert.dto.AnthropicMessageRequest;
 import cn.ms08.apiconvert.dto.ModelRoute;
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
 import cn.ms08.apiconvert.dto.UnifiedUsage;
@@ -56,7 +57,7 @@ public class AnthropicMessagesCapability implements EndpointCapability {
                     .baseUrl(route.baseUrl())
                     .build()
                     .post()
-                    .uri(route.chatPath())
+                    .uri(route.resolvedChatPath(EndpointType.ANTHROPIC_MESSAGES))
                     .header(authHeaderName(route), authHeaderValue(route))
                     .header("anthropic-version", ANTHROPIC_VERSION)
                     .body(prepareRequestBody(route, requestAdapter.toProviderRequest(request, route.providerModel())))
@@ -93,7 +94,7 @@ public class AnthropicMessagesCapability implements EndpointCapability {
                     .baseUrl(route.baseUrl())
                     .build()
                     .post()
-                    .uri(route.chatPath())
+                    .uri(route.resolvedChatPath(EndpointType.ANTHROPIC_MESSAGES))
                     .accept(MediaType.TEXT_EVENT_STREAM)
                     .header(authHeaderName(route), authHeaderValue(route))
                     .header("anthropic-version", ANTHROPIC_VERSION)

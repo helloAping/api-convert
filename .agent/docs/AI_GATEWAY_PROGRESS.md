@@ -16,7 +16,7 @@
 | 03 | **路由与调度** | `modules/03-routing.md` | 模型路由解析（RANDOM/ROUND_ROBIN/WEIGHTED/SESSION_STICKY）、工具优先、错误避让、请求日志 |
 | 04 | **端点与协议适配** | `modules/04-endpoints.md` | 6 个公开端点（CHAT_COMPLETIONS/ANTHROPIC_MESSAGES/OPENAI_RESPONSES/OPENAI_VIDEOS/OPENAI_IMAGES/OPENAI_MODELS）、12 个跨协议适配器、两层策略模式 |
 | 05 | **Provider 厂商实现** | `modules/05-providers.md` | 8 个 Provider 类型（OPENAI_COMPATIBLE/ANTHROPIC/OPENAI_RESPONSES/GPT_AUTH/CLAUDE_AUTH/DEEPSEEK_CHAT/DEEPSEEK_ANTHROPIC/GEMINI） |
-| 05 | **Provider 厂商实现** | `modules/05-providers.md` | 7 个 Provider 类型（能力维度重构）（OPENAI_COMPATIBLE/ANTHROPIC/OPENAI_RESPONSES/GPT_AUTH/CLAUDE_AUTH/DEEPSEEK_CHAT/DEEPSEEK_ANTHROPIC/GEMINI/VOLC_CODINGPLAN_CHAT/VOLC_CODINGPLAN_ANTHROPIC） |
+| 05 | **Provider 厂商实现** | `modules/05-providers.md` | 7 个 Provider 类型（V17 能力维度合并）：OPENAI / DEEPSEEK / VOLC_CODINGPLAN / OPENCODE / GEMINI / GPT_AUTH / CLAUDE_AUTH，每个供应商通过 `EndpointCapability` 声明自己原生支持的端点能力 |
 | 06 | **流式传输与 SSE 转换** | `modules/06-streaming.md` | SSE 字节级透传、`RealTimeResponsesTransformer` Codex 兼容转换 |
 | 07 | **管理端与前端** | `modules/07-admin.md` | 9 个管理端控制器、Sa-Token 鉴权、Dashboard 统计、Vue 3.5 前端 |
 | 08 | **测试体系** | `modules/08-testing.md` | 15 个测试类、65 个用例、运行命令 |
@@ -57,18 +57,13 @@
 
 | 类型 | 鉴权 | 协议 | 流式 | 说明 |
 |---|---|---|---|---|
-| `OPENAI_COMPATIBLE` | Bearer | Chat Completions + Videos + Images | ✅ | 通用兼容 |
-| `ANTHROPIC` | Bearer + version | Messages | ✅ | Claude 官方 |
-| `OPENAI_RESPONSES` | Bearer | Responses API | ✅ | 原生 Responses |
+| `OPENAI` | Bearer | Chat Completions + Responses + Videos + Images | ✅ | 通用 OpenAI 兼容上游，同时声明 Chat、Responses、Videos、Images 四个能力（V17 合并 OPENAI_COMPATIBLE / OPENAI_RESPONSES） |
 | `GPT_AUTH` | Bearer (auth.json) | Chat Completions + Videos + Images | ✅ | OAuth 授权（V12） |
 | `CLAUDE_AUTH` | Bearer (auth.json) | Messages | ✅ | OAuth 授权（V12） |
-| `DEEPSEEK_CHAT` | Bearer | Chat + reasoning | ✅ | DeepSeek Chat 风格 |
-| `DEEPSEEK_ANTHROPIC` | Bearer + version | Messages + thinking | ✅ | DeepSeek Claude 风格 |
+| `DEEPSEEK` | Bearer | Chat + reasoning + Messages + thinking | ✅ | DeepSeek，同时声明 OpenAI Chat（含 `reasoning_content`）与 Anthropic Messages（含 thinking 块）两个能力 |
 | `GEMINI` | `x-goog-api-key` | `generateContent` | ❌ | Google Gemini |
-| `VOLC_CODINGPLAN_CHAT` | Bearer | Chat Completions | ✅ | 火山 CodingPlan OpenAI 兼容 |
-| `VOLC_CODINGPLAN_ANTHROPIC` | Bearer | Messages | ✅ | 火山 CodingPlan Anthropic 兼容 |
-| `OPENCODE_CHAT` | Bearer | Chat Completions | ✅ | OpenCode OpenAI 兼容 |
-| `OPENCODE_ANTHROPIC` | Bearer | Messages | ✅ | OpenCode Anthropic 兼容 |
+| `VOLC_CODINGPLAN` | Bearer | Chat Completions + Messages | ✅ | 火山 CodingPlan，同时声明 OpenAI Chat 与 Anthropic Messages 两个能力，默认 baseUrl `https://ark.cn-beijing.volces.com/api/coding`，Chat 走 `/v3/chat/completions` |
+| `OPENCODE` | Bearer | Chat Completions + Messages | ✅ | OpenCode，同时声明 OpenAI Chat 与 Anthropic Messages 两个能力，baseUrl 由用户填写 |
 
 ---
 
@@ -128,4 +123,7 @@
 - **V16 渠道模型端点类型限制**：`ai_channel_model` 新增 `allowed_endpoint_types` 字段（逗号分隔的 EndpointType 名称），允许按模型标记只兼容特定端点类型；路由时自动过滤不匹配的候选渠道，解决同一模型多渠道（如 OpenAI Chat + Anthropic Messages）轮询到不兼容渠道导致工具调用 ID 不匹配的 400 错误。前端渠道管理新增"允许端点"多选列，留空表示不限制。
 - **Chat → Anthropic 工具调用适配修复**：`ChatCompletionsToAnthropicAdapter` 新增消息格式转换，将 OpenAI Chat 格式的 `tool_calls`（assistant 消息 options）和 `tool` 消息（role=tool + tool_call_id）正确转为 Anthropic 的 `tool_use`/`tool_result` content block 格式，修复 Chat 端点请求路由到 Anthropic 渠道时因 tool result ID 不匹配导致的 400 错误。
 - **Anthropic → OpenAI Chat 流式 usage JSON 修复**：`AnthropicToOpenAiStreamTransformer.writeChunk()` 修复 usage 字段被拼接到 JSON 对象 `}` 外部导致客户端 JSON 解析失败的 bug。
+- **V17 供应商能力维度合并**：将 12 个 ProviderType 合并为 7 个（`OPENAI / DEEPSEEK / VOLC_CODINGPLAN / OPENCODE / GEMINI / GPT_AUTH / CLAUDE_AUTH`），每个供应商通过 `EndpointCapability` 接口声明自身原生支持的端点能力（`OpenAiChatCapability` / `AnthropicMessagesCapability` / `OpenAiResponsesCapability`），子类只组合并按需覆盖。`ProviderClientRegistry.getCapability(type, endpointType)` 在路由时按能力查找对应实现，未声明的能力直接返回 `UNSUPPORTED_FEATURE`。前端渠道管理：渠道编辑页加 `supplierDefaultEndpoints` 默认能力预选与中文 `endpointLabels` 标签，新建模型自动填默认允许端点，切换供应商时同步迁移旧默认值；`handleTypeChange` 默认请求路径表统一到 V17 新枚举，`VOLC_CODINGPLAN` 默认 baseUrl 写入 `https://ark.cn-beijing.volces.com/api/coding` + `/v3/chat/completions`。SQL 迁移 `V17__provider_type_merge.sql` 把历史渠道的旧枚举值刷新到新值。
 - 失败重试切换渠道时，同步和流式路径均写入失败请求日志；Dashboard 查询增加 `success=true` 过滤，失败不计入请求数。
+- **V17 前端能力配置 UI**：渠道编辑表单用能力勾选表格替代旧的独立请求路径字段（chatPath/videoPath/imagePath），每种端点能力（Chat Completions / Anthropic Messages / Responses API / 视频生成 / 图片生成）通过 checkbox 勾选，勾选后显示独立的上游请求路径输入框，`capabilityDefaultPaths` 按供应商类型提供默认路径。切换供应商时自动重置能力列表。`ChannelForm` 和 `ChannelVO` 新增 `capabilities` 字段，`syncLegacyPaths` 同步 `ANTHROPIC_MESSAGES` 到 `chatPath`。
+- **Gemini 供应商能力迁移**：`GeminiProviderClient` 从直接实现 `AiProviderClient.chat()` 迁移到能力模式，内嵌 `GeminiChatCapability` 实现 `EndpointCapability`，同时声明 `CHAT_COMPLETIONS` 和 `ANTHROPIC_MESSAGES` 两个端点能力，均路由到同一 `generateContent` 调用逻辑。

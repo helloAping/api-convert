@@ -64,7 +64,7 @@ public class ChatCompletionsToAnthropicAdapter implements EndpointProviderAdapte
 
     @Override
     public ProviderType targetProvider() {
-        return ProviderType.OPENAI;
+        return ProviderType.CLAUDE_AUTH;
     }
 
     /**

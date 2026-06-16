@@ -8,6 +8,7 @@ import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
 import cn.ms08.apiconvert.dto.ProviderQuotaFetchRequest;
 import cn.ms08.apiconvert.dto.admin.ChannelForm;
 import cn.ms08.apiconvert.dto.admin.ChannelModelFetchRequest;
+import cn.ms08.apiconvert.dto.admin.ChannelCapability;
 import cn.ms08.apiconvert.dto.admin.ChannelModelForm;
 import cn.ms08.apiconvert.entity.AiChannelEntity;
 import cn.ms08.apiconvert.entity.AiChannelModelEntity;
@@ -23,6 +24,8 @@ import cn.ms08.apiconvert.vo.admin.ChannelQuotaVO;
 import cn.ms08.apiconvert.vo.admin.ChannelVO;
 import cn.ms08.apiconvert.vo.admin.UpstreamModelVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,7 +45,7 @@ public class AdminChannelService {
     /**
      * 默认供应商策略。
      */
-    private static final String DEFAULT_TYPE = "OPENAI_COMPATIBLE";
+    private static final String DEFAULT_TYPE = "OPENAI";
     /**
      * OpenAI 兼容渠道的默认对话补全路径。
      */
@@ -102,6 +105,7 @@ public class AdminChannelService {
      * AUTH 类型渠道从 auth.json 中读取访问令牌用于模型发现。
      */
     private final AuthFileService authFileService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 注入渠道聚合操作所需的 Mapper 和供应商注册表。
@@ -325,6 +329,12 @@ public class AdminChannelService {
         if (form.priority() != null) channel.setPriority(form.priority()); else if (creating) channel.setPriority(DEFAULT_PRIORITY);
         if (StringUtils.hasText(form.status())) channel.setStatus(form.status()); else if (creating) channel.setStatus(DEFAULT_STATUS);
         if (form.enabled() != null) channel.setEnabled(form.enabled()); else if (creating) channel.setEnabled(true);
+        if (form.capabilities() != null && !form.capabilities().isEmpty()) {
+            channel.setCapabilities(serializeCapabilities(form.capabilities()));
+            syncLegacyPaths(channel, form.capabilities());
+        } else if (creating) {
+            channel.setCapabilities(null);
+        }
     }
 
     /**
@@ -361,7 +371,8 @@ public class AdminChannelService {
                                 model.getEnabled(),
                                 model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion(),
                                 model.getAllowedEndpointTypes()))
-                        .toList()
+                        .toList(),
+                parseCapabilities(channel.getCapabilities())
         );
     }
 
@@ -520,5 +531,28 @@ public class AdminChannelService {
 
     private boolean isAuthProvider(String providerType) {
         return "GPT_AUTH".equals(providerType) || "CLAUDE_AUTH".equals(providerType);
+    }
+
+    private String serializeCapabilities(List<ChannelCapability> capabilities) {
+        if (capabilities == null || capabilities.isEmpty()) return null;
+        try { return objectMapper.writeValueAsString(capabilities); }
+        catch (Exception e) { return null; }
+    }
+
+    private List<ChannelCapability> parseCapabilities(String json) {
+        if (json == null || json.isBlank()) return null;
+        try { return objectMapper.readValue(json, new TypeReference<List<ChannelCapability>>() {}); }
+        catch (Exception e) { return null; }
+    }
+
+    private void syncLegacyPaths(AiChannelEntity channel, List<ChannelCapability> capabilities) {
+        for (ChannelCapability cap : capabilities) {
+            if (cap.path() == null || cap.path().isBlank()) continue;
+            switch (cap.type()) {
+                case "CHAT_COMPLETIONS", "ANTHROPIC_MESSAGES" -> channel.setChatPath(cap.path());
+                case "OPENAI_VIDEOS" -> channel.setVideoPath(cap.path());
+                case "OPENAI_IMAGES" -> channel.setImagePath(cap.path());
+            }
+        }
     }
 }

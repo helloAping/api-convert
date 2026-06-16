@@ -262,7 +262,7 @@ class ApiConvertApplicationTests {
                                 {
                                   "code": "%s",
                                   "name": "测试渠道",
-                                  "type": "OPENAI_COMPATIBLE",
+                                  "type": "OPENAI",
                                   "baseUrl": "https://api.example.com",
                                   "chatPath": "/v1/chat/completions",
                                   "modelsPath": "/v1/models",
@@ -312,7 +312,7 @@ class ApiConvertApplicationTests {
                                     {
                                       "code": "%s-duplicate",
                                       "name": "重复别名渠道",
-                                      "type": "OPENAI_COMPATIBLE",
+                                      "type": "OPENAI",
                                       "baseUrl": "https://api.example.com",
                                       "chatPath": "/v1/chat/completions",
                                       "modelsPath": "/v1/models",
@@ -346,7 +346,7 @@ class ApiConvertApplicationTests {
                                 {
                                   "code": "%s",
                                   "name": "重复上游模型渠道",
-                                  "type": "OPENAI_COMPATIBLE",
+                                  "type": "OPENAI",
                                   "baseUrl": "https://api.example.com",
                                   "chatPath": "/v1/chat/completions",
                                   "modelsPath": "/v1/models",
@@ -484,7 +484,7 @@ class ApiConvertApplicationTests {
                                     {
                                       "code": "%s",
                                       "name": "模型发现密钥回退",
-                                      "type": "OPENAI_COMPATIBLE",
+                                      "type": "OPENAI",
                                       "baseUrl": "%s",
                                       "chatPath": "/v1/chat/completions",
                                       "modelsPath": "/v1/models",
@@ -504,7 +504,7 @@ class ApiConvertApplicationTests {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {
-                                      "type": "OPENAI_COMPATIBLE",
+                                      "type": "OPENAI",
                                       "channelId": %d,
                                       "baseUrl": "%s",
                                       "modelsPath": "/v1/models",
@@ -785,7 +785,7 @@ class ApiConvertApplicationTests {
                                     {
                                       "code": "%s",
                                       "name": "额度测试渠道",
-                                      "type": "OPENAI_COMPATIBLE",
+                                      "type": "OPENAI",
                                       "baseUrl": "https://api.example.com",
                                       "chatPath": "/v1/chat/completions",
                                       "modelsPath": "/v1/models",
@@ -1001,7 +1001,7 @@ class ApiConvertApplicationTests {
                                     {
                                       "code": "%s",
                                       "name": "请求数限制渠道",
-                                      "type": "OPENAI_COMPATIBLE",
+                                      "type": "OPENAI",
                                       "baseUrl": "http://127.0.0.1:1",
                                       "chatPath": "/v1/chat/completions",
                                       "modelsPath": "/v1/models",
@@ -1101,7 +1101,7 @@ class ApiConvertApplicationTests {
                                     {
                                       "code": "%s",
                                       "name": "模型限制渠道",
-                                      "type": "OPENAI_COMPATIBLE",
+                                      "type": "OPENAI",
                                       "baseUrl": "https://api.example.com",
                                       "chatPath": "/v1/chat/completions",
                                       "modelsPath": "/v1/models",
@@ -1573,7 +1573,7 @@ class ApiConvertApplicationTests {
         entity.setSourceProtocol("openai");
         entity.setRequestType("chat_completions");
         entity.setProviderCode(channel);
-        entity.setProviderType("OPENAI_COMPATIBLE");
+        entity.setProviderType("OPENAI");
         entity.setPublicModel(model);
         entity.setProviderModel(model);
         entity.setStream(false);
@@ -1644,7 +1644,7 @@ class ApiConvertApplicationTests {
                                 {
                                   "code": "%s",
                                   "name": "%s",
-                                  "type": "OPENAI_COMPATIBLE",
+                                  "type": "OPENAI",
                                   "baseUrl": "%s",
                                   "chatPath": "/v1/chat/completions",
                                   "modelsPath": "/v1/models",

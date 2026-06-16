@@ -12,7 +12,10 @@ import cn.ms08.apiconvert.entity.AiChannelModelEntity;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.GatewayException;
 import cn.ms08.apiconvert.provider.ProviderType;
+import cn.ms08.apiconvert.dto.admin.ChannelCapability;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -38,6 +41,7 @@ public class RoutingService {
     private final AiChannelModelMapper modelMapper;
     private final AiChannelMapper channelMapper;
     private final SystemConfigService systemConfigService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 轮询模式的游标，按候选集合签名隔离，避免不同模型互相影响。
@@ -422,7 +426,8 @@ public class RoutingService {
                 model.getProviderModel(), channel.getBaseUrl(), channel.getChatPath(), channel.getVideoPath(),
                 channel.getImagePath(), channel.getApiKey(),
                 channel.getAuthMode(), channel.getAuthFilePath(),
-                model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion());
+                model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion(),
+                parseCapabilities(channel.getCapabilities()));
     }
 
     private boolean hasUsableCredential(AiChannelEntity channel) {
@@ -515,5 +520,12 @@ public class RoutingService {
             currentWeights.put(selectedKey, currentWeights.get(selectedKey) - totalWeight);
             return valid.get(selectedKey);
         }
+    }
+
+    private List<ChannelCapability> parseCapabilities(String capabilitiesJson) {
+        if (capabilitiesJson == null || capabilitiesJson.isBlank()) return null;
+        try {
+            return objectMapper.readValue(capabilitiesJson, new com.fasterxml.jackson.core.type.TypeReference<List<ChannelCapability>>() {});
+        } catch (Exception e) { return null; }
     }
 }

@@ -18,7 +18,7 @@ class AiProviderClientTests {
         AiProviderClient client = new AiProviderClient() {
             @Override
             public ProviderType type() {
-                return ProviderType.ANTHROPIC;
+                return ProviderType.DEEPSEEK;
             }
 
             @Override
