@@ -253,6 +253,10 @@ public class AnthropicToOpenAiStreamTransformer extends OutputStream implements 
             return;
         }
 
+        if ("[DONE]".equals(data)) {
+            return;
+        }
+
         try {
             JsonNode chunk = OBJECT_MAPPER.readTree(data);
 

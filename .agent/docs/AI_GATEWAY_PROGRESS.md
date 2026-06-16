@@ -82,6 +82,7 @@
 | 2026-05-27 | OpenAiChatCompletionRequest 将 null 的 frequency_penalty/presence_penalty 序列化发送至上游，导致图片识别上游返回 400 错误 | 添加 @JsonInclude(JsonInclude.Include.NON_NULL) 注解，避免序列化 null 字段 | dto/OpenAiChatCompletionRequest.java |
 | 2026-06-16 | `ModelRoute.effectiveEndpoint()` 在客户端端点不在 `allowedCapabilities` 时直接采用用户填写的 `allowedCapabilities` 第一个能力作为上游端点，导致请求日志 `sourceEndpointType` 为「对话补全」但实际却走「Anthropic Messages」地址 | 回退顺序改为按 `capabilities`（已用 `allowedCapabilities` 过滤）保留渠道侧配置顺序的第一个能力，保证渠道主能力（Chat Completions）优先于模型侧补登的次能力（Anthropic Messages） | dto/ModelRoute.java |
 | 2026-06-16 | 用户在「能力配置」中限制模型只允许 Anthropic Messages，外部以 chat 端点请求时仍被 `effectiveEndpoint` fallback 到 `clientEndpoint`（CHAT_COMPLETIONS），触发渠道 400 错误 | 当渠道 `capabilities` 为空或与 `allowedCapabilities` 无交集时，fallback 改为 `allowedCapabilities` 中用户填写的第一个能力，确保用户对模型的能力限制被尊重，从而触发 Chat↔Anthropic 跨协议适配器 | dto/ModelRoute.java |
+| 2026-06-16 | 客户端用 chat 端点、渠道配置同时含 Chat Completions 与 Anthropic Messages 时，本应直连 Chat Completions，但 `streamToClient` 仍按 `(clientEndpoint, providerType)` 选中了 `AnthropicToOpenAiStreamTransformer`，用 Anthropic 解析器去解析 OpenAI Chat 的 `[DONE]` 哨兵，触发 `Unrecognized token 'DONE'` 告警；`AnthropicToOpenAiStreamTransformer` 也缺少对 `[DONE]` 的短路处理 | `effectiveEndpoint` 增加"渠道 capabilities 原生支持客户端端点则优先直连"逻辑；`streamToClient` 仅在 `upstreamEndpoint != endpointType` 时才查找流式转换器；`AnthropicToOpenAiStreamTransformer.processData` 增加对 `[DONE]` 的静默跳过 | dto/ModelRoute.java, service/ChatGatewayService.java, adapter/stream/AnthropicToOpenAiStreamTransformer.java |
 
 ---
 

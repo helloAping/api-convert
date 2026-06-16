@@ -125,17 +125,15 @@ public record ModelRoute(
          * 根据模型的能力限制，返回实际应使用的上游端点类型。
          * <ul>
          *   <li>未配置 allowedCapabilities → 直接返回客户端请求的端点类型</li>
-         *   <li>客户端端点在 allowedCapabilities 中 → 使用客户端请求的端点类型</li>
+         *   <li>渠道能力配置（capabilities）原生支持客户端端点 → 优先直连，使用客户端请求的端点类型</li>
+         *   <li>渠道能力配置不包含客户端端点，但客户端端点在 allowedCapabilities 中 → 使用客户端请求的端点类型</li>
          *   <li>客户端端点不在 allowedCapabilities 中，且渠道能力配置（capabilities）与 allowedCapabilities 有交集 → 使用渠道能力配置中第一个匹配的能力（保留渠道侧顺序）</li>
          *   <li>客户端端点不在 allowedCapabilities 中，渠道能力配置为空或无交集 → 使用 allowedCapabilities 中第一个能力（用户明确填写的限制）</li>
          *   <li>极端情况：上述都没有 → 使用客户端请求的端点类型</li>
          * </ul>
          * <p>
-         * 当上游端点与下游端点不一致时：
-         * <ol>
-         *   <li>优先采用渠道能力配置（{@code capabilities}，按 {@code allowedCapabilities} 过滤后）保留渠道侧配置顺序的第一个能力——渠道主能力（Chat Completions）优先于模型侧补登的次能力（Anthropic Messages）</li>
-         *   <li>渠道未配置能力时，fallback 到 {@code allowedCapabilities} 中用户填写的第一个能力，保证用户对该模型的能力限制被尊重</li>
-         * </ol>
+         * 优先直连的逻辑：渠道主能力（Chat Completions）应优先于用户为该模型补登的次能力（Anthropic Messages），
+         * 当渠道原生支持客户端协议时直接走客户端协议，避免不必要的跨协议 SSE 转换和 400 错误。
          * </p>
          */
         public EndpointType effectiveEndpoint(EndpointType clientEndpoint) {
@@ -154,6 +152,14 @@ public record ModelRoute(
                                 allowed.add(cap);
                                 if (firstAllowed == null) {
                                         firstAllowed = cap;
+                                }
+                        }
+                }
+                // 优先直连：渠道 capabilities 原生支持客户端端点 → 直接使用客户端端点
+                if (capabilities != null) {
+                        for (ChannelCapability cap : capabilities) {
+                                if (cap.type() != null && cap.type().equals(clientName)) {
+                                        return clientEndpoint;
                                 }
                         }
                 }

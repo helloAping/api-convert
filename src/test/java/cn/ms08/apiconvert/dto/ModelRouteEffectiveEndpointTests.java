@@ -105,6 +105,28 @@ class ModelRouteEffectiveEndpointTests {
                 .isEqualTo(EndpointType.ANTHROPIC_MESSAGES);
     }
 
+    @Test
+    void channelCapabilitiesSupportClientEndpointPrefersDirectConnection() {
+        ModelRoute route = route(
+                List.of(capability(EndpointType.CHAT_COMPLETIONS, "/v1/chat/completions"),
+                        capability(EndpointType.ANTHROPIC_MESSAGES, "/v1/messages")),
+                "ANTHROPIC_MESSAGES");
+
+        assertThat(route.effectiveEndpoint(EndpointType.CHAT_COMPLETIONS))
+                .isEqualTo(EndpointType.CHAT_COMPLETIONS);
+    }
+
+    @Test
+    void channelCapabilitiesSupportAnthropicForAnthropicRequestPrefersDirectConnection() {
+        ModelRoute route = route(
+                List.of(capability(EndpointType.CHAT_COMPLETIONS, "/v1/chat/completions"),
+                        capability(EndpointType.ANTHROPIC_MESSAGES, "/v1/messages")),
+                "ANTHROPIC_MESSAGES");
+
+        assertThat(route.effectiveEndpoint(EndpointType.ANTHROPIC_MESSAGES))
+                .isEqualTo(EndpointType.ANTHROPIC_MESSAGES);
+    }
+
     private static ChannelCapability capability(EndpointType type, String path) {
         return new ChannelCapability(type.name(), path);
     }

@@ -288,7 +288,7 @@ public class ChatGatewayService {
                     UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, upstreamEndpoint, route);
                     // 检查是否需要流式响应转换（端点与供应商协议不一致时）
                     OutputStream targetStream = attemptOutput;
-                    if (endpointType != null) {
+                    if (endpointType != null && upstreamEndpoint != null && upstreamEndpoint != endpointType) {
                         StreamResponseTransformer transformer = streamTransformerRegistry.get(endpointType, route.providerType());
                         if (transformer == null) {
                             transformer = streamTransformerRegistry.get(endpointType, adapterProvider(route.providerType()));
