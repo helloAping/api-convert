@@ -58,6 +58,9 @@
 | 类型 | 鉴权 | 协议 | 流式 | 说明 |
 |---|---|---|---|---|
 | `OPENAI` | Bearer | Chat Completions + Responses + Videos + Images | ✅ | 通用 OpenAI 兼容上游，同时声明 Chat、Responses、Videos、Images 四个能力（V17 合并 OPENAI_COMPATIBLE / OPENAI_RESPONSES） |
+| `ANTHROPIC` | x-api-key | Messages | ✅ | 官方 Anthropic 供应商（V19 新增），默认 baseUrl `https://api.anthropic.com`，仅声明 ANTHROPIC_MESSAGES 能力 |
+| `CUSTOM` | Bearer / x-api-key | Chat Completions + Messages | ✅ | 自定义供应商（V19 新增），用户自填 baseUrl，同时声明 CHAT_COMPLETIONS + ANTHROPIC_MESSAGES 两个能力 |
+| `MIMO_TOKEN_PLAN` | Bearer / x-api-key | Chat Completions + Messages | ✅ | Xiaomi MiMo Token Plan 供应商（V19 新增），默认 baseUrl `https://token-plan-cn.xiaomimimo.com`，参考 https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call |
 | `GPT_AUTH` | Bearer (auth.json) | Chat Completions + Videos + Images | ✅ | OAuth 授权（V12） |
 | `CLAUDE_AUTH` | Bearer (auth.json) | Messages | ✅ | OAuth 授权（V12） |
 | `DEEPSEEK` | Bearer | Chat + reasoning + Messages + thinking | ✅ | DeepSeek，同时声明 OpenAI Chat（含 `reasoning_content`）与 Anthropic Messages（含 thinking 块）两个能力 |
@@ -83,6 +86,7 @@
 | 2026-06-16 | `ModelRoute.effectiveEndpoint()` 在客户端端点不在 `allowedCapabilities` 时直接采用用户填写的 `allowedCapabilities` 第一个能力作为上游端点，导致请求日志 `sourceEndpointType` 为「对话补全」但实际却走「Anthropic Messages」地址 | 回退顺序改为按 `capabilities`（已用 `allowedCapabilities` 过滤）保留渠道侧配置顺序的第一个能力，保证渠道主能力（Chat Completions）优先于模型侧补登的次能力（Anthropic Messages） | dto/ModelRoute.java |
 | 2026-06-16 | 用户在「能力配置」中限制模型只允许 Anthropic Messages，外部以 chat 端点请求时仍被 `effectiveEndpoint` fallback 到 `clientEndpoint`（CHAT_COMPLETIONS），触发渠道 400 错误 | 当渠道 `capabilities` 为空或与 `allowedCapabilities` 无交集时，fallback 改为 `allowedCapabilities` 中用户填写的第一个能力，确保用户对模型的能力限制被尊重，从而触发 Chat↔Anthropic 跨协议适配器 | dto/ModelRoute.java |
 | 2026-06-16 | 客户端用 chat 端点、渠道配置同时含 Chat Completions 与 Anthropic Messages 时，本应直连 Chat Completions，但 `streamToClient` 仍按 `(clientEndpoint, providerType)` 选中了 `AnthropicToOpenAiStreamTransformer`，用 Anthropic 解析器去解析 OpenAI Chat 的 `[DONE]` 哨兵，触发 `Unrecognized token 'DONE'` 告警；`AnthropicToOpenAiStreamTransformer` 也缺少对 `[DONE]` 的短路处理 | `effectiveEndpoint` 增加"渠道 capabilities 原生支持客户端端点则优先直连"逻辑；`streamToClient` 仅在 `upstreamEndpoint != endpointType` 时才查找流式转换器；`AnthropicToOpenAiStreamTransformer.processData` 增加对 `[DONE]` 的静默跳过 | dto/ModelRoute.java, service/ChatGatewayService.java, adapter/stream/AnthropicToOpenAiStreamTransformer.java |
+| 2026-06-16 | 新增 3 个 ProviderType：`ANTHROPIC`（官方 Anthropic，默认 `https://api.anthropic.com`，x-api-key 鉴权，仅 Messages 能力）、`CUSTOM`（自定义，同时声明 Chat + Messages 两个能力，用户自填 baseUrl）、`MIMO_TOKEN_PLAN`（Xiaomi MiMo Token Plan，默认 `https://token-plan-cn.xiaomimimo.com`，Anthropic 路径 `/anthropic/v1/messages`，参考 https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call） | 新增 `AnthropicProviderClient` / `CustomProviderClient` / `MimoTokenPlanProviderClient`；`AdminChannelService.defaultBaseUrl` / `defaultPath` 写入官方默认地址；前端 `channelTypes` / `supplierDefaultEndpoints` / `capabilityDefaultPaths` / `handleTypeChange` 同步预填；`AnthropicToOpenAiStreamTransformer` / `OpenAiToAnthropicStreamTransformer` / `ResponsesStreamTransformer.supports` 加入新类型；`ProtocolFormat.fromProvider` 补全 switch 分支 | provider/ProviderType.java, provider/AnthropicProviderClient.java, provider/CustomProviderClient.java, provider/MimoTokenPlanProviderClient.java, service/admin/AdminChannelService.java, endpoint/ProtocolFormat.java, adapter/stream/*.java, frontend/src/types/index.ts, frontend/src/views/channels/ChannelList.vue |
 
 ---
 

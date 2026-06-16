@@ -130,8 +130,8 @@ public class ResponsesStreamTransformer extends OutputStream implements StreamRe
     public boolean supports(EndpointType endpoint, ProviderType provider) {
         return endpoint == EndpointType.OPENAI_RESPONSES
                 && (provider == ProviderType.OPENAI
-                || provider == ProviderType.OPENAI
-                || provider == ProviderType.DEEPSEEK
+                || provider == ProviderType.CUSTOM
+                || provider == ProviderType.MIMO_TOKEN_PLAN
                 || provider == ProviderType.DEEPSEEK);
     }
 

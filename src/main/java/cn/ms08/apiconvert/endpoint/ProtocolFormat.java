@@ -26,9 +26,9 @@ public final class ProtocolFormat {
 
     public static String fromProvider(cn.ms08.apiconvert.provider.ProviderType provider) {
         return switch (provider) {
-            case OPENAI, GPT_AUTH -> OPENAI;
+            case OPENAI, GPT_AUTH, CUSTOM, MIMO_TOKEN_PLAN -> OPENAI;
             case DEEPSEEK, VOLC_CODINGPLAN, OPENCODE -> OPENAI;
-            case CLAUDE_AUTH -> CLAUDE;
+            case ANTHROPIC, CLAUDE_AUTH -> CLAUDE;
             case GEMINI -> GEMINI;
             case LOCAL -> "local";
         };

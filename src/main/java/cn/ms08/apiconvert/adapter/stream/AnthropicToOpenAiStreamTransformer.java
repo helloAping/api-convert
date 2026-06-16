@@ -118,6 +118,9 @@ public class AnthropicToOpenAiStreamTransformer extends OutputStream implements 
         return endpoint == EndpointType.CHAT_COMPLETIONS
                 && (provider == ProviderType.OPENAI
                 || provider == ProviderType.CLAUDE_AUTH
+                || provider == ProviderType.ANTHROPIC
+                || provider == ProviderType.CUSTOM
+                || provider == ProviderType.MIMO_TOKEN_PLAN
                 || provider == ProviderType.DEEPSEEK);
     }
 

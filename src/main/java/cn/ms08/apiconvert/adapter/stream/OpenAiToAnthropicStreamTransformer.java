@@ -120,6 +120,8 @@ public class OpenAiToAnthropicStreamTransformer extends OutputStream implements 
         return endpoint == EndpointType.ANTHROPIC_MESSAGES
                 && (provider == ProviderType.OPENAI
                 || provider == ProviderType.GPT_AUTH
+                || provider == ProviderType.CUSTOM
+                || provider == ProviderType.MIMO_TOKEN_PLAN
                 || provider == ProviderType.DEEPSEEK);
     }
 

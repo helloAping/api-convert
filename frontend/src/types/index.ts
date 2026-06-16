@@ -489,7 +489,7 @@ export interface RequestLogSearchParam {
 }
 
 /** 渠道聚合表单当前支持的供应商策略类型。 */
-export const channelTypes = ['OPENAI', 'DEEPSEEK', 'VOLC_CODINGPLAN', 'OPENCODE', 'GEMINI', 'GPT_AUTH', 'CLAUDE_AUTH']
+export const channelTypes = ['OPENAI', 'ANTHROPIC', 'CUSTOM', 'MIMO_TOKEN_PLAN', 'DEEPSEEK', 'VOLC_CODINGPLAN', 'OPENCODE', 'GEMINI', 'GPT_AUTH', 'CLAUDE_AUTH']
 export const activeStatuses = ['ACTIVE', 'DISABLED', 'EXPIRED']
 /** 绠＄悊绔彲閫夌殑婊戝姩绐楀彛鍗曚綅锛岃姹傛暟鍙敤鍒嗛挓锛岄搴︾晫闈細闅愯棌鍒嗛挓銆?*/
 export const quotaWindowUnits = ['MINUTE', 'HOUR', 'DAY']
@@ -500,6 +500,9 @@ export const routeModes = ['RANDOM', 'ROUND_ROBIN', 'WEIGHTED', 'SESSION_STICKY'
 /** 每个供应商默认支持的端点列表（能力维度），新建渠道时自动预选。 */
 export const supplierDefaultEndpoints: Record<string, string[]> = {
   OPENAI: ['CHAT_COMPLETIONS', 'OPENAI_RESPONSES', 'OPENAI_VIDEOS', 'OPENAI_IMAGES'],
+  ANTHROPIC: ['ANTHROPIC_MESSAGES'],
+  CUSTOM: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  MIMO_TOKEN_PLAN: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
   DEEPSEEK: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
   VOLC_CODINGPLAN: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
   OPENCODE: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
@@ -521,6 +524,9 @@ export const endpointLabels: Record<string, string> = {
 export const capabilityDefaultPaths: Record<string, Record<string, string>> = {
   CHAT_COMPLETIONS: {
     OPENAI: '/v1/chat/completions',
+    ANTHROPIC: '/v1/messages',
+    CUSTOM: '/v1/chat/completions',
+    MIMO_TOKEN_PLAN: '/v1/chat/completions',
     DEEPSEEK: '/v1/chat/completions',
     VOLC_CODINGPLAN: '/v3/chat/completions',
     OPENCODE: '/v1/chat/completions',
@@ -530,6 +536,9 @@ export const capabilityDefaultPaths: Record<string, Record<string, string>> = {
   },
   ANTHROPIC_MESSAGES: {
     OPENAI: '/v1/messages',
+    ANTHROPIC: '/v1/messages',
+    CUSTOM: '/v1/messages',
+    MIMO_TOKEN_PLAN: '/anthropic/v1/messages',
     DEEPSEEK: '/v1/messages',
     VOLC_CODINGPLAN: '/v1/messages',
     OPENCODE: '/v1/messages',
@@ -539,6 +548,9 @@ export const capabilityDefaultPaths: Record<string, Record<string, string>> = {
   },
   OPENAI_RESPONSES: {
     OPENAI: '/v1/responses',
+    ANTHROPIC: '/v1/responses',
+    CUSTOM: '/v1/responses',
+    MIMO_TOKEN_PLAN: '/v1/responses',
     DEEPSEEK: '/v1/responses',
     VOLC_CODINGPLAN: '/v1/responses',
     OPENCODE: '/v1/responses',
@@ -548,6 +560,9 @@ export const capabilityDefaultPaths: Record<string, Record<string, string>> = {
   },
   OPENAI_VIDEOS: {
     OPENAI: '/v1/videos',
+    ANTHROPIC: '/v1/videos',
+    CUSTOM: '/v1/videos',
+    MIMO_TOKEN_PLAN: '/v1/videos',
     DEEPSEEK: '/v1/videos',
     VOLC_CODINGPLAN: '/v1/videos',
     OPENCODE: '/v1/videos',
@@ -557,6 +572,9 @@ export const capabilityDefaultPaths: Record<string, Record<string, string>> = {
   },
   OPENAI_IMAGES: {
     OPENAI: '/v1/images/generations',
+    ANTHROPIC: '/v1/images/generations',
+    CUSTOM: '/v1/images/generations',
+    MIMO_TOKEN_PLAN: '/v1/images/generations',
     DEEPSEEK: '/v1/images/generations',
     VOLC_CODINGPLAN: '/v1/images/generations',
     OPENCODE: '/v1/images/generations',

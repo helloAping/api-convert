@@ -108,6 +108,9 @@ function quotaText(row: ChannelVO) {
 function channelTypeLabel(type: string) {
   return {
     OPENAI: 'OpenAI',
+    ANTHROPIC: 'Anthropic',
+    CUSTOM: '自定义',
+    MIMO_TOKEN_PLAN: 'MiMo Token Plan',
     DEEPSEEK: 'DeepSeek',
     VOLC_CODINGPLAN: '火山 CodingPlan',
     OPENCODE: 'OpenCode',
@@ -131,6 +134,9 @@ function handleTypeChange(type: string) {
   }
   const defaults: Record<string, { baseUrl: string; chatPath: string; videoPath: string; imagePath: string; modelsPath: string }> = {
     OPENAI: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    ANTHROPIC: { baseUrl: 'https://api.anthropic.com', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    CUSTOM: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    MIMO_TOKEN_PLAN: { baseUrl: 'https://token-plan-cn.xiaomimimo.com', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
     DEEPSEEK: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
     VOLC_CODINGPLAN: { baseUrl: 'https://ark.cn-beijing.volces.com/api/coding', chatPath: '/v3/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v3/models' },
     OPENCODE: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
@@ -141,7 +147,8 @@ function handleTypeChange(type: string) {
   const defaultPaths = new Set(Object.values(defaults).flatMap(d => [d.chatPath, d.videoPath, d.imagePath, d.modelsPath]))
   const newDefault = defaults[type]
   if (!newDefault) return
-  if (isAuthType(type)) {
+  // 官方供应商预填 baseUrl：GPT_AUTH / CLAUDE_AUTH / ANTHROPIC / MIMO_TOKEN_PLAN
+  if (newDefault.baseUrl) {
     form.value.baseUrl = newDefault.baseUrl
   }
   if (defaultPaths.has(form.value.chatPath)) {

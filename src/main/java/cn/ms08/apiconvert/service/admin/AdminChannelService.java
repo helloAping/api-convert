@@ -75,6 +75,15 @@ public class AdminChannelService {
      */
     private static final String DEFAULT_CLAUDE_AUTH_BASE_URL = "https://api.anthropic.com";
     /**
+     * 官方 Anthropic 供应商默认 baseUrl，配合 x-api-key 鉴权。
+     */
+    private static final String DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+    /**
+     * Xiaomi MiMo Token Plan 默认 baseUrl，按量付费场景为 https://api.xiaomimimo.com。
+     * 参考 https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call
+     */
+    private static final String DEFAULT_MIMO_TOKEN_PLAN_BASE_URL = "https://token-plan-cn.xiaomimimo.com";
+    /**
      * 默认凭证状态。
      */
     private static final String DEFAULT_STATUS = "ACTIVE";
@@ -225,7 +234,7 @@ public class AdminChannelService {
         requireText(form.code(), "渠道编码不能为空");
         requireText(form.name(), "渠道名称不能为空");
         String type = StringUtils.hasText(form.type()) ? form.type() : DEFAULT_TYPE;
-        if (!isAuthProvider(type)) {
+        if (!isAuthProvider(type) && !hasAutoDefaultBaseUrl(type)) {
             requireText(form.baseUrl(), "Base URL 不能为空");
         }
 
@@ -502,9 +511,9 @@ public class AdminChannelService {
     private String defaultPath(String type, String path) {
         if (StringUtils.hasText(path)) return path;
         return switch (type) {
-            case "OPENAI", "DEEPSEEK", "VOLC_CODINGPLAN", "OPENCODE" -> DEFAULT_CHAT_PATH;
+            case "OPENAI", "DEEPSEEK", "VOLC_CODINGPLAN", "OPENCODE", "CUSTOM", "MIMO_TOKEN_PLAN" -> DEFAULT_CHAT_PATH;
             case "GPT_AUTH" -> DEFAULT_CHAT_PATH;
-            case "CLAUDE_AUTH" -> DEFAULT_ANTHROPIC_PATH;
+            case "ANTHROPIC", "CLAUDE_AUTH" -> DEFAULT_ANTHROPIC_PATH;
             case "GEMINI" -> "/v1beta/models";
             default -> DEFAULT_CHAT_PATH;
         };
@@ -514,6 +523,8 @@ public class AdminChannelService {
         return switch (type) {
             case "GPT_AUTH" -> DEFAULT_GPT_AUTH_BASE_URL;
             case "CLAUDE_AUTH" -> DEFAULT_CLAUDE_AUTH_BASE_URL;
+            case "ANTHROPIC" -> DEFAULT_ANTHROPIC_BASE_URL;
+            case "MIMO_TOKEN_PLAN" -> DEFAULT_MIMO_TOKEN_PLAN_BASE_URL;
             default -> "";
         };
     }
@@ -533,6 +544,13 @@ public class AdminChannelService {
 
     private boolean isAuthProvider(String providerType) {
         return "GPT_AUTH".equals(providerType) || "CLAUDE_AUTH".equals(providerType);
+    }
+
+    /**
+     * 这类供应商在前端选择时无需手填 baseUrl，后端会写入默认官方地址。
+     */
+    private boolean hasAutoDefaultBaseUrl(String type) {
+        return isAuthProvider(type) || "ANTHROPIC".equals(type) || "MIMO_TOKEN_PLAN".equals(type);
     }
 
     private String serializeCapabilities(List<ChannelCapability> capabilities) {
