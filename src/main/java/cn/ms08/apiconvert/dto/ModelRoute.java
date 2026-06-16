@@ -5,6 +5,7 @@ import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.provider.ProviderType;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -124,9 +125,18 @@ public record ModelRoute(
          * 根据模型的能力限制，返回实际应使用的上游端点类型。
          * <ul>
          *   <li>未配置 allowedCapabilities → 直接返回客户端请求的端点类型</li>
-         *   <li>客户端端点与能力配置有重合 → 使用重合的能力</li>
-         *   <li>客户端端点不在能力配置中 → 取第一个配置的能力</li>
+         *   <li>客户端端点在 allowedCapabilities 中 → 使用客户端请求的端点类型</li>
+         *   <li>客户端端点不在 allowedCapabilities 中，且渠道能力配置（capabilities）与 allowedCapabilities 有交集 → 使用渠道能力配置中第一个匹配的能力（保留渠道侧顺序）</li>
+         *   <li>客户端端点不在 allowedCapabilities 中，渠道能力配置为空或无交集 → 使用 allowedCapabilities 中第一个能力（用户明确填写的限制）</li>
+         *   <li>极端情况：上述都没有 → 使用客户端请求的端点类型</li>
          * </ul>
+         * <p>
+         * 当上游端点与下游端点不一致时：
+         * <ol>
+         *   <li>优先采用渠道能力配置（{@code capabilities}，按 {@code allowedCapabilities} 过滤后）保留渠道侧配置顺序的第一个能力——渠道主能力（Chat Completions）优先于模型侧补登的次能力（Anthropic Messages）</li>
+         *   <li>渠道未配置能力时，fallback 到 {@code allowedCapabilities} 中用户填写的第一个能力，保证用户对该模型的能力限制被尊重</li>
+         * </ol>
+         * </p>
          */
         public EndpointType effectiveEndpoint(EndpointType clientEndpoint) {
                 if (clientEndpoint == null) {
@@ -136,18 +146,31 @@ public record ModelRoute(
                         return clientEndpoint;
                 }
                 String clientName = clientEndpoint.name().trim();
-                String firstCap = null;
+                Set<String> allowed = new HashSet<>();
+                String firstAllowed = null;
                 for (String part : allowedCapabilities.split(",")) {
                         String cap = part.trim();
-                        if (cap.isBlank()) continue;
-                        if (firstCap == null) firstCap = cap;
-                        if (cap.equals(clientName)) {
-                                return clientEndpoint;
+                        if (!cap.isBlank()) {
+                                allowed.add(cap);
+                                if (firstAllowed == null) {
+                                        firstAllowed = cap;
+                                }
                         }
                 }
-                if (firstCap != null) {
+                if (allowed.contains(clientName)) {
+                        return clientEndpoint;
+                }
+                List<ChannelCapability> effective = effectiveCapabilities();
+                if (!effective.isEmpty()) {
+                        String firstType = effective.get(0).type();
                         try {
-                                return EndpointType.valueOf(firstCap);
+                                return EndpointType.valueOf(firstType);
+                        } catch (IllegalArgumentException ignored) {
+                        }
+                }
+                if (firstAllowed != null) {
+                        try {
+                                return EndpointType.valueOf(firstAllowed);
                         } catch (IllegalArgumentException ignored) {
                         }
                 }

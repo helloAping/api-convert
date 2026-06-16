@@ -80,6 +80,8 @@
 | 日期 | 问题 | 修复 | 相关文件 |
 |---|---|---|---|
 | 2026-05-27 | OpenAiChatCompletionRequest 将 null 的 frequency_penalty/presence_penalty 序列化发送至上游，导致图片识别上游返回 400 错误 | 添加 @JsonInclude(JsonInclude.Include.NON_NULL) 注解，避免序列化 null 字段 | dto/OpenAiChatCompletionRequest.java |
+| 2026-06-16 | `ModelRoute.effectiveEndpoint()` 在客户端端点不在 `allowedCapabilities` 时直接采用用户填写的 `allowedCapabilities` 第一个能力作为上游端点，导致请求日志 `sourceEndpointType` 为「对话补全」但实际却走「Anthropic Messages」地址 | 回退顺序改为按 `capabilities`（已用 `allowedCapabilities` 过滤）保留渠道侧配置顺序的第一个能力，保证渠道主能力（Chat Completions）优先于模型侧补登的次能力（Anthropic Messages） | dto/ModelRoute.java |
+| 2026-06-16 | 用户在「能力配置」中限制模型只允许 Anthropic Messages，外部以 chat 端点请求时仍被 `effectiveEndpoint` fallback 到 `clientEndpoint`（CHAT_COMPLETIONS），触发渠道 400 错误 | 当渠道 `capabilities` 为空或与 `allowedCapabilities` 无交集时，fallback 改为 `allowedCapabilities` 中用户填写的第一个能力，确保用户对模型的能力限制被尊重，从而触发 Chat↔Anthropic 跨协议适配器 | dto/ModelRoute.java |
 
 ---
 
