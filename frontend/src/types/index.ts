@@ -150,6 +150,8 @@ export interface RequestLogVO {
   gatewayApiKeyPreview: string | null
   sourceProtocol: string
   requestType: string
+  sourceEndpointType: string | null
+  upstreamEndpointType: string | null
   providerCode: string | null
   providerType: string | null
   publicModel: string | null
@@ -331,8 +333,10 @@ export interface ChannelModelForm {
   jsonModeSupport?: boolean | null
   /** 鏈€澶т笂涓嬫枃绐楀彛锛坱oken 鏁帮級銆?*/
   contextLength?: number | null
-  /** 閫楀彿鍒嗛殧鐨?EndpointType 鍚嶇О锛涗负绌烘垨绌哄瓧绗︿覆琛ㄧず涓嶉檺鍒剁鐐圭被鍨嬨€?*/
+  /** 逗号分隔的 EndpointType 名称；为空或空字符串表示不限制端点类型。 */
   allowedEndpointTypes?: string | null
+  /** 逗号分隔的能力类型名称，限定该模型可用的上游能力；为空表示使用渠道全部能力。 */
+  allowedCapabilities?: string | null
 }
 
 /** 娓犻亾璇︽儏涓繑鍥炵殑妯″瀷鏄犲皠椤广€?*/
@@ -363,6 +367,8 @@ export interface ChannelModelMappingVO {
   contextLength: number | null
   /** 閫楀彿鍒嗛殧鐨?EndpointType 鍚嶇О锛涗负绌鸿〃绀轰笉闄愬埗绔偣绫诲瀷銆?*/
   allowedEndpointTypes: string | null
+  /** 逗号分隔的能力类型名称，限定该模型可用的上游能力；为空表示使用渠道全部能力。 */
+  allowedCapabilities: string | null
 }
 
 /** 鍚庣鑾峰彇涓婃父妯″瀷閫夐」鎵€闇€鐨勬湭淇濆瓨琛ㄥ崟鍊笺€?*/

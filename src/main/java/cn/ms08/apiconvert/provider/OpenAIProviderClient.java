@@ -1,5 +1,7 @@
 package cn.ms08.apiconvert.provider;
 
+import cn.ms08.apiconvert.adapter.protocol.AnthropicRequestAdapter;
+import cn.ms08.apiconvert.adapter.protocol.AnthropicResponseAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesRequestAdapter;
@@ -8,12 +10,10 @@ import cn.ms08.apiconvert.dto.ProviderModel;
 import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
 import cn.ms08.apiconvert.dto.ProviderQuota;
 import cn.ms08.apiconvert.dto.ProviderQuotaFetchRequest;
-import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.ProviderException;
 import cn.ms08.apiconvert.logging.LogSanitizer;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -23,38 +23,24 @@ import org.springframework.web.client.RestClientResponseException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Component
-public class OpenAIProviderClient implements AiProviderClient {
-
-    private final RestClient.Builder restClientBuilder;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final OpenAiChatCapability chatCapability;
-    private final OpenAiResponsesCapability responsesCapability;
+public class OpenAIProviderClient extends BaseAiProviderClient {
 
     public OpenAIProviderClient(RestClient.Builder restClientBuilder,
                                 OpenAiRequestAdapter openAiRequestAdapter,
                                 OpenAiResponseAdapter openAiResponseAdapter,
+                                AnthropicRequestAdapter anthropicRequestAdapter,
+                                AnthropicResponseAdapter anthropicResponseAdapter,
                                 OpenAiResponsesRequestAdapter responsesRequestAdapter,
                                 OpenAiResponsesResponseAdapter responsesResponseAdapter) {
-        this.restClientBuilder = restClientBuilder;
-        this.chatCapability = new OpenAiChatCapability(restClientBuilder, openAiRequestAdapter, openAiResponseAdapter);
-        this.responsesCapability = new OpenAiResponsesCapability(restClientBuilder, responsesRequestAdapter, responsesResponseAdapter);
+        super(restClientBuilder, openAiRequestAdapter, openAiResponseAdapter,
+                anthropicRequestAdapter, anthropicResponseAdapter,
+                responsesRequestAdapter, responsesResponseAdapter);
     }
 
     @Override
     public ProviderType type() { return ProviderType.OPENAI; }
-
-    @Override
-    public Map<EndpointType, EndpointCapability> capabilities() {
-        return Map.of(
-                EndpointType.CHAT_COMPLETIONS, chatCapability,
-                EndpointType.OPENAI_RESPONSES, responsesCapability,
-                EndpointType.OPENAI_VIDEOS, chatCapability,
-                EndpointType.OPENAI_IMAGES, chatCapability
-        );
-    }
 
     @Override
     public List<ProviderModel> models(ProviderModelFetchRequest request) {

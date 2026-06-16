@@ -370,7 +370,8 @@ public class AdminChannelService {
                                 model.getVision(), model.getToolsSupport(), model.getJsonModeSupport(), model.getContextLength(),
                                 model.getEnabled(),
                                 model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion(),
-                                model.getAllowedEndpointTypes()))
+                                model.getAllowedEndpointTypes(),
+                                model.getAllowedCapabilities()))
                         .toList(),
                 parseCapabilities(channel.getCapabilities())
         );
@@ -410,6 +411,7 @@ public class AdminChannelService {
             model.setJsonModeSupport(modelForm.jsonModeSupport());
             model.setContextLength(modelForm.contextLength());
             model.setAllowedEndpointTypes(modelForm.allowedEndpointTypes());
+            model.setAllowedCapabilities(modelForm.allowedCapabilities());
             model.setEnabled(true);
             channelModelMapper.insert(model);
         }
@@ -457,7 +459,7 @@ public class AdminChannelService {
                 normalized.put(publicName, new ChannelModelForm(publicName, providerModel, alias,
                     model.inputQuotaPerMillion(), model.outputQuotaPerMillion(), model.cacheReadQuotaPerMillion(),
                     model.vision(), model.toolsSupport(), model.jsonModeSupport(), model.contextLength(),
-                    model.allowedEndpointTypes()));
+                    model.allowedEndpointTypes(), model.allowedCapabilities()));
         }
         return new ArrayList<>(normalized.values());
     }

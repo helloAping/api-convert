@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { h, onMounted, ref } from 'vue'
+import { h, computed, onMounted, ref } from 'vue'
 import { useMessage, NButton, NTag } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
 import { channelTypes, supplierDefaultEndpoints, capabilityDefaultPaths, endpointLabels } from '@/types'
@@ -23,6 +23,13 @@ const authUploading = ref(false)
 const authFileInput = ref<HTMLInputElement | null>(null)
 const oauthAuthorizationUrl = ref('')
 const oauthCallbackUrl = ref('')
+
+const configuredCapabilityOptions = computed(() => {
+  const caps = form.value.capabilities || []
+  if (caps.length === 0) return endpointTypeOptions
+  const types = new Set(caps.map(c => c.type))
+  return endpointTypeOptions.filter(opt => types.has(opt.value))
+})
 
 const columns: DataTableColumn<ChannelVO>[] = [
   { title: '编号', key: 'id', width: 70 },
@@ -160,7 +167,6 @@ function isAuthType(type: string) {
 function syncSelectedModels(values: string[]) {
   const uniqueValues = uniqueProviderModels(values)
   selectedProviderModels.value = uniqueValues
-  const defaults = supplierDefaultEndpoints[form.value.type] || []
   const current = new Map(form.value.models.map((model) => [model.providerModel.trim(), model]))
   form.value.models = uniqueValues.map((providerModel) => {
     const existing = current.get(providerModel)
@@ -169,7 +175,8 @@ function syncSelectedModels(values: string[]) {
       publicName: '',
       providerModel,
       modelAlias: '',
-      allowedEndpointTypes: defaults.join(','),
+      allowedEndpointTypes: '',
+      allowedCapabilities: '',
     }
   })
 }
@@ -288,6 +295,7 @@ function edit(item: ChannelVO) {
       outputQuotaPerMillion: model.outputQuotaPerMillion,
       cacheReadQuotaPerMillion: model.cacheReadQuotaPerMillion,
       allowedEndpointTypes: model.allowedEndpointTypes || '',
+      allowedCapabilities: model.allowedCapabilities || '',
     })),
     enabled: item.enabled,
     capabilities: item.capabilities || [],
@@ -327,6 +335,7 @@ function copyChannel(source: ChannelVO) {
       outputQuotaPerMillion: model.outputQuotaPerMillion,
       cacheReadQuotaPerMillion: model.cacheReadQuotaPerMillion,
       allowedEndpointTypes: model.allowedEndpointTypes || '',
+      allowedCapabilities: model.allowedCapabilities || '',
     })),
     enabled: source.enabled,
     capabilities: source.capabilities || [],
@@ -514,6 +523,7 @@ onMounted(load)
                 :options="endpointTypeOptions"
                 multiple
                 clearable
+                :max-tag-count="1"
                 placeholder="请选择需要支持的端点能力"
                 @update:value="(vals: string[]) => {
                   const existing = form.capabilities || []
@@ -526,6 +536,14 @@ onMounted(load)
                     kept.push({ type: t, path: capabilityDefaultPaths[t]?.[form.type] || '' })
                   }
                   form.capabilities = kept
+                  // 清理模型能力限制中已被移除的能力
+                  if (removed.size > 0) {
+                    form.models = form.models.map((m: ChannelModelForm) => {
+                      const caps = parseEndpointTypes(m.allowedCapabilities)
+                      const filtered = caps.filter(c => !removed.has(c))
+                      return { ...m, allowedCapabilities: filtered.join(',') }
+                    })
+                  }
                 }"
               />
               <div v-if="(form.capabilities || []).length > 0" class="capability-table">
@@ -601,6 +619,7 @@ onMounted(load)
                   filterable
                   tag
                   clearable
+                  :max-tag-count="1"
                   placeholder="请选择或输入多个上游模型名"
                   style="width: 480px"
                   @update:value="syncSelectedModels"
@@ -616,6 +635,7 @@ onMounted(load)
                 <div>模型名称</div>
                 <div>模型别名</div>
                 <div>允许端点</div>
+                <div>能力限制</div>
               </div>
               <div
                 v-for="model in form.models"
@@ -633,8 +653,18 @@ onMounted(load)
                   :options="endpointTypeOptions"
                   multiple
                   clearable
+                  :max-tag-count="1"
                   placeholder="不限"
                   @update:value="(val: string[]) => { model.allowedEndpointTypes = val.join(',') }"
+                />
+                <n-select
+                  :value="parseEndpointTypes(model.allowedCapabilities)"
+                  :options="configuredCapabilityOptions"
+                  multiple
+                  clearable
+                  :max-tag-count="1"
+                  placeholder="不限"
+                  @update:value="(val: string[]) => { model.allowedCapabilities = val.join(',') }"
                 />
               </div>
             </div>
@@ -665,7 +695,7 @@ onMounted(load)
 
 .model-alias-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr);
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
   gap: 12px;
   align-items: center;
   padding: 10px 12px;

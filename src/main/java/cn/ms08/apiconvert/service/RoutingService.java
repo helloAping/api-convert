@@ -427,7 +427,8 @@ public class RoutingService {
                 channel.getImagePath(), channel.getApiKey(),
                 channel.getAuthMode(), channel.getAuthFilePath(),
                 model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion(),
-                parseCapabilities(channel.getCapabilities()));
+                parseCapabilities(channel.getCapabilities()),
+                model.getAllowedCapabilities());
     }
 
     private boolean hasUsableCredential(AiChannelEntity channel) {

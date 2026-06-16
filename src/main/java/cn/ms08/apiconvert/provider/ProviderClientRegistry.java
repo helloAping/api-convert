@@ -1,6 +1,5 @@
 package cn.ms08.apiconvert.provider;
 
-import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.GatewayException;
 import org.springframework.http.HttpStatus;
@@ -26,18 +25,5 @@ public class ProviderClientRegistry {
                     "Provider type not supported: " + type);
         }
         return client;
-    }
-
-    /**
-     * 获取供应商的指定端点能力。
-     */
-    public EndpointCapability getCapability(ProviderType type, EndpointType endpointType) {
-        AiProviderClient client = get(type);
-        EndpointCapability cap = client.capabilities().get(endpointType);
-        if (cap == null) {
-            throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
-                    "Endpoint " + endpointType + " not supported by provider " + type);
-        }
-        return cap;
     }
 }

@@ -4,125 +4,144 @@ import cn.ms08.apiconvert.adapter.protocol.AnthropicRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.AnthropicResponseAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
+import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesRequestAdapter;
+import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesResponseAdapter;
 import cn.ms08.apiconvert.dto.AnthropicMessageRequest;
-import cn.ms08.apiconvert.dto.OpenAiChatCompletionRequest;
-import cn.ms08.apiconvert.dto.OpenAiMessage;
 import cn.ms08.apiconvert.dto.ModelRoute;
+import cn.ms08.apiconvert.dto.OpenAiChatCompletionRequest;
 import cn.ms08.apiconvert.dto.ProviderModel;
 import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
 import cn.ms08.apiconvert.dto.ProviderQuota;
 import cn.ms08.apiconvert.dto.ProviderQuotaFetchRequest;
-import cn.ms08.apiconvert.endpoint.EndpointType;
+import cn.ms08.apiconvert.exception.ErrorCode;
+import cn.ms08.apiconvert.exception.ProviderException;
+import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * DeepSeek 供应商 — 支持 Chat Completions 和 Anthropic Messages 两种端点。
- */
 @Component
-public class DeepSeekProviderClient implements AiProviderClient {
-
-    private final OpenAiChatCapability chatCapability;
-    private final AnthropicMessagesCapability anthropicCapability;
+public class DeepSeekProviderClient extends BaseAiProviderClient {
 
     public DeepSeekProviderClient(RestClient.Builder restClientBuilder,
                                   OpenAiRequestAdapter openAiRequestAdapter,
                                   OpenAiResponseAdapter openAiResponseAdapter,
                                   AnthropicRequestAdapter anthropicRequestAdapter,
-                                  AnthropicResponseAdapter anthropicResponseAdapter) {
-        this.chatCapability = new DeepSeekChatCapability(restClientBuilder, openAiRequestAdapter, openAiResponseAdapter);
-        this.anthropicCapability = new DeepSeekAnthropicCapability(restClientBuilder, anthropicRequestAdapter, anthropicResponseAdapter);
+                                  AnthropicResponseAdapter anthropicResponseAdapter,
+                                  OpenAiResponsesRequestAdapter responsesRequestAdapter,
+                                  OpenAiResponsesResponseAdapter responsesResponseAdapter) {
+        super(restClientBuilder, openAiRequestAdapter, openAiResponseAdapter,
+                anthropicRequestAdapter, anthropicResponseAdapter,
+                responsesRequestAdapter, responsesResponseAdapter);
     }
 
     @Override
-    public ProviderType type() {
-        return ProviderType.DEEPSEEK;
+    public ProviderType type() { return ProviderType.DEEPSEEK; }
+
+    // ==================== Hooks ====================
+
+    @Override
+    protected OpenAiChatCompletionRequest beforeChatRequest(ModelRoute route, OpenAiChatCompletionRequest request) {
+        if (request.getMessages() != null) {
+            for (var msg : request.getMessages()) {
+                if ("assistant".equals(msg.getRole()) && msg.getReasoningContent() == null) {
+                    msg.setReasoningContent("");
+                }
+            }
+        }
+        return request;
     }
 
     @Override
-    public Map<EndpointType, EndpointCapability> capabilities() {
-        return Map.of(
-                EndpointType.CHAT_COMPLETIONS, chatCapability,
-                EndpointType.ANTHROPIC_MESSAGES, anthropicCapability
-        );
+    @SuppressWarnings("unchecked")
+    protected AnthropicMessageRequest beforeAnthropicRequest(ModelRoute route, AnthropicMessageRequest request) {
+        if (request.getMessages() != null) {
+            for (var msg : request.getMessages()) {
+                Object content = msg.getContent();
+                if (content instanceof List<?> blocks) {
+                    List<Object> mutableBlocks = new ArrayList<>(blocks);
+                    boolean changed = false;
+                    for (int i = 0; i < mutableBlocks.size(); i++) {
+                        Object block = mutableBlocks.get(i);
+                        if (block instanceof Map<?, ?> m && "thinking".equals(String.valueOf(m.get("type")))) {
+                            Map<String, Object> mutable = new LinkedHashMap<>((Map<String, Object>) m);
+                            if (!mutable.containsKey("thinking") || String.valueOf(mutable.get("thinking")).isBlank()) {
+                                Object text = mutable.get("text");
+                                mutable.put("thinking", text == null ? "" : String.valueOf(text));
+                                mutableBlocks.set(i, mutable);
+                                changed = true;
+                            }
+                        }
+                    }
+                    if (changed) {
+                        msg.setContent(mutableBlocks);
+                    }
+                }
+            }
+        }
+        return request;
     }
+
+    // ==================== models / quota ====================
 
     @Override
     public List<ProviderModel> models(ProviderModelFetchRequest request) {
-        // Use Chat capability's model fetch via the parent class
-        return List.of();
+        try {
+            String body = restClientBuilder.clone().baseUrl(request.baseUrl()).build()
+                    .get().uri(request.modelsPath())
+                    .header("Authorization", "Bearer " + request.apiKey())
+                    .retrieve().body(String.class);
+            return parseDeepSeekModelList(body);
+        } catch (RestClientResponseException e) {
+            throw new ProviderException(ErrorCode.PROVIDER_BAD_RESPONSE, HttpStatus.BAD_GATEWAY,
+                    "Provider models request failed: status=" + e.getStatusCode().value());
+        } catch (RestClientException | IllegalArgumentException e) {
+            throw new ProviderException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_GATEWAY,
+                    "Provider models request failed: " + e.getMessage());
+        }
     }
 
     @Override
     public ProviderQuota quota(ProviderQuotaFetchRequest request) {
-        return new ProviderQuota(false, "DeepSeek 暂不支持通用余额查询，请在供应商控制台查看。",
-                null, null, null, "", "");
-    }
-
-    // ---- Chat capability with reasoning_content fallback ----
-
-    private static class DeepSeekChatCapability extends OpenAiChatCapability {
-        DeepSeekChatCapability(RestClient.Builder b, OpenAiRequestAdapter ra, OpenAiResponseAdapter rpa) {
-            super(b, ra, rpa);
-        }
-
-        @Override
-        protected OpenAiChatCompletionRequest prepareRequestBody(ModelRoute route, OpenAiChatCompletionRequest request) {
-            if (request != null && request.getMessages() != null) {
-                for (OpenAiMessage message : request.getMessages()) {
-                    if ("assistant".equals(message.getRole()) && message.getReasoningContent() == null) {
-                        message.setReasoningContent("");
-                    }
-                }
+        try {
+            String body = restClientBuilder.clone().baseUrl(request.baseUrl()).build()
+                    .get().uri("/user/balance")
+                    .header("Authorization", "Bearer " + request.apiKey())
+                    .retrieve().body(String.class);
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode balanceInfos = root.path("balance_infos");
+            if (balanceInfos.isArray() && !balanceInfos.isEmpty()) {
+                JsonNode info = balanceInfos.get(0);
+                String currency = info.path("currency").asText("");
+                return new ProviderQuota(true, "余额 " + info.path("total_balance").asText() + " " + currency,
+                        null, null, null, currency, "");
             }
-            return request;
+            return new ProviderQuota(true, "已获取额度响应", null, null, null, "", "");
+        } catch (Exception e) {
+            return new ProviderQuota(false, "DeepSeek 额度获取失败: " + e.getMessage(), null, null, null, "", "");
         }
     }
 
-    // ---- Anthropic capability with thinking content normalization ----
-
-    private static class DeepSeekAnthropicCapability extends AnthropicMessagesCapability {
-        DeepSeekAnthropicCapability(RestClient.Builder b, AnthropicRequestAdapter ra, AnthropicResponseAdapter rpa) {
-            super(b, ra, rpa);
-        }
-
-        @Override
-        protected AnthropicMessageRequest prepareRequestBody(ModelRoute route, AnthropicMessageRequest request) {
-            if (request != null && request.getMessages() != null) {
-                for (cn.ms08.apiconvert.dto.AnthropicMessage message : request.getMessages()) {
-                    message.setContent(normalizeThinkingContent(message.getContent()));
-                }
+    private List<ProviderModel> parseDeepSeekModelList(String body) {
+        try {
+            JsonNode data = objectMapper.readTree(body).path("data");
+            if (!data.isArray()) throw new IllegalArgumentException("missing data array");
+            List<ProviderModel> models = new ArrayList<>();
+            for (JsonNode item : data) {
+                String id = item.path("id").asText(null);
+                if (id != null && !id.isBlank())
+                    models.add(new ProviderModel(id, item.path("owned_by").asText("")));
             }
-            return request;
-        }
-
-        private Object normalizeThinkingContent(Object content) {
-            if (!(content instanceof List<?> contentList)) return content;
-            List<Object> normalized = new ArrayList<>(contentList.size());
-            for (Object block : contentList) {
-                if (!(block instanceof Map<?, ?> blockMap)) {
-                    normalized.add(block);
-                    continue;
-                }
-                String type = blockMap.containsKey("type") ? String.valueOf(blockMap.get("type")) : "";
-                if (!"thinking".equals(type)) {
-                    normalized.add(block);
-                    continue;
-                }
-                Map<String, Object> normalizedBlock = new LinkedHashMap<>();
-                blockMap.forEach((key, value) -> normalizedBlock.put(String.valueOf(key), value));
-                if (normalizedBlock.get("thinking") == null) {
-                    Object text = normalizedBlock.get("text");
-                    normalizedBlock.put("thinking", text == null ? "" : String.valueOf(text));
-                }
-                normalized.add(normalizedBlock);
-            }
-            return normalized;
+            return models;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse model list", e);
         }
     }
 }
