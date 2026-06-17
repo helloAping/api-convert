@@ -53,6 +53,18 @@ public class AiChannelEntity {
      */
     private String imagePath;
     /**
+     * 嵌入请求路径，用于 OpenAI Embeddings API 或兼容供应商的自定义路径。
+     */
+    private String embeddingPath;
+    /**
+     * 语音合成请求路径，用于 OpenAI Audio Speech API 或兼容供应商的自定义路径。
+     */
+    private String audioSpeechPath;
+    /**
+     * 语音转写请求路径，用于 OpenAI Audio Transcriptions API 或兼容供应商的自定义路径。
+     */
+    private String audioTranscriptionPath;
+    /**
      * Channel capabilities JSON, each entry contains endpoint type and independent path.
      */
     private String capabilities;

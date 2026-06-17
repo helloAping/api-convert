@@ -7,6 +7,11 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:sqlite:${api-convert.database.sqlite-path}}
     username: ${SPRING_DATASOURCE_USERNAME:}
     password: ${SPRING_DATASOURCE_PASSWORD:}
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: ${API_CONVERT_MULTIPART_MAX_FILE_SIZE:25MB}
+      max-request-size: ${API_CONVERT_MULTIPART_MAX_REQUEST_SIZE:25MB}
 
 mybatis-plus:
   configuration:
@@ -14,6 +19,14 @@ mybatis-plus:
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 api-convert:
+  observability:
+    slow-request-threshold-ms: ${API_CONVERT_SLOW_REQUEST_MS:3000}
+  circuit-breaker:
+    window-size: ${API_CONVERT_CB_WINDOW_SIZE:20}
+    failure-rate-threshold: ${API_CONVERT_CB_FAILURE_RATE:0.5}
+    minimum-calls: ${API_CONVERT_CB_MIN_CALLS:10}
+    open-duration-seconds: ${API_CONVERT_CB_OPEN_SECONDS:60}
+    half-open-max-trials: ${API_CONVERT_CB_HALF_OPEN_TRIALS:3}
   time-zone: ${API_CONVERT_TIME_ZONE:Asia/Shanghai}
   jackson:
     max-string-length: ${API_CONVERT_JACKSON_MAX_STRING_LENGTH:100000000}
@@ -55,6 +68,31 @@ sa-token:
   is-share: false
   token-style: simple-uuid
   is-log: false
+
+# Actuator 暴露 health（liveness/readiness）、info、prometheus；网关业务指标另见
+# cn.ms08.apiconvert.metrics.GatewayMetrics。management.endpoints.web.base-path 与公开
+# 端点解耦，避免与 /v1/* 冲突；安全考虑下默认只开放健康检查 + Prometheus 抓取端点。
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  health:
+    db:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 ---
 spring:

@@ -10,6 +10,7 @@ Future AI agents and contributors must read these modular rule files before chan
 - `.agent/rules/testing.md`
 - `.agent/rules/security.md`
 - `.agent/rules/frontend.md`
+- `.agent/rules/hooks.md`
 
 For current implementation progress and handoff context, read:
 

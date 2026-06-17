@@ -30,6 +30,15 @@ public enum EndpointType {
             ProviderType.OPENAI),
     OPENAI_MODELS("GET", "/v1/models", "OpenAI", "Gateway API Key",
             "OpenAI 兼容模型列表",
+            ProviderType.OPENAI),
+    OPENAI_EMBEDDINGS("POST", "/v1/embeddings", "OpenAI", "Gateway API Key",
+            "OpenAI 兼容文本嵌入，支持批量 input 与 dimensions 参数",
+            ProviderType.OPENAI),
+    AUDIO_SPEECH("POST", "/v1/audio/speech", "OpenAI", "Gateway API Key",
+            "OpenAI 兼容文本转语音，支持 mp3 / opus / aac / flac / pcm / wav 六种输出格式",
+            ProviderType.OPENAI),
+    AUDIO_TRANSCRIPTIONS("POST", "/v1/audio/transcriptions", "OpenAI", "Gateway API Key",
+            "OpenAI 兼容语音转文本（Whisper），multipart/form-data 上传，支持 json / text / srt / vtt 响应格式",
             ProviderType.OPENAI);
 
     private final String method;

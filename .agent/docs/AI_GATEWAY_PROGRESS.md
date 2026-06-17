@@ -1,7 +1,7 @@
 ﻿# AI Gateway 项目总览
 
 **api-convert** 是一个 AI API 网关，聚合不同 AI 厂商 API 端点，适配 OpenAI / Claude 等客户端协议，并路由到指定厂商的指定模型。
-技术栈：Spring Boot 4.0.6 + Java 25 + Maven + MyBatis-Plus 3.5.16。数据库 schema 版本：**V16**。管理前端：Vue 3.5 + Naive UI + Vite。
+技术栈：Spring Boot 4.0.6 + Java 25 + Maven + MyBatis-Plus 3.5.16。数据库 schema 版本：**V20**。管理前端：Vue 3.5 + Naive UI + Vite。
 
 ---
 
@@ -21,6 +21,7 @@
 | 08 | **测试体系** | `modules/08-testing.md` | 单元测试覆盖 adapter registry / hook / 流式转换器 / provider 客户端等 |
 | 09 | **部署与运维** | `modules/09-deployment.md` | Docker、Nginx、环境变量、API 测试命令、本地运行 |
 | 10 | **代码目录结构** | `modules/10-code-structure.md` | 完整的 Java 源码目录树 |
+| 11 | **Agent 工作流 Hook** | `modules/11-hooks.md` | `.agent/hooks/*.yml` 多 agent 串行工作流：plan → review → code → review 类流水线；`workflow-runner` skill 调度，`agents/*.md` 提供 sub-agent 角色契约；与代码层 `ProviderHook` 同名但完全正交；v1.1 加入 token 优化（公共约定外置 / 项目地图 / 摘要契约 / 大小硬上限 / 状态外置） |
 
 ---
 
@@ -37,6 +38,13 @@
 | `/v1/responses` | POST | ✅ Bearer | OpenAI Responses API（SSE 流式） |
 | `/v1/videos` | POST | ✅ Bearer | OpenAI Videos API（非流式视频生成） |
 | `/v1/images/generations` | POST | ✅ Bearer | OpenAI Images API（非流式图片生成） |
+| `/v1/embeddings` | POST | ✅ Bearer | OpenAI 兼容嵌入（按 prompt_tokens 计费） |
+| `/v1/audio/speech` | POST | ✅ Bearer | OpenAI 兼容 TTS（mp3/opus/aac/flac/wav/pcm 二进制响应） |
+| `/v1/audio/transcriptions` | POST | ✅ Bearer | OpenAI 兼容 STT（multipart 上传，Whisper） |
+| `/actuator/health` | GET | ❌ 公开 | Spring Boot 健康检查（含 db / diskSpace / liveness / readiness） |
+| `/actuator/prometheus` | GET | ❌ 公开 | Prometheus 抓取端点（`gateway_*` 业务指标 + JVM 指标） |
+| `/api/admin/circuit-breakers` | GET | ✅ Admin | 列出所有 (provider, model) 维度熔断器状态 |
+| `/api/admin/circuit-breakers/{code}/{model}/reset` | POST | ✅ Admin | 强制重置熔断器为 CLOSED |
 
 ### 管理端点
 
@@ -96,6 +104,52 @@
 ---
 
 ## 近期更新
+
+### 音频端点 + 上游熔断器（2026-06-17）
+
+- **`/v1/audio/speech` 端点**（TTS）：OpenAI 兼容文本转语音，按 `response_format` 映射 Content-Type（mp3 → audio/mpeg / opus → audio/ogg / aac / flac / wav / pcm）；上游二进制响应通过 `RestClient.body(ParameterizedTypeReference<Resource>)` 接收，按需写入响应；新增 `EndpointType.AUDIO_SPEECH` + `AudioSpeechGatewayService` + `AudioSpeechEndpointHandler`；`AiProviderClient.speech()` 默认 `BaseAiProviderClient` 实现自动覆盖 OPENAI / CUSTOM / MIMO / DEEPSEEK / VOLC / OPENCODE / GPT_AUTH；V20 迁移新增 `ai_channel.audio_speech_path` 字段
+- **`/v1/audio/transcriptions` 端点**（STT / Whisper）：OpenAI 兼容 multipart/form-data 语音转写，上游按 `verbose_json` 返回；新增 `EndpointType.AUDIO_TRANSCRIPTIONS` + `AudioTranscriptionGatewayService` + `AudioTranscriptionEndpointHandler`；`AiProviderClient.transcribe()` 默认 `BaseAiProviderClient` 实现用 `MultipartBodyBuilder` 构造透传请求；V20 迁移新增 `ai_channel.audio_transcription_path` 字段；`application.yaml` 增加 `spring.servlet.multipart.max-file-size: 25MB` 配置
+- **上游熔断器**（in-house，不引依赖）：`CircuitBreaker` 三态机（CLOSED / OPEN / HALF_OPEN），按 `(providerCode, providerModel)` 维度持有滑动窗口（默认 20 / 最小样本 10 / 失败率 50% / 冷却 60s / 试探 3 次），HALF_OPEN 试探失败立即 OPEN，成功达到阈值关闭；`CircuitBreakerRegistry` 单例 + Micrometer Gauge `gateway_circuit_state{provider, model}`（0/1/2 映射 CLOSED/HALF_OPEN/OPEN）+ `gateway_circuit_failure_rate` 暴露给 Prometheus；`RoutingService.resolveModel()` 在 `activeCandidates` 中过滤掉 OPEN 渠道，`recordSuccess/recordFailure` 同步驱动 CB；`AdminCircuitBreakerController` 提供 list / properties / reset 三个管理端点
+- **网关配置新增**：`api-convert.circuit-breaker.{window-size,failure-rate-threshold,minimum-calls,open-duration-seconds,half-open-max-trials}`，全部支持 `API_CONVERT_CB_*` 环境变量覆盖
+
+### 可观测性与嵌入端点（2026-06-17）
+
+- **可观测性基础设施**：`spring-boot-starter-actuator` + `micrometer-registry-prometheus`，暴露 `/actuator/health`（含 `db` 健康）与 `/actuator/prometheus`；`EndpointMetricsFilter` 在 servlet 层为 `/v1/*` 请求打 Timer / Counter，按 endpoint + status 拆分；`ChatGatewayService` / `ImageGatewayService` / `VideoGatewayService` / `EmbeddingGatewayService` 在服务层埋点上游调用耗时、失败切换、错误码分布；tag 维度收敛到 endpoint / provider / status / error_code，避免高基数
+- **请求 ID 关联**：`RequestContextFilter` 在 `HIGHEST_PRECEDENCE` 读取 `X-Request-Id` 请求头（缺失时生成 UUID），写入 SLF4J MDC 的 `requestId` 与响应头；log4j2 `%X{requestId}` 自动贯穿所有日志行，便于跨服务追踪同一请求
+- **`/v1/embeddings` 端点**：OpenAI 兼容嵌入接口，按 `prompt_tokens` 计费；新增 `EndpointType.OPENAI_EMBEDDINGS` + `EmbeddingGatewayService` + `OpenAiEmbeddingsEndpointHandler` + `EmbeddingGatewayServiceTest`；`AiProviderClient.embed()` 默认 `BaseAiProviderClient` 实现自动覆盖 OPENAI / CUSTOM / MIMO_TOKEN_PLAN / DEEPSEEK / VOLC_CODINGPLAN / OPENCODE / GPT_AUTH；V19 迁移新增 `ai_channel.embedding_path` 字段
+- **`ApiKeyQuotaService.deductEmbeddings`**：嵌入按 prompt_tokens 复用 input 单价单独扣减，未配置 input 单价时不扣费只记请求数和审计日志
+- **bug 修复 #5**：`DatabaseInstaller.run()` 在 fresh install 路径下 `return` 得太早，导致 V17-V19 永远不跑；改为 fall-through 到迁移循环；同时把 V18/V19 的 version 行从 `gateway_schema_version` 中按需移除，避免与 schema.sqlite 中已包含的列产生重复建表
+
+### 工程清理（2026-06-17）
+
+- 删除根目录 `node_modules/`（之前临时 `npm install --no-save js-yaml` 验证 YAML 语法留下的残留）
+- `.gitignore` 加固 4 条规则：
+  - `.agent/hooks/.state/` — v1.1 引入的 workflow-runner 状态文件
+  - `auth-dir/` — `GPT_AUTH` / `CLAUDE_AUTH` 渠道的 OAuth 授权凭证
+  - `/node_modules/` / `package.json` / `package-lock.json` — 防止以后 npm 误装在根目录
+
+### Agent 工作流 Token 优化（v1.1）
+
+- 新增 `.agent/agents/_CONVENTIONS.md`：把 8 个 sub-agent 共享的 status 字段约定 / 摘要契约 / 大小硬上限 / 不要做 5 项通用条款集中外置；角色文件开头一行 `> 遵循 .agent/agents/_CONVENTIONS.md` 即可，每个角色文件从平均 ~2000 字符降至 ~1200 字符
+- 新增 `.agent/CONTEXT_MAP.md`（≤ 1k token）：项目地图指针；sub-agent 默认**只**加载这份地图，需要时自己用 `Read` 工具按需加载 `AGENTS.md` / `rules.md` / `AI_GATEWAY_PROGRESS.md`，不再全量塞进任务包
+- schema.json 新增 token 优化字段：`summaryRequired` / `summaryMaxChars`（默认 600）/ `maxArtifactSize`（默认 6000）/ `contextMap` / `stateFile`
+- 两个 pipeline YAML 显式声明：`contextMap: .agent/CONTEXT_MAP.md` / `summaryMaxChars: 600` / `maxArtifactSize: 6000` / `stateFile: .agent/hooks/.state/<pipeline>.json`；每个 stage 加 `summaryRequired: true`
+- workflow-runner SKILL.md 重写"执行循环"：构造 sub-agent 任务包**只**包含 `_CONVENTIONS.md` + `contextMap` + 上一 stage 摘要 + inputs 路径 + sub-agent 角色；**不**传上一 stage 全文、不传长文档全文；每次 stage 切换把 `{currentStage, history, retryCounters}` 持久化到 `stateFile`
+- `.agent/rules/hooks.md` 新增"§13 Token 优化（强制）"：13.1 公共约定外置 / 13.2 项目地图 / 13.3 摘要契约 / 13.4 大小硬上限 / 13.5 状态外置 / 13.6 主 agent 内存自检清单
+- 11-hooks.md 新增"§10 Token 优化策略"5 项手段对比表 + 主 agent 内存边界 + sub-agent 任务包结构 + `stateFile` schema + 优化前后估算（**单次完整 pipeline 从 ~10375 token 降至 ~3600 token，节省 65%**）
+- 8 个 sub-agent 角色文件全部重写为紧凑版：开头声明遵循 `_CONVENTIONS.md`、保留差异化"身份 / 输入 / 输出 / status 判定"四段
+
+### Agent 工作流 Hook 机制（v1.0）
+
+- 新增 `.agent/hooks/` 目录与 `README.md` + `schema.json`：声明式 YAML 流水线 + stage transition + sub-agent 串行调度；schema 用 JSON Schema 约束字段
+- 新增 `.agent/hooks/feature-development.yml` 与 `pr-review.yml` 两个可运行 pipeline：
+  - `feature-development`：`plan → review-plan → code → review-code` 四段，被打回可回退到上游 stage，每 stage 都有 `maxRetries` 上限
+  - `pr-review`：`diff-reader → security → spec → summary` 四段，安全/规范双线审查
+- 新增 `.agent/skills/workflow-runner/SKILL.md`：唯一的流水线执行 skill，在同一会话内串行调用 sub-agent、维护 stage 重试计数、解析产物 `status:` 字段
+- 新增 9 个 sub-agent 角色契约：`.agent/agents/{planner,plan-reviewer,coder,code-reviewer,diff-reader,security-auditor,spec-reviewer,reviewer-summary}.md`；每个都按"身份 / 输入 / 输出 / 协作契约 / 不要做"五小节规范
+- 新增 `.agent/rules/hooks.md` 开发规范：12 条约束覆盖命名、字段、stage 设计、status 约定、重试上限、文件契约、提交前自检清单
+- 新增 `.agent/docs/modules/11-hooks.md` 设计文档：背景、核心概念、YAML 字段详解、执行时序、与 skills/agents/commands/rules 边界、v1 限制与 v2 扩展
+- 明确命名边界：`.agent/hooks/` 下的工作流 hook 与代码层 `cn.ms08.apiconvert.adapter.endpoint.ProviderHook`（供应商特化 hook）**同名但完全正交**——前者是 AI agent 接力编排，后者是 Java 接口处理 HTTP 请求体；04-endpoints.md 已加入这条说明
 
 ### 文档
 

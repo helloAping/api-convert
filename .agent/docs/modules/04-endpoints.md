@@ -27,6 +27,9 @@
 | `OPENAI_RESPONSES` | `OpenAiResponsesEndpointHandler` | Responses API：`OpenAiResponsesRequestAdapter` → 网关 → `OpenAiResponsesResponseAdapter`；流式使用 `RealTimeResponsesTransformer` |
 | `OPENAI_VIDEOS` | `OpenAiVideosEndpointHandler` | Videos API：`VideoGatewayService` → `AiProviderClient.generateVideo()`；非流式视频生成 |
 | `OPENAI_IMAGES` | `OpenAiImagesEndpointHandler` | Images API：`ImageGatewayService` → `AiProviderClient.generateImage()`；非流式图片生成 |
+| `OPENAI_EMBEDDINGS` | `OpenAiEmbeddingsEndpointHandler` | Embeddings API：`EmbeddingGatewayService` → `AiProviderClient.embed()`；按 `prompt_tokens` 计费 |
+| `AUDIO_SPEECH` | `AudioSpeechEndpointHandler` | TTS API：`AudioSpeechGatewayService` → `AiProviderClient.speech()`；按 `response_format` 映射 Content-Type 的二进制响应 |
+| `AUDIO_TRANSCRIPTIONS` | `AudioTranscriptionEndpointHandler` | STT API：`AudioTranscriptionGatewayService` → `AiProviderClient.transcribe()`；multipart/form-data 上传 + verbose_json 响应 |
 | `OPENAI_MODELS` | `OpenAiModelsEndpointHandler` | 模型列表（不走 ChatGatewayService，直接查 DB） |
 
 **管理端端点元信息**：`AdminGatewayInfoController` 通过 `EndpointType.allEndpointVOs()` 自动推导端点清单，新增端点时无需修改控制器。
@@ -51,6 +54,8 @@
 | 9 个具体适配器 | 覆盖主流跨协议组合 |
 | `ChatToolSequenceNormalizer` | DeepSeek Chat 等严格 Chat 上游要求 assistant `tool_calls` 与对应 `tool` 结果相邻；该辅助类会重排匹配结果并裁剪无结果调用 |
 | `ProviderHook` + `ProviderHookRegistry` | 按 `ProviderType` 维度的供应商特化钩子（如 DeepSeek 兜 `reasoning_content=""` / 补 `thinking` 字段），与跨协议 adapter 正交串联 |
+
+> **命名区分**：本节提到的 `ProviderHook` 是**代码层 Java 接口**（`cn.ms08.apiconvert.adapter.endpoint.ProviderHook`），作用在 HTTP 请求/响应链路上。`.agent/hooks/` 下的 hook 是 **AI agent 工作流钩子**（YAML 流水线），作用在多 agent 协作上——两者同名但完全正交。详见 [11-hooks](11-hooks.md)。
 
 ### 3.2 适配器列表
 

@@ -22,7 +22,16 @@ public class AdminGatewayInfoController {
      */
     @GetMapping
     public ApiResponse<GatewayInfoVO> info(HttpServletRequest request) {
-        return ApiResponse.success(new GatewayInfoVO(baseUrl(request), EndpointType.allEndpointVOs()));
+        return ApiResponse.success(new GatewayInfoVO(baseUrl(request), resolveVersion(), EndpointType.allEndpointVOs()));
+    }
+
+    /**
+     * 取运行包 Implementation-Version（生产构建由 spring-boot-maven-plugin 注入）；
+     * IDE 启动或测试环境下没有 manifest 时返回 "dev" 兜底。
+     */
+    private String resolveVersion() {
+        String version = getClass().getPackage().getImplementationVersion();
+        return StringUtils.hasText(version) ? version : "dev";
     }
 
     /**

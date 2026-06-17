@@ -7,6 +7,7 @@ import java.util.List;
  */
 public record GatewayInfoVO(
         String baseUrl,
+        String version,
         List<EndpointVO> endpoints
 ) {
     /**

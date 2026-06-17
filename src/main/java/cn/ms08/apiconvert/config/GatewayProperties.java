@@ -20,6 +20,10 @@ public class GatewayProperties {
      * OAuth/auth.json 凭据文件存储与授权端点配置。
      */
     private Auth auth = new Auth();
+    /**
+     * 可观测性配置（慢请求阈值、慢请求日志等）。
+     */
+    private Observability observability = new Observability();
 
     public Database getDatabase() {
         return database;
@@ -43,6 +47,14 @@ public class GatewayProperties {
 
     public void setAuth(Auth auth) {
         this.auth = auth;
+    }
+
+    public Observability getObservability() {
+        return observability;
+    }
+
+    public void setObservability(Observability observability) {
+        this.observability = observability;
     }
 
     /**
@@ -228,6 +240,22 @@ public class GatewayProperties {
 
         public void setPassword(String password) {
             this.password = password;
+        }
+    }
+
+    public static class Observability {
+        /**
+         * 慢请求阈值（毫秒），超过该值的请求会在日志中以 WARN 级别单独标记，便于人工排查；
+         * 不影响 Prometheus 指标的统计区间（仍按完整分位数计算）。
+         */
+        private long slowRequestThresholdMs = 3000L;
+
+        public long getSlowRequestThresholdMs() {
+            return slowRequestThresholdMs;
+        }
+
+        public void setSlowRequestThresholdMs(long slowRequestThresholdMs) {
+            this.slowRequestThresholdMs = slowRequestThresholdMs;
         }
     }
 
