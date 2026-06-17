@@ -4,6 +4,8 @@ import { useMessage, NButton, NInputNumber, NSwitch, NTag } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
 import { getModels, updateModelCapabilities, updateModelEnabled, updateModelQuota } from '@/api/models'
 import type { ModelCapabilitiesForm, ModelQuotaForm, ModelVO } from '@/types'
+import PageHeader from '@/components/PageHeader.vue'
+import { CubeOutline } from '@vicons/ionicons5'
 
 const message = useMessage()
 // 跟踪模型聚合列表加载状态。
@@ -170,10 +172,17 @@ onMounted(load)
 
 <template>
   <div>
+    <PageHeader
+      title="模型管理"
+      subtitle="按对外模型名聚合渠道映射，统一管理模型额度单价和能力开关（视觉 / 工具 / JSON 模式）。"
+      :icon="CubeOutline"
+    >
+      <template #actions>
+        <n-button :loading="loading" @click="load">刷新</n-button>
+      </template>
+    </PageHeader>
+
     <n-space vertical>
-      <n-space justify="space-between" align="center">
-        <n-h2>模型管理</n-h2>
-      </n-space>
       <n-alert type="info" title="模型来源于渠道保存结果">
         这里聚合展示所有渠道中已保存的模型，重复模型只展示一次。模型的新增、删除和对外名称调整请在渠道管理中完成。
       </n-alert>

@@ -10,6 +10,14 @@ AGENTS.local.md
 .claude
 .codex
 .opencode
+# Agent 工作流状态文件（v1.1）
+.agent/hooks/.state/
+# OAuth / AUTH 渠道授权凭证数据
+auth-dir/
+# npm 误装在根目录的依赖
+/node_modules/
+package.json
+package-lock.json
 ### STS ###
 .apt_generated
 .classpath

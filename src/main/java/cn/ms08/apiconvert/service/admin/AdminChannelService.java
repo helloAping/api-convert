@@ -59,6 +59,12 @@ public class AdminChannelService {
      */
     private static final String DEFAULT_IMAGE_PATH = "/v1/images/generations";
     /**
+     * OpenAI 兼容渠道默认嵌入路径。
+     */
+    private static final String DEFAULT_EMBEDDING_PATH = "/v1/embeddings";
+    private static final String DEFAULT_AUDIO_SPEECH_PATH = "/v1/audio/speech";
+    private static final String DEFAULT_AUDIO_TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
+    /**
      * Anthropic 风格渠道的默认消息路径。
      */
     private static final String DEFAULT_ANTHROPIC_PATH = "/v1/messages";
@@ -328,6 +334,12 @@ public class AdminChannelService {
         if (StringUtils.hasText(form.chatPath())) channel.setChatPath(form.chatPath()); else if (creating) channel.setChatPath(defaultPath(channel.getType(), null));
         if (StringUtils.hasText(form.videoPath())) channel.setVideoPath(form.videoPath()); else if (creating) channel.setVideoPath(DEFAULT_VIDEO_PATH);
         if (StringUtils.hasText(form.imagePath())) channel.setImagePath(form.imagePath()); else if (creating) channel.setImagePath(DEFAULT_IMAGE_PATH);
+        if (StringUtils.hasText(form.embeddingPath())) channel.setEmbeddingPath(form.embeddingPath());
+        else if (creating && supportsEmbeddings(channel.getType())) channel.setEmbeddingPath(DEFAULT_EMBEDDING_PATH);
+        if (StringUtils.hasText(form.audioSpeechPath())) channel.setAudioSpeechPath(form.audioSpeechPath());
+        else if (creating && supportsAudio(channel.getType())) channel.setAudioSpeechPath(DEFAULT_AUDIO_SPEECH_PATH);
+        if (StringUtils.hasText(form.audioTranscriptionPath())) channel.setAudioTranscriptionPath(form.audioTranscriptionPath());
+        else if (creating && supportsAudio(channel.getType())) channel.setAudioTranscriptionPath(DEFAULT_AUDIO_TRANSCRIPTION_PATH);
         if (StringUtils.hasText(form.modelsPath())) channel.setModelsPath(form.modelsPath()); else if (creating) channel.setModelsPath(DEFAULT_MODELS_PATH);
         if (StringUtils.hasText(form.apiKey())) channel.setApiKey(form.apiKey());
         if (StringUtils.hasText(form.authMode())) channel.setAuthMode(form.authMode());
@@ -361,6 +373,9 @@ public class AdminChannelService {
                 channel.getChatPath(),
                 channel.getVideoPath(),
                 channel.getImagePath(),
+                channel.getEmbeddingPath(),
+                channel.getAudioSpeechPath(),
+                channel.getAudioTranscriptionPath(),
                 channel.getModelsPath(),
                 channel.getId(),
                 channel.getName() + " 密钥",
@@ -572,7 +587,32 @@ public class AdminChannelService {
                 case "CHAT_COMPLETIONS", "ANTHROPIC_MESSAGES" -> channel.setChatPath(cap.path());
                 case "OPENAI_VIDEOS" -> channel.setVideoPath(cap.path());
                 case "OPENAI_IMAGES" -> channel.setImagePath(cap.path());
+                case "OPENAI_EMBEDDINGS" -> channel.setEmbeddingPath(cap.path());
+                case "AUDIO_SPEECH" -> channel.setAudioSpeechPath(cap.path());
+                case "AUDIO_TRANSCRIPTIONS" -> channel.setAudioTranscriptionPath(cap.path());
             }
         }
+    }
+
+    /**
+     * 嵌入仅 OpenAI 兼容协议供应商支持；其他协议（Gemini 等）暂未提供 /v1/embeddings 入口。
+     */
+    private boolean supportsEmbeddings(String type) {
+        if (type == null) return false;
+        return switch (ProviderType.valueOf(type)) {
+            case OPENAI, CUSTOM, MIMO_TOKEN_PLAN, DEEPSEEK, OPENCODE, VOLC_CODINGPLAN -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * TTS / STT 仅 OpenAI 兼容协议供应商支持；GEMINI 等暂未对接 /v1/audio/* 入口。
+     */
+    private boolean supportsAudio(String type) {
+        if (type == null) return false;
+        return switch (ProviderType.valueOf(type)) {
+            case OPENAI, CUSTOM, MIMO_TOKEN_PLAN, DEEPSEEK, OPENCODE, VOLC_CODINGPLAN, GPT_AUTH -> true;
+            default -> false;
+        };
     }
 }

@@ -1,6 +1,10 @@
 package cn.ms08.apiconvert.provider;
 
 import cn.ms08.apiconvert.dto.ModelRoute;
+import cn.ms08.apiconvert.dto.OpenAiAudioBinaryResponse;
+import cn.ms08.apiconvert.dto.OpenAiAudioSpeechRequest;
+import cn.ms08.apiconvert.dto.OpenAiAudioTranscriptionRequest;
+import cn.ms08.apiconvert.dto.OpenAiEmbeddingRequest;
 import cn.ms08.apiconvert.dto.OpenAiImageRequest;
 import cn.ms08.apiconvert.dto.OpenAiVideoRequest;
 import cn.ms08.apiconvert.dto.ProviderModel;
@@ -11,8 +15,13 @@ import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
 import cn.ms08.apiconvert.dto.UnifiedUsage;
 import cn.ms08.apiconvert.endpoint.EndpointType;
+import cn.ms08.apiconvert.exception.ErrorCode;
+import cn.ms08.apiconvert.exception.ProviderException;
+import cn.ms08.apiconvert.vo.OpenAiEmbeddingResponse;
+import cn.ms08.apiconvert.vo.OpenAiAudioTranscriptionResponse;
 import cn.ms08.apiconvert.vo.OpenAiImageResponse;
 import cn.ms08.apiconvert.vo.OpenAiVideoResponse;
+import org.springframework.http.HttpStatus;
 
 import java.io.OutputStream;
 import java.util.List;
@@ -80,6 +89,33 @@ public interface AiProviderClient {
 
     /** 图片生成，透传到渠道配置的 image 路径。 */
     OpenAiImageResponse generateImage(ModelRoute route, OpenAiImageRequest request);
+
+    /**
+     * 嵌入生成，透传到渠道配置的 embedding 路径。
+     * 默认不支持，需要 OpenAI 兼容协议渠道覆盖；非 OpenAI 兼容供应商调用时返回 501。
+     */
+    default OpenAiEmbeddingResponse embed(ModelRoute route, OpenAiEmbeddingRequest request) {
+        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                "embedding is not supported by provider " + type());
+    }
+
+    /**
+     * 文本转语音（OpenAI Audio Speech），透传到渠道配置的 audio_speech 路径。
+     * 返回二进制音频字节 + Content-Type（按 response_format 解析）。
+     */
+    default OpenAiAudioBinaryResponse speech(ModelRoute route, OpenAiAudioSpeechRequest request) {
+        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                "audio speech is not supported by provider " + type());
+    }
+
+    /**
+     * 语音转写（OpenAI Audio Transcriptions / Whisper），multipart 文件直传到渠道配置的 audio_transcriptions 路径。
+     * 上传音频文件后返回 verbose_json 格式响应。
+     */
+    default OpenAiAudioTranscriptionResponse transcribe(ModelRoute route, OpenAiAudioTranscriptionRequest request) {
+        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                "audio transcription is not supported by provider " + type());
+    }
 
     /** 获取供应商可用模型列表。 */
     List<ProviderModel> models(ProviderModelFetchRequest request);

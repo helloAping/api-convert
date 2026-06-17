@@ -1,0 +1,62 @@
+/* 主题色变量：light / dark 双模；其他页面通过 var(--xxx) 引用 */
+:root,
+:root[data-theme='light'] {
+  --page-bg: #f5f7fa;
+  --surface-bg: #ffffff;
+  --surface-bg-elev: #ffffff;
+  --surface-bg-soft: #f8fafc;
+  --border-color: #e5e7eb;
+  --border-color-soft: #edf0f5;
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #94a3b8;
+  --header-bg: #ffffff;
+  --sider-bg: #ffffff;
+  --logo-color: #2563eb;
+  --logo-bg: #eff6ff;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme='dark'] {
+  --page-bg: #0f172a;
+  --surface-bg: #1e293b;
+  --surface-bg-elev: #1f2937;
+  --surface-bg-soft: #172033;
+  --border-color: #334155;
+  --border-color-soft: #293548;
+  --text-primary: #e2e8f0;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --header-bg: #1e293b;
+  --sider-bg: #111827;
+  --logo-color: #93c5fd;
+  --logo-bg: rgba(59, 130, 246, 0.15);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* 全局滚动条：暗色模式下原生滚动条对比度低，加深一下 */
+:root[data-theme='dark'] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 5px;
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Naive UI surface 暗色适配：让卡片 / 表格等组件跟随主题 */
+:root[data-theme='dark'] .n-card,
+:root[data-theme='dark'] .n-data-table .n-data-table-th,
+:root[data-theme='dark'] .n-data-table .n-data-table-td {
+  background-color: var(--surface-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+:root[data-theme='dark'] .n-data-table .n-data-table-tr:hover .n-data-table-td {
+  background-color: var(--surface-bg-soft) !important;
+}

@@ -8,7 +8,11 @@ import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesResponseAdapter;
 import cn.ms08.apiconvert.dto.AnthropicMessageRequest;
 import cn.ms08.apiconvert.dto.ModelRoute;
+import cn.ms08.apiconvert.dto.OpenAiAudioBinaryResponse;
+import cn.ms08.apiconvert.dto.OpenAiAudioSpeechRequest;
+import cn.ms08.apiconvert.dto.OpenAiAudioTranscriptionRequest;
 import cn.ms08.apiconvert.dto.OpenAiChatCompletionRequest;
+import cn.ms08.apiconvert.dto.OpenAiEmbeddingRequest;
 import cn.ms08.apiconvert.dto.OpenAiImageRequest;
 import cn.ms08.apiconvert.dto.OpenAiResponsesRequest;
 import cn.ms08.apiconvert.dto.OpenAiVideoRequest;
@@ -20,7 +24,9 @@ import cn.ms08.apiconvert.exception.ErrorCode;
 import cn.ms08.apiconvert.exception.ProviderException;
 import cn.ms08.apiconvert.logging.LogSanitizer;
 import cn.ms08.apiconvert.vo.AnthropicMessageResponse;
+import cn.ms08.apiconvert.vo.OpenAiAudioTranscriptionResponse;
 import cn.ms08.apiconvert.vo.OpenAiChatCompletionResponse;
+import cn.ms08.apiconvert.vo.OpenAiEmbeddingResponse;
 import cn.ms08.apiconvert.vo.OpenAiImageResponse;
 import cn.ms08.apiconvert.vo.OpenAiResponsesResponse;
 import cn.ms08.apiconvert.vo.OpenAiVideoResponse;
@@ -282,6 +288,111 @@ public abstract class BaseAiProviderClient implements AiProviderClient {
                     .body(providerRequest).retrieve().body(OpenAiImageResponse.class);
             if (response == null) throw emptyResponse();
             response.setModel(route.publicModel());
+            return response;
+        } catch (ProviderException e) { throw e; }
+        catch (RestClientResponseException e) { throw providerError(e); }
+        catch (RestClientException e) { throw providerUnavailable(e); }
+    }
+
+    /**
+     * OpenAI 兼容嵌入接口默认实现：Bearer 鉴权 + JSON POST 透传到渠道 embedding 路径。
+     * OPENAI / CUSTOM / MIMO_TOKEN_PLAN / DEEPSEEK / OPENCODE / VOLC_CODINGPLAN 走默认实现，
+     * 非 OpenAI 兼容协议供应商（GEMINI / LOCAL 等）需要在子类中显式覆盖为 UNSUPPORTED_FEATURE。
+     */
+    @Override
+    public OpenAiEmbeddingResponse embed(ModelRoute route, OpenAiEmbeddingRequest request) {
+        OpenAiEmbeddingRequest providerRequest = request.copyForProviderModel(route.providerModel());
+        log.info("上游嵌入请求体: {}", LogSanitizer.sanitizeBody(safeWriteJson(providerRequest)));
+        try {
+            OpenAiEmbeddingResponse response = restClientBuilder.clone()
+                    .baseUrl(route.baseUrl()).build()
+                    .post().uri(route.resolvedEmbeddingPath())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("Authorization", "Bearer " + resolveApiKey(route))
+                    .body(providerRequest).retrieve().body(OpenAiEmbeddingResponse.class);
+            if (response == null) throw emptyResponse();
+            response.setModel(route.publicModel());
+            return response;
+        } catch (ProviderException e) { throw e; }
+        catch (RestClientResponseException e) { throw providerError(e); }
+        catch (RestClientException e) { throw providerUnavailable(e); }
+    }
+
+    /**
+     * OpenAI 兼容 TTS 接口默认实现：Bearer 鉴权 + JSON POST 透传到渠道 audio_speech 路径，
+     * 上游直接返回二进制音频字节，按上游 Content-Type 推断响应格式。
+     */
+    @Override
+    public OpenAiAudioBinaryResponse speech(ModelRoute route, OpenAiAudioSpeechRequest request) {
+        OpenAiAudioSpeechRequest providerRequest = request.copyForProviderModel(route.providerModel());
+        log.info("上游 TTS 请求体: {}", LogSanitizer.sanitizeBody(safeWriteJson(providerRequest)));
+        try {
+            org.springframework.core.ParameterizedTypeReference<org.springframework.core.io.Resource> resourceType =
+                    new org.springframework.core.ParameterizedTypeReference<>() {};
+            org.springframework.core.io.Resource resource = restClientBuilder.clone()
+                    .baseUrl(route.baseUrl()).build()
+                    .post().uri(route.resolvedAudioSpeechPath())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("Authorization", "Bearer " + resolveApiKey(route))
+                    .body(providerRequest).retrieve().body(resourceType);
+            if (resource == null) throw emptyResponse();
+            byte[] bytes;
+            try (java.io.InputStream input = resource.getInputStream()) {
+                bytes = input.readAllBytes();
+            }
+            org.springframework.http.MediaType contentType = OpenAiAudioBinaryResponse.mediaTypeFor(
+                    providerRequest.getResponseFormat());
+            String filename = "speech." + OpenAiAudioBinaryResponse.extensionFor(providerRequest.getResponseFormat());
+            return new OpenAiAudioBinaryResponse(bytes, contentType, filename);
+        } catch (ProviderException e) { throw e; }
+        catch (RestClientResponseException e) { throw providerError(e); }
+        catch (RestClientException | java.io.IOException e) { throw providerUnavailable(e); }
+    }
+
+    /**
+     * OpenAI 兼容 STT 接口默认实现：Bearer 鉴权 + multipart/form-data 透传到渠道 audio_transcriptions 路径，
+     * 上游返回 verbose_json 响应；非 OpenAI 兼容协议供应商需在子类中显式覆盖为 UNSUPPORTED_FEATURE。
+     */
+    @Override
+    public OpenAiAudioTranscriptionResponse transcribe(ModelRoute route, OpenAiAudioTranscriptionRequest request) {
+        OpenAiAudioTranscriptionRequest providerRequest = request;
+        providerRequest.setModel(route.providerModel());
+        try {
+            org.springframework.http.client.MultipartBodyBuilder builder = new org.springframework.http.client.MultipartBodyBuilder();
+            builder.part("file", new org.springframework.core.io.ByteArrayResource(
+                    providerRequest.getFileBytes() == null ? new byte[0] : providerRequest.getFileBytes()) {
+                @Override
+                public String getFilename() {
+                    return providerRequest.getFilename();
+                }
+            }).contentType(org.springframework.http.MediaType.parseMediaType(
+                    providerRequest.getContentType() == null ? "application/octet-stream" : providerRequest.getContentType()));
+            builder.part("model", providerRequest.getModel());
+            if (org.springframework.util.StringUtils.hasText(providerRequest.getLanguage())) {
+                builder.part("language", providerRequest.getLanguage());
+            }
+            if (org.springframework.util.StringUtils.hasText(providerRequest.getPrompt())) {
+                builder.part("prompt", providerRequest.getPrompt());
+            }
+            if (org.springframework.util.StringUtils.hasText(providerRequest.getResponseFormat())) {
+                builder.part("response_format", providerRequest.getResponseFormat());
+            }
+            if (providerRequest.getTemperature() != null) {
+                builder.part("temperature", providerRequest.getTemperature());
+            }
+            if (providerRequest.getTimestampGranularities() != null) {
+                for (String granularity : providerRequest.getTimestampGranularities()) {
+                    builder.part("timestamp_granularities[]", granularity);
+                }
+            }
+            org.springframework.util.MultiValueMap<String, org.springframework.http.HttpEntity<?>> parts = builder.build();
+            OpenAiAudioTranscriptionResponse response = restClientBuilder.clone()
+                    .baseUrl(route.baseUrl()).build()
+                    .post().uri(route.resolvedAudioTranscriptionPath())
+                    .header("Authorization", "Bearer " + resolveApiKey(route))
+                    .body(parts)
+                    .retrieve().body(OpenAiAudioTranscriptionResponse.class);
+            if (response == null) throw emptyResponse();
             return response;
         } catch (ProviderException e) { throw e; }
         catch (RestClientResponseException e) { throw providerError(e); }

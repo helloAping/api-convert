@@ -6,7 +6,8 @@ import request from '@/api/request'
 import { getDashboardStats } from '@/api/dashboard'
 import { getGatewayInfo } from '@/api/gatewayInfo'
 import LineChart from '@/components/charts/LineChart.vue'
-import { DocumentOutline } from '@vicons/ionicons5'
+import PageHeader from '@/components/PageHeader.vue'
+import { DocumentOutline, SpeedometerOutline } from '@vicons/ionicons5'
 import type {
   DashboardSeriesVO,
   DashboardStatsVO,
@@ -169,15 +170,19 @@ onMounted(load)
 
 <template>
   <div>
+    <PageHeader
+      title="控制台"
+      subtitle="实时统计请求量、Token 消耗与成功率；按模型 / 渠道 / 密钥三个维度下钻。"
+      :icon="SpeedometerOutline"
+    >
+      <template #actions>
+        <n-select v-model:value="range" :options="rangeOptions" size="small" style="width: 150px" />
+        <n-select v-model:value="topN" :options="topOptions" size="small" style="width: 100px" />
+        <n-button size="small" :loading="loading" @click="load">刷新</n-button>
+      </template>
+    </PageHeader>
+
     <n-space vertical :size="16">
-      <n-space justify="space-between" align="center">
-        <n-h2>控制台</n-h2>
-        <n-space align="center">
-          <n-select v-model:value="range" :options="rangeOptions" size="small" style="width: 150px" />
-          <n-select v-model:value="topN" :options="topOptions" size="small" style="width: 100px" />
-          <n-button size="small" :loading="loading" @click="load">刷新</n-button>
-        </n-space>
-      </n-space>
 
       <n-grid :cols="4" :x-gap="16" :y-gap="16" responsive="screen">
         <n-grid-item>

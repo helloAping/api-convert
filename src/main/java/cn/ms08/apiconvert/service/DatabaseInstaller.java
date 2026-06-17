@@ -24,7 +24,7 @@ public class DatabaseInstaller implements CommandLineRunner {
     /**
      * 当前结构版本；升级时必须提供对应版本迁移 SQL，不允许通过重建整库升级。
      */
-    private static final int CURRENT_SCHEMA_VERSION = 18;
+    private static final int CURRENT_SCHEMA_VERSION = 20;
 
     /**
      * 获取底层连接以执行 SQL 安装和迁移脚本。
@@ -59,7 +59,6 @@ public class DatabaseInstaller implements CommandLineRunner {
         String type = databaseType();
         if (!schemaVersionTableExists()) {
             executeScript(schemaScript(type));
-            return;
         }
         Integer version = currentVersion();
         if (version == null) {

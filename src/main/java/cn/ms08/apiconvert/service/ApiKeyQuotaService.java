@@ -112,6 +112,24 @@ public class ApiKeyQuotaService {
     }
 
     /**
+     * 嵌入按 prompt_tokens 计费：复用 input 单价，不计 output / cache。
+     * 嵌入模型未配置 inputQuotaPerMillion 时按 0 成本处理（不扣费、只记请求数和审计日志）。
+     */
+    public void deductEmbeddings(Long apiKeyId, ModelRoute route, int promptTokens) {
+        if (apiKeyId == null || route == null) {
+            return;
+        }
+        BigDecimal cost = tokenCost(promptTokens, route.inputQuotaPerMillion());
+        if (cost.signum() <= 0) {
+            return;
+        }
+        GatewayApiKeyEntity key = apiKey(apiKeyId);
+        assertBalanceEnough(key, cost);
+        assertLimitsEnough(key, "QUOTA", cost, true);
+        deductBalance(key, cost);
+    }
+
+    /**
      * 计算指定模型、指定 token 用量应消耗的额度。
      */
     public BigDecimal calculateCost(ModelRoute route, UnifiedUsage usage) {
@@ -316,7 +334,7 @@ public class ApiKeyQuotaService {
     /**
      * 计算某一类 token 的额度消耗。
      */
-    private BigDecimal tokenCost(int tokens, BigDecimal quotaPerMillion) {
+    BigDecimal tokenCost(int tokens, BigDecimal quotaPerMillion) {
         if (tokens <= 0 || quotaPerMillion == null || quotaPerMillion.signum() <= 0) {
             return BigDecimal.ZERO;
         }

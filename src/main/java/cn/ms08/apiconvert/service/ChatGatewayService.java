@@ -90,6 +90,10 @@ public class ChatGatewayService {
      */
     private final cn.ms08.apiconvert.adapter.endpoint.ProviderHookRegistry hookRegistry;
     /**
+     * 网关 Micrometer 指标门面，记录上游调用耗时、失败切换次数、错误码分布。
+     */
+    private final cn.ms08.apiconvert.metrics.GatewayMetrics metrics;
+    /**
      * 用于在流式响应中写入 OpenAI 风格错误事件。
      */
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -101,7 +105,8 @@ public class ChatGatewayService {
                               UsageRecorder usageRecorder, ApiKeyQuotaService apiKeyQuotaService,
                               EndpointProviderAdapterRegistry adapterRegistry,
                               StreamTransformerRegistry streamTransformerRegistry,
-                              cn.ms08.apiconvert.adapter.endpoint.ProviderHookRegistry hookRegistry) {
+                              cn.ms08.apiconvert.adapter.endpoint.ProviderHookRegistry hookRegistry,
+                              cn.ms08.apiconvert.metrics.GatewayMetrics metrics) {
         this.routingService = routingService;
         this.providerClientRegistry = providerClientRegistry;
         this.usageRecorder = usageRecorder;
@@ -109,6 +114,7 @@ public class ChatGatewayService {
         this.adapterRegistry = adapterRegistry;
         this.streamTransformerRegistry = streamTransformerRegistry;
         this.hookRegistry = hookRegistry;
+        this.metrics = metrics;
     }
 
     public UnifiedChatResponse chat(UnifiedChatRequest request, HttpServletRequest servletRequest) {
@@ -162,21 +168,32 @@ public class ChatGatewayService {
                     EndpointType upstreamEndpoint = route.effectiveEndpoint(endpointType);
                     UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, upstreamEndpoint, route);
                     AiProviderClient client = providerClientRegistry.get(route.providerType());
-                    UnifiedChatResponse response = dispatchProtocol(client, route, adaptedRequest, upstreamEndpoint);
-                    UnifiedChatResponse adaptedResponse = applyAdapter(response, endpointType, upstreamEndpoint, route);
-                    routingService.recordSuccess(principal.apiKeyId(), route);
-                    apiKeyQuotaService.deduct(principal.apiKeyId(), route, adaptedResponse.usage(), estimatedUsage);
-                    usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType,
-                            endpointType != null ? endpointType.name() : null,
-                            upstreamEndpoint.name(),
-                            route, stream,
-                            HttpStatus.OK.value(), System.currentTimeMillis() - start, adaptedResponse.usage());
-                    return adaptedResponse;
+                    long upstreamStart = System.nanoTime();
+                    int upstreamStatus = HttpStatus.INTERNAL_SERVER_ERROR.value();
+                    try {
+                        UnifiedChatResponse response = dispatchProtocol(client, route, adaptedRequest, upstreamEndpoint);
+                        upstreamStatus = HttpStatus.OK.value();
+                        UnifiedChatResponse adaptedResponse = applyAdapter(response, endpointType, upstreamEndpoint, route);
+                        routingService.recordSuccess(principal.apiKeyId(), route);
+                        apiKeyQuotaService.deduct(principal.apiKeyId(), route, adaptedResponse.usage(), estimatedUsage);
+                        usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                                endpointType != null ? endpointType.name() : null,
+                                upstreamEndpoint.name(),
+                                route, stream,
+                                HttpStatus.OK.value(), System.currentTimeMillis() - start, adaptedResponse.usage());
+                        return adaptedResponse;
+                    } finally {
+                        metrics.recordUpstream(upstreamEndpoint, route.providerType().name(),
+                                upstreamStatus, System.nanoTime() - upstreamStart);
+                    }
                 } catch (Exception exception) {
                     if (!shouldTryNextRoute(principal, index, routes, exception)) {
+                        metrics.recordError(endpointType, errorCodeOf(exception));
                         throw exception;
                     }
                     recordProviderFailure(principal, request, route, sessionKey, exception);
+                    metrics.recordFailoverAttempt(endpointType, route.providerType().name());
+                    metrics.recordError(endpointType, errorCodeOf(exception));
                     int retryStatus;
                     String retryCode;
                     String retryMsg;
@@ -201,6 +218,7 @@ public class ChatGatewayService {
             throw new GatewayException(ErrorCode.ROUTE_NOT_FOUND, HttpStatus.SERVICE_UNAVAILABLE, "No available route for model: " + request.model());
         } catch (GatewayException exception) {
             recordProviderFailure(principal, request, route, sessionKey, exception);
+            metrics.recordError(endpointType, exception.code().name());
             log.warn("对话转发失败：{}", exception.getMessage(), exception);
             usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
                     endpointType != null ? endpointType.name() : null,
@@ -209,6 +227,7 @@ public class ChatGatewayService {
                     System.currentTimeMillis() - start, exception.code().name(), exception.getMessage());
             throw exception;
         } catch (Exception exception) {
+            metrics.recordError(endpointType, ErrorCode.INTERNAL_ERROR.name());
             log.error("对话转发异常：{}", exception.getMessage(), exception);
             usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
                     endpointType != null ? endpointType.name() : null,
@@ -218,6 +237,16 @@ public class ChatGatewayService {
                     ErrorCode.INTERNAL_ERROR.name(), "Internal server error");
             throw exception;
         }
+    }
+
+    /**
+     * 从异常中抽取错误码（GatewayException 用自身 code，其他归类为 INTERNAL_ERROR）。
+     */
+    private String errorCodeOf(Exception exception) {
+        if (exception instanceof GatewayException gatewayException) {
+            return gatewayException.code().name();
+        }
+        return ErrorCode.INTERNAL_ERROR.name();
     }
 
     /**
@@ -328,30 +357,40 @@ public class ChatGatewayService {
                             formatSanitizedHeaders(route),
                             route.providerType(), route.providerCode(),
                             serializeRequest(adaptedRequest));
-                    UnifiedUsage usage = dispatchStreamProtocol(streamClient, route, adaptedRequest, targetStream, dispatchEndpoint);
-                    // 流式响应转换完成
-                    if (wrappedStream != null) {
-                        wrappedStream.complete();
+                    long streamUpstreamStart = System.nanoTime();
+                    int streamUpstreamStatus = HttpStatus.INTERNAL_SERVER_ERROR.value();
+                    try {
+                        UnifiedUsage usage = dispatchStreamProtocol(streamClient, route, adaptedRequest, targetStream, dispatchEndpoint);
+                        streamUpstreamStatus = HttpStatus.OK.value();
+                        // 流式响应转换完成
+                        if (wrappedStream != null) {
+                            wrappedStream.complete();
+                        }
+                        long latencyMs = System.currentTimeMillis() - start;
+                        routingService.recordSuccess(principal.apiKeyId(), route);
+                        log.info("SSE 流完成 请求ID：{}、协议：{}、接口：{}、模型：{}、渠道编码：{}、渠道类型：{}、耗时：{}ms、输入Token：{}、输出Token：{}、总计Token：{}、缓存读取Token：{}",
+                                requestId, sourceProtocol, requestType, request.model(),
+                                route.providerCode(), route.providerType(), latencyMs,
+                                safeTokens(usage != null ? usage.inputTokens() : null),
+                                safeTokens(usage != null ? usage.outputTokens() : null),
+                                safeTokens(usage != null ? usage.totalTokens() : null),
+                                safeTokens(usage != null ? usage.cacheReadInputTokens() : null));
+                        apiKeyQuotaService.deduct(principal.apiKeyId(), route, usage, estimatedUsage);
+                        usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                                endpointType != null ? endpointType.name() : null,
+                                upstreamEndpoint.name(),
+                                route, true,
+                                HttpStatus.OK.value(), latencyMs, usage);
+                        return;
+                    } finally {
+                        metrics.recordUpstream(upstreamEndpoint, route.providerType().name(),
+                                streamUpstreamStatus, System.nanoTime() - streamUpstreamStart);
                     }
-                    long latencyMs = System.currentTimeMillis() - start;
-                    routingService.recordSuccess(principal.apiKeyId(), route);
-                    log.info("SSE 流完成 请求ID：{}、协议：{}、接口：{}、模型：{}、渠道编码：{}、渠道类型：{}、耗时：{}ms、输入Token：{}、输出Token：{}、总计Token：{}、缓存读取Token：{}",
-                            requestId, sourceProtocol, requestType, request.model(),
-                            route.providerCode(), route.providerType(), latencyMs,
-                            safeTokens(usage != null ? usage.inputTokens() : null),
-                            safeTokens(usage != null ? usage.outputTokens() : null),
-                            safeTokens(usage != null ? usage.totalTokens() : null),
-                            safeTokens(usage != null ? usage.cacheReadInputTokens() : null));
-                    apiKeyQuotaService.deduct(principal.apiKeyId(), route, usage, estimatedUsage);
-                    usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType,
-                            endpointType != null ? endpointType.name() : null,
-                            upstreamEndpoint.name(),
-                            route, true,
-                            HttpStatus.OK.value(), latencyMs, usage);
-                    return;
                 } catch (Exception exception) {
                     if (shouldTryNextRoute(principal, index, routes, exception, attemptOutput)) {
                         recordProviderFailure(principal, request, route, sessionKey, exception);
+                        metrics.recordFailoverAttempt(endpointType, route.providerType().name());
+                        metrics.recordError(endpointType, errorCodeOf(exception));
                         int retryStatus;
                         String retryCode;
                         String retryMsg;
@@ -378,6 +417,7 @@ public class ChatGatewayService {
                         wrappedStream = null;
                         continue;
                     }
+                    metrics.recordError(endpointType, errorCodeOf(exception));
                     throw exception;
                 }
             }
@@ -389,6 +429,7 @@ public class ChatGatewayService {
                 recordProviderFailure(principal, request, route, sessionKey, exception);
                 log.warn("流式转发失败：{}", exception.getMessage(), exception);
             }
+            metrics.recordError(endpointType, exception.code().name());
             usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
                     endpointType != null ? endpointType.name() : null,
                     endpointType != null ? endpointType.name() : null,
@@ -403,6 +444,7 @@ public class ChatGatewayService {
             } else {
                 log.error("流式转发异常：{}", exception.getMessage(), exception);
             }
+            metrics.recordError(endpointType, ErrorCode.INTERNAL_ERROR.name());
             usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
                     endpointType != null ? endpointType.name() : null,
                     endpointType != null ? endpointType.name() : null,
@@ -767,6 +809,9 @@ public class ChatGatewayService {
             case OPENAI_VIDEOS -> "videos";
             case OPENAI_IMAGES -> "images";
             case OPENAI_MODELS -> "models";
+            case OPENAI_EMBEDDINGS -> "embeddings";
+            case AUDIO_SPEECH -> "audio_speech";
+            case AUDIO_TRANSCRIPTIONS -> "audio_transcriptions";
             case HEALTH -> "health";
         };
     }

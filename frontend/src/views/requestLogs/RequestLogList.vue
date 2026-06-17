@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, h } from 'vue'
+import { ref, onMounted, h, watch, computed } from 'vue'
 import { useMessage, NButton, NTag, dateZhCN } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
 import { searchRequestLogs } from '@/api/requestLogs'
 import type { RequestLogVO, RequestLogSearchParam } from '@/types'
+import { useDebouncedFn } from '@/composables/useDebounce'
+import PageHeader from '@/components/PageHeader.vue'
+import { DocumentTextOutline } from '@vicons/ionicons5'
 
 const message = useMessage()
 const loading = ref(false)
@@ -14,6 +17,16 @@ const pageSize = ref(20)
 const search = ref<RequestLogSearchParam>({ success: undefined })
 const dateRange = ref<[string, string] | null>(null)
 const showAdvanced = ref(false)
+
+/**
+ * 主搜索区字段（请求编号 / 密钥 / 结果）变化后 300ms 自动重新查询；高级字段保持按钮触发避免误触。
+ */
+const autoSearchKey = computed(() => `${search.value.requestId || ''}|${search.value.gatewayApiKeyKeyword || ''}|${search.value.success ?? ''}`)
+const debouncedAutoSearch = useDebouncedFn(() => {
+  page.value = 1
+  load()
+}, 300)
+watch(autoSearchKey, () => debouncedAutoSearch())
 
 const dateLocale = dateZhCN
 
@@ -134,8 +147,13 @@ onMounted(load)
 
 <template>
   <div>
+    <PageHeader
+      title="请求日志"
+      subtitle="按请求编号、密钥、协议、模型等维度检索历史请求；高级过滤项可展开。"
+      :icon="DocumentTextOutline"
+    />
+
     <n-space vertical>
-      <n-h2>请求日志</n-h2>
 
       <n-space align="center">
         <n-input v-model:value="search.requestId" placeholder="请求编号" style="width:160px" />

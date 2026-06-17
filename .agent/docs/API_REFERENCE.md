@@ -348,13 +348,149 @@ OpenAI Images API 图片生成，按模型路由到支持图片的 OpenAI 兼容
 | `size` | String | 否 | 图片尺寸 |
 | `quality` | String | 否 | 图片质量 |
 
+### 8. Embeddings API
+
+```
+POST /v1/embeddings
+```
+
+OpenAI 兼容嵌入接口，按模型路由到支持嵌入的 OpenAI 兼容提供商；按 `prompt_tokens` 计费，不计 output / cache。
+
+**Headers：**
+
+| Header | 必需 | 说明 |
+|---|---|---|
+| `Authorization` | 是 | `Bearer <gateway-api-key>` |
+| `Content-Type` | 是 | `application/json` |
+
+**请求体：**
+
+```json
+{
+  "model": "text-embedding-3-small",
+  "input": "The quick brown fox jumps over the lazy dog",
+  "encoding_format": "float",
+  "dimensions": 1536
+}
+```
+
+| 字段 | 类型 | 必需 | 说明 |
+|---|---|---|---|
+| `model` | String | 是 | 模型名称 |
+| `input` | String \| String[] | 是 | 单字符串或字符串数组，批量嵌入时传数组 |
+| `encoding_format` | String | 否 | `float` 或 `base64`，默认 `float` |
+| `dimensions` | Integer | 否 | 输出向量维度（部分模型支持） |
+| `user` | String | 否 | 透传给上游的端用户标识 |
+
+**响应（成功）：**
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "object": "embedding",
+      "index": 0,
+      "embedding": [0.0123, -0.0456, ...]
+    }
+  ],
+  "model": "text-embedding-3-small",
+  "usage": {
+    "prompt_tokens": 9,
+    "total_tokens": 9
+  }
+}
+```
+
+### 9. Audio Speech API（TTS）
+
+```
+POST /v1/audio/speech
+```
+
+OpenAI 兼容文本转语音，按 `response_format` 决定输出格式（mp3 / opus / aac / flac / wav / pcm），返回二进制音频字节。
+
+**Headers：**
+
+| Header | 必需 | 说明 |
+|---|---|---|
+| `Authorization` | 是 | `Bearer <gateway-api-key>` |
+| `Content-Type` | 是 | `application/json` |
+
+**请求体：**
+
+```json
+{
+  "model": "tts-1",
+  "input": "The quick brown fox jumps over the lazy dog.",
+  "voice": "alloy",
+  "response_format": "mp3",
+  "speed": 1.0
+}
+```
+
+| 字段 | 类型 | 必需 | 说明 |
+|---|---|---|---|
+| `model` | String | 是 | TTS 模型 ID，如 `tts-1` / `tts-1-hd` |
+| `input` | String | 是 | 待合成文本，最长 4096 字符 |
+| `voice` | String | 是 | 预置音色：`alloy` / `echo` / `fable` / `onyx` / `nova` / `shimmer` |
+| `response_format` | String | 否 | 输出格式，默认 `mp3` |
+| `speed` | Float | 否 | 语速倍率，可选 0.25 ~ 4.0，默认 1.0 |
+
+**响应**：二进制音频字节 + 对应 Content-Type（`audio/mpeg` / `audio/ogg` / `audio/aac` / `audio/flac` / `audio/wav` / `audio/pcm`）；`Content-Disposition` 含 `attachment; filename="speech.<ext>"`。
+
+### 10. Audio Transcriptions API（STT / Whisper）
+
+```
+POST /v1/audio/transcriptions
+```
+
+OpenAI 兼容语音转写（Whisper），以 multipart/form-data 上传音频文件，上游按 `verbose_json` 返回带词级时间戳的结果。
+
+**Headers：**
+
+| Header | 必需 | 说明 |
+|---|---|---|
+| `Authorization` | 是 | `Bearer <gateway-api-key>` |
+| `Content-Type` | 是 | `multipart/form-data; boundary=...` |
+
+**表单字段：**
+
+| 字段 | 类型 | 必需 | 说明 |
+|---|---|---|---|
+| `file` | File | 是 | 音频文件（mp3 / mp4 / mpeg / mpga / m4a / wav / webm），建议 ≤ 25 MB |
+| `model` | String | 是 | Whisper 模型 ID，如 `whisper-1` |
+| `language` | String | 否 | ISO-639-1 语言代码 |
+| `prompt` | String | 否 | 上下文提示词，用于引导风格和专有名词 |
+| `response_format` | String | 否 | 响应格式，默认 `json`；网关固定透传 `verbose_json` |
+| `temperature` | Float | 否 | 0.0 ~ 1.0，默认 0 |
+| `timestamp_granularities[]` | String[] | 否 | `word` / `segment` 时间戳粒度 |
+
+**响应（verbose_json）：**
+
+```json
+{
+  "task": "transcribe",
+  "language": "en",
+  "duration": 1.2,
+  "text": "Hello, world!",
+  "words": [
+    { "word": "Hello", "start": 0.0, "end": 0.4 },
+    { "word": "world", "start": 0.5, "end": 0.9 }
+  ],
+  "segments": [
+    { "id": 0, "start": 0.0, "end": 1.2, "text": "Hello, world!", "tokens": [1, 2], "temperature": 0.0 }
+  ]
+}
+```
+
 ---
 
 ## 管理端 API
 
 管理端 API 需先登录获取 Admin Token，通过 `Authorization: Bearer <admin-token>` 传递。
 
-### 8. 管理员认证
+### 11. 管理员认证
 
 #### 登录
 
@@ -411,7 +547,7 @@ GET /api/admin/me
 
 ---
 
-### 9. 渠道管理
+### 12. 渠道管理
 
 #### 渠道列表
 
@@ -450,6 +586,9 @@ POST /api/admin/channels
   "chatPath": "/v1/chat/completions",
   "videoPath": "/v1/videos",
   "imagePath": "/v1/images/generations",
+  "embeddingPath": "/v1/embeddings",
+  "audioSpeechPath": "/v1/audio/speech",
+  "audioTranscriptionPath": "/v1/audio/transcriptions",
   "modelsPath": "/v1/models",
   "apiKey": "sk-xxxxx",
   "authMode": null,
@@ -559,7 +698,7 @@ DELETE /api/admin/channels/{id}
 
 ---
 
-### 10. 渠道 OAuth 授权
+### 13. 渠道 OAuth 授权
 
 #### 上传 auth.json
 
@@ -622,7 +761,7 @@ DELETE /api/admin/channels/{id}/auth
 
 ---
 
-### 11. API Key 管理
+### 14. API Key 管理
 
 #### API Key 列表
 
@@ -717,7 +856,7 @@ DELETE /api/admin/api-keys/{id}
 
 ---
 
-### 12. 模型映射管理
+### 15. 模型映射管理
 
 #### 模型列表
 
@@ -778,7 +917,7 @@ PUT /api/admin/models/{id}/capabilities
 
 ---
 
-### 13. 请求日志
+### 16. 请求日志
 
 #### 日志分页查询
 
@@ -840,7 +979,7 @@ GET /api/admin/request-logs/{id}
 
 ---
 
-### 14. 仪表盘统计
+### 17. 仪表盘统计
 
 ```
 GET /api/admin/dashboard/stats
@@ -880,7 +1019,7 @@ GET /api/admin/dashboard/stats
 
 ---
 
-### 15. 网关元信息
+### 18. 网关元信息
 
 ```
 GET /api/admin/gateway-info
@@ -914,7 +1053,7 @@ GET /api/admin/gateway-info
 
 ---
 
-### 16. 系统配置
+### 19. 系统配置
 
 #### 获取路由配置
 
@@ -956,6 +1095,128 @@ PUT /api/admin/system-config/routing
   "stickyTtlMinutes": 30
 }
 ```
+
+---
+
+## 可观测性接口
+
+Spring Boot Actuator 默认暴露健康检查与 Prometheus 抓取端点，路径前缀 `/actuator`；**不需要鉴权**（运维内网访问），部署时请通过反向代理限制访问。
+
+### 1. 健康检查
+
+```
+GET /actuator/health
+```
+
+**响应：**
+
+```json
+{
+  "status": "UP",
+  "components": {
+    "db": { "status": "UP" },
+    "diskSpace": { "status": "UP" },
+    "livenessState": { "status": "UP" },
+    "readinessState": { "status": "UP" }
+  }
+}
+```
+
+### 2. Prometheus 抓取
+
+```
+GET /actuator/prometheus
+```
+
+网关业务指标（详见 [AI_GATEWAY_PROGRESS.md](AI_GATEWAY_PROGRESS.md)）：
+
+| 指标 | 类型 | Tag 维度 | 说明 |
+|---|---|---|---|
+| `gateway_requests_total` | Counter | endpoint, status | 网关入口请求总数 |
+| `gateway_request_duration_seconds` | Timer | endpoint, status | 网关入口请求耗时分布 |
+| `gateway_upstream_calls_total` | Counter | endpoint, provider, status | 上游调用总数 |
+| `gateway_upstream_duration_seconds` | Timer | endpoint, provider, status | 上游调用耗时分布 |
+| `gateway_failover_attempts_total` | Counter | endpoint, provider | 失败切换次数 |
+| `gateway_errors_total` | Counter | endpoint, error_code | 错误码分布 |
+| `gateway_active_requests` | Gauge | endpoint | 在飞请求数 |
+
+### 3. 请求 ID 关联
+
+所有公开端点的响应头会回传 `X-Request-Id`，同时写入 SLF4J MDC，贯穿 `app-info.log` / `app-error.log` 等所有日志文件，便于跨服务追踪同一请求。
+
+```bash
+curl -i http://localhost:8080/v1/models \
+  -H 'Authorization: Bearer sk-local-dev'
+# HTTP/1.1 200
+# X-Request-Id: 4f8b9c2e1a0d4e7f...
+```
+
+### 20. 熔断器管理
+
+按 `(providerCode, providerModel)` 维度查看 / 重置上游熔断器状态；OPEN 状态由真实失败率自动驱动，不提供手动 OPEN 接口避免误操作把已知不可用渠道加回路由。
+
+#### 列出所有熔断器
+
+```
+GET /api/admin/circuit-breakers
+```
+
+**响应数据：**
+
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "providerCode": "openai-main",
+      "providerModel": "gpt-4o",
+      "state": "CLOSED",
+      "totalCalls": 20,
+      "failureCount": 0,
+      "openedAtEpochMs": 0
+    }
+  ]
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `state` | `CLOSED` / `OPEN` / `HALF_OPEN` |
+| `totalCalls` | 当前滑动窗口内的总调用数 |
+| `failureCount` | 当前滑动窗口内的失败数 |
+
+#### 读取熔断器配置
+
+```
+GET /api/admin/circuit-breakers/properties
+```
+
+**响应数据：**
+
+```json
+{
+  "windowSize": 20,
+  "failureRateThreshold": 0.5,
+  "minimumCalls": 10,
+  "openDurationSeconds": 60,
+  "halfOpenMaxTrials": 3
+}
+```
+
+#### 重置熔断器
+
+```
+POST /api/admin/circuit-breakers/{providerCode}/{providerModel}/reset
+```
+
+**路径参数：**
+
+| 名称 | 说明 |
+|---|---|
+| `providerCode` | 渠道编码 |
+| `providerModel` | 上游真实模型 ID |
+
+强制把指定维度的熔断器重置为 `CLOSED`，并清空滑动窗口；用于运维主动恢复或验证场景。
 
 ---
 

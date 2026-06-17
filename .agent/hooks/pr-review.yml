@@ -1,0 +1,72 @@
+version: '1.0'
+name: pr-review
+displayName: PR 审查流水线
+description: |
+  PR 审查 4 段流水线：
+  1. diff-reader 拉取 PR 改动清单与 diff
+  2. security-auditor 专项安全审计（密钥、日志脱敏、SQL 注入、鉴权绕过）
+  3. spec-reviewer 规范审查（命名、注释、Lombok、Entity/DTO/VO 约定、AGENTS.md 同步）
+  4. reviewer-summary 汇总所有报告，给出最终结论
+
+  任何审查阶段发现 fail 项即打回到 diff-reader 重新走一遍；超过 maxRetries 中断。
+
+  Token 优化：默认 contextMap / summaryMaxChars=600 / maxArtifactSize=6000；
+  workflow-runner 仅把上一 stage 的"## 摘要"喂给下一 stage，不传全文。
+
+contextMap: .agent/CONTEXT_MAP.md
+summaryMaxChars: 600
+maxArtifactSize: 6000
+stateFile: .agent/hooks/.state/pr-review.json
+
+stages:
+  - name: diff-reader
+    displayName: 读取 PR 改动
+    agent: agents/diff-reader.md
+    inputs:
+      - .agent/CONTEXT_MAP.md
+    outputs:
+      - pr-diff.md
+    summaryRequired: true
+    onSuccess: security
+    onFailure: stop
+
+  - name: security
+    displayName: 安全审计
+    agent: agents/security-auditor.md
+    inputs:
+      - pr-diff.md
+    outputs:
+      - pr-security-review.md
+    summaryRequired: true
+    maxRetries: 2
+    onSuccess: spec
+    onFailure: diff-reader
+
+  - name: spec
+    displayName: 规范审查
+    agent: agents/spec-reviewer.md
+    inputs:
+      - pr-diff.md
+    outputs:
+      - pr-spec-review.md
+    summaryRequired: true
+    maxRetries: 2
+    onSuccess: summary
+    onFailure: diff-reader
+
+  - name: summary
+    displayName: 汇总审查结论
+    agent: agents/reviewer-summary.md
+    inputs:
+      - pr-diff.md
+      - pr-security-review.md
+      - pr-spec-review.md
+    outputs:
+      - pr-review-summary.md
+    summaryRequired: true
+    onSuccess: done
+    onFailure: stop
+
+triggers:
+  manual: true
+  command: /project:review-pr

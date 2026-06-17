@@ -7,6 +7,8 @@ import { getChannels } from '@/api/channels'
 import { getModels } from '@/api/models'
 import type { ApiKeyLimitForm, ApiKeyVO, ApiKeyForm, ApiKeyUpdateForm, ChannelVO, ModelVO } from '@/types'
 import { activeStatuses, apiKeyLimitTypes, quotaWindowUnits } from '@/types'
+import PageHeader from '@/components/PageHeader.vue'
+import { KeyOutline } from '@vicons/ionicons5'
 
 const message = useMessage()
 // 跟踪密钥表格加载状态。
@@ -360,11 +362,17 @@ onMounted(load)
 
 <template>
   <div>
-    <n-space vertical>
-      <n-space justify="space-between">
-        <n-h2>网关密钥</n-h2>
+    <PageHeader
+      title="网关密钥"
+      subtitle="生成客户端调用网关时使用的 API Key，配置额度、限额和授权的渠道 / 模型范围；创建后仅显示一次原文。"
+      :icon="KeyOutline"
+    >
+      <template #actions>
         <n-button type="primary" @click="showCreateKey">生成密钥</n-button>
-      </n-space>
+      </template>
+    </PageHeader>
+
+    <n-space vertical>
       <n-data-table :columns="columns" :data="data" :loading="loading" :pagination="false" />
     </n-space>
 

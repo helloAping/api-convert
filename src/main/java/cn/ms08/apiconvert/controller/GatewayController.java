@@ -52,4 +52,19 @@ public class GatewayController {
     public void models(HttpServletRequest request, HttpServletResponse response) throws IOException {
         endpointRegistry.get(EndpointType.OPENAI_MODELS).handle(request, response);
     }
+
+    @PostMapping("/v1/embeddings")
+    public void embeddings(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        endpointRegistry.get(EndpointType.OPENAI_EMBEDDINGS).handle(request, response);
+    }
+
+    @PostMapping("/v1/audio/speech")
+    public void audioSpeech(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        endpointRegistry.get(EndpointType.AUDIO_SPEECH).handle(request, response);
+    }
+
+    @PostMapping("/v1/audio/transcriptions")
+    public void audioTranscriptions(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        endpointRegistry.get(EndpointType.AUDIO_TRANSCRIPTIONS).handle(request, response);
+    }
 }

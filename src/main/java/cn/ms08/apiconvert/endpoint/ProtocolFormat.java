@@ -20,6 +20,9 @@ public final class ProtocolFormat {
             case OPENAI_VIDEOS -> OPENAI;
             case OPENAI_IMAGES -> OPENAI;
             case OPENAI_MODELS -> OPENAI;
+            case OPENAI_EMBEDDINGS -> OPENAI;
+            case AUDIO_SPEECH -> OPENAI;
+            case AUDIO_TRANSCRIPTIONS -> OPENAI;
             case HEALTH -> "health";
         };
     }

@@ -20,6 +20,9 @@ public record ModelRoute(
         String chatPath,
         String videoPath,
         String imagePath,
+        String embeddingPath,
+        String audioSpeechPath,
+        String audioTranscriptionPath,
         String apiKey,
         String authMode,
         String authFilePath,
@@ -33,13 +36,36 @@ public record ModelRoute(
                           String baseUrl, String chatPath, String apiKey,
                           BigDecimal inputQuotaPerMillion, BigDecimal outputQuotaPerMillion,
                           BigDecimal cacheReadQuotaPerMillion) {
-                this(publicModel, providerCode, providerType, providerModel, baseUrl, chatPath, null, null, apiKey,
+                this(publicModel, providerCode, providerType, providerModel, baseUrl, chatPath, null, null, null, null, null, apiKey,
                         null, null, inputQuotaPerMillion, outputQuotaPerMillion, cacheReadQuotaPerMillion, null, null);
         }
 
         public ModelRoute(String publicModel, String providerCode, ProviderType providerType, String providerModel,
                           String baseUrl, String chatPath, String videoPath, String imagePath, String apiKey,
                           String authMode, String authFilePath,
+                          BigDecimal inputQuotaPerMillion, BigDecimal outputQuotaPerMillion,
+                          BigDecimal cacheReadQuotaPerMillion, List<ChannelCapability> capabilities,
+                          String allowedCapabilities) {
+                this(publicModel, providerCode, providerType, providerModel, baseUrl, chatPath, videoPath, imagePath,
+                        null, null, null, apiKey, authMode, authFilePath, inputQuotaPerMillion, outputQuotaPerMillion,
+                        cacheReadQuotaPerMillion, capabilities, allowedCapabilities);
+        }
+
+        public ModelRoute(String publicModel, String providerCode, ProviderType providerType, String providerModel,
+                          String baseUrl, String chatPath, String videoPath, String imagePath, String embeddingPath,
+                          String apiKey, String authMode, String authFilePath,
+                          BigDecimal inputQuotaPerMillion, BigDecimal outputQuotaPerMillion,
+                          BigDecimal cacheReadQuotaPerMillion, List<ChannelCapability> capabilities,
+                          String allowedCapabilities) {
+                this(publicModel, providerCode, providerType, providerModel, baseUrl, chatPath, videoPath, imagePath,
+                        embeddingPath, null, null, apiKey, authMode, authFilePath, inputQuotaPerMillion,
+                        outputQuotaPerMillion, cacheReadQuotaPerMillion, capabilities, allowedCapabilities);
+        }
+
+        public ModelRoute(String publicModel, String providerCode, ProviderType providerType, String providerModel,
+                          String baseUrl, String chatPath, String videoPath, String imagePath, String embeddingPath,
+                          String audioSpeechPath, String audioTranscriptionPath,
+                          String apiKey, String authMode, String authFilePath,
                           BigDecimal inputQuotaPerMillion, BigDecimal outputQuotaPerMillion,
                           BigDecimal cacheReadQuotaPerMillion, List<ChannelCapability> capabilities,
                           String allowedCapabilities) {
@@ -51,6 +77,9 @@ public record ModelRoute(
                 this.chatPath = chatPath;
                 this.videoPath = videoPath;
                 this.imagePath = imagePath;
+                this.embeddingPath = embeddingPath;
+                this.audioSpeechPath = audioSpeechPath;
+                this.audioTranscriptionPath = audioTranscriptionPath;
                 this.apiKey = apiKey;
                 this.authMode = authMode;
                 this.authFilePath = authFilePath;
@@ -92,6 +121,34 @@ public record ModelRoute(
                 String capPath = capabilityPath(EndpointType.OPENAI_IMAGES.name());
                 if (capPath != null) return capPath;
                 return imagePath == null || imagePath.isBlank() ? "/v1/images/generations" : imagePath;
+        }
+
+        /**
+         * 缺省嵌入路径，兼容旧数据和未单独配置嵌入端点的渠道。
+         */
+        public String resolvedEmbeddingPath() {
+                String capPath = capabilityPath(EndpointType.OPENAI_EMBEDDINGS.name());
+                if (capPath != null) return capPath;
+                return embeddingPath == null || embeddingPath.isBlank() ? "/v1/embeddings" : embeddingPath;
+        }
+
+        /**
+         * 缺省 TTS 路径，兼容旧数据和未单独配置语音合成端点的渠道。
+         */
+        public String resolvedAudioSpeechPath() {
+                String capPath = capabilityPath(EndpointType.AUDIO_SPEECH.name());
+                if (capPath != null) return capPath;
+                return audioSpeechPath == null || audioSpeechPath.isBlank() ? "/v1/audio/speech" : audioSpeechPath;
+        }
+
+        /**
+         * 缺省 STT 路径，兼容旧数据和未单独配置语音转写端点的渠道。
+         */
+        public String resolvedAudioTranscriptionPath() {
+                String capPath = capabilityPath(EndpointType.AUDIO_TRANSCRIPTIONS.name());
+                if (capPath != null) return capPath;
+                return audioTranscriptionPath == null || audioTranscriptionPath.isBlank()
+                        ? "/v1/audio/transcriptions" : audioTranscriptionPath;
         }
 
         private String capabilityPath(String endpointTypeName) {

@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://api-convert.local/.agent/hooks/schema.json",
+  "title": "Agent Workflow Hook Pipeline",
+  "description": "用于 .agent/hooks/*.yml 的 YAML schema，描述由多 agent 串行协作完成的工作流。每个 stage 由一个 sub-agent 执行，stage 之间通过 transition 串联。",
+  "type": "object",
+  "required": ["version", "name", "stages"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "schema 版本，当前固定为 '1.0'",
+      "enum": ["1.0"]
+    },
+    "name": {
+      "type": "string",
+      "description": "pipeline 唯一标识，kebab-case",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "displayName": {
+      "type": "string",
+      "description": "人类可读名称"
+    },
+    "description": {
+      "type": "string",
+      "description": "pipeline 用途说明"
+    },
+    "stages": {
+      "type": "array",
+      "description": "有序 stage 列表，按数组顺序声明，可被 transition 字段重新路由",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/stage" }
+    },
+    "triggers": {
+      "type": "object",
+      "description": "触发方式",
+      "additionalProperties": false,
+      "properties": {
+        "manual": {
+          "type": "boolean",
+          "description": "允许用户手动触发"
+        },
+        "command": {
+          "type": "string",
+          "description": "绑定的 slash command，例如 /project:run-feature"
+        }
+      }
+    },
+    "contextMap": {
+      "type": "string",
+      "description": "项目地图文件路径（相对仓库根），sub-agent 默认按需加载；默认 .agent/CONTEXT_MAP.md",
+      "default": ".agent/CONTEXT_MAP.md"
+    },
+    "summaryMaxChars": {
+      "type": "integer",
+      "description": "每个 stage 产出文件 '## 摘要' 小节的最大字符数；超出会被 workflow-runner 截断并警告",
+      "default": 600,
+      "minimum": 100,
+      "maximum": 2000
+    },
+    "maxArtifactSize": {
+      "type": "integer",
+      "description": "单个 stage 产物（不含附录）的最大字符数；超过时 workflow-runner 拒绝该 stage 完成并要求拆分",
+      "default": 6000,
+      "minimum": 1000,
+      "maximum": 20000
+    },
+    "stateFile": {
+      "type": "string",
+      "description": "workflow-runner 持久化执行状态的文件路径（相对仓库根），用于重试计数 / 阶段轨迹 / 断点恢复；默认 .agent/hooks/.state/<name>.json",
+      "pattern": "^\\.agent/hooks/\\.state/.+\\.json$"
+    }
+  },
+  "definitions": {
+    "stage": {
+      "type": "object",
+      "required": ["name", "agent"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "stage 唯一标识，必须与 stages 数组中其他 stage 不重名；transition 引用此字段",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "人类可读名称"
+        },
+        "agent": {
+          "type": "string",
+          "description": "相对 .agent/ 的 sub-agent 角色文件路径，例如 agents/planner.md"
+        },
+        "inputs": {
+          "type": "array",
+          "description": "该 stage 读取的文件 glob 列表（相对仓库根）",
+          "items": { "type": "string" }
+        },
+        "outputs": {
+          "type": "array",
+          "description": "该 stage 产出的文件 glob 列表（相对仓库根），用于串联下一阶段",
+          "items": { "type": "string" }
+        },
+        "summaryRequired": {
+          "type": "boolean",
+          "description": "本 stage 产出文件是否必须有 '## 摘要' 小节；默认 true（参见 .agent/agents/_CONVENTIONS.md §2）",
+          "default": true
+        },
+        "maxRetries": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "transition 回到本 stage 的最大次数；超过则中断流水线"
+        },
+        "onSuccess": {
+          "type": "string",
+          "description": "成功后跳转到的 stage name，或 'done' / 'stop'"
+        },
+        "onFailure": {
+          "type": "string",
+          "description": "失败后跳转到的 stage name，或 'done' / 'stop'。未声明时默认 'stop'"
+        }
+      }
+    }
+  }
+}

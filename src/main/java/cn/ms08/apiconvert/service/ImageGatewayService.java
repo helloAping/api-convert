@@ -34,13 +34,16 @@ public class ImageGatewayService {
     private final ProviderClientRegistry providerClientRegistry;
     private final UsageRecorder usageRecorder;
     private final ApiKeyQuotaService apiKeyQuotaService;
+    private final cn.ms08.apiconvert.metrics.GatewayMetrics metrics;
 
     public ImageGatewayService(RoutingService routingService, ProviderClientRegistry providerClientRegistry,
-                               UsageRecorder usageRecorder, ApiKeyQuotaService apiKeyQuotaService) {
+                               UsageRecorder usageRecorder, ApiKeyQuotaService apiKeyQuotaService,
+                               cn.ms08.apiconvert.metrics.GatewayMetrics metrics) {
         this.routingService = routingService;
         this.providerClientRegistry = providerClientRegistry;
         this.usageRecorder = usageRecorder;
         this.apiKeyQuotaService = apiKeyQuotaService;
+        this.metrics = metrics;
     }
 
     /**
@@ -56,14 +59,23 @@ public class ImageGatewayService {
             route = routingService.resolveModel(request.getModel(), principal.apiKeyId(),
                     principal.allowedChannelCodes(), principal.allowedModelNames(), EndpointType.OPENAI_IMAGES);
             apiKeyQuotaService.recordRequest(principal.apiKeyId());
-            OpenAiImageResponse response = providerClientRegistry.get(route.providerType())
-                    .generateImage(route, request);
-            routingService.recordSuccess(principal.apiKeyId(), route);
-            usageRecorder.recordSuccess(requestId, principal.apiKeyId(), SOURCE_PROTOCOL, REQUEST_TYPE,
-                    route, false, HttpStatus.OK.value(), System.currentTimeMillis() - start, null);
-            return response;
+            long upstreamStart = System.nanoTime();
+            int upstreamStatus = HttpStatus.INTERNAL_SERVER_ERROR.value();
+            try {
+                OpenAiImageResponse response = providerClientRegistry.get(route.providerType())
+                        .generateImage(route, request);
+                upstreamStatus = HttpStatus.OK.value();
+                routingService.recordSuccess(principal.apiKeyId(), route);
+                usageRecorder.recordSuccess(requestId, principal.apiKeyId(), SOURCE_PROTOCOL, REQUEST_TYPE,
+                        route, false, HttpStatus.OK.value(), System.currentTimeMillis() - start, null);
+                return response;
+            } finally {
+                metrics.recordUpstream(EndpointType.OPENAI_IMAGES, route.providerType().name(),
+                        upstreamStatus, System.nanoTime() - upstreamStart);
+            }
         } catch (ProviderException exception) {
             routingService.recordFailure(principal.apiKeyId(), null, route, null);
+            metrics.recordError(EndpointType.OPENAI_IMAGES, exception.code().name());
             log.warn("图片生成上游调用失败：model={} channel={} error={}",
                     request != null ? request.getModel() : null,
                     route != null ? route.providerCode() : null,
@@ -73,11 +85,13 @@ public class ImageGatewayService {
                     System.currentTimeMillis() - start, exception.code().name(), exception.getMessage());
             throw exception;
         } catch (GatewayException exception) {
+            metrics.recordError(EndpointType.OPENAI_IMAGES, exception.code().name());
             usageRecorder.recordFailure(requestId, principal.apiKeyId(), SOURCE_PROTOCOL, REQUEST_TYPE, route,
                     request != null ? request.getModel() : null, false, exception.status().value(),
                     System.currentTimeMillis() - start, exception.code().name(), exception.getMessage());
             throw exception;
         } catch (Exception exception) {
+            metrics.recordError(EndpointType.OPENAI_IMAGES, ErrorCode.INTERNAL_ERROR.name());
             log.error("图片生成网关异常：{}", exception.getMessage(), exception);
             usageRecorder.recordFailure(requestId, principal.apiKeyId(), SOURCE_PROTOCOL, REQUEST_TYPE, route,
                     request != null ? request.getModel() : null, false, HttpStatus.INTERNAL_SERVER_ERROR.value(),

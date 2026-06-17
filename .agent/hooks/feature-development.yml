@@ -1,0 +1,79 @@
+version: '1.0'
+name: feature-development
+displayName: 标准功能开发流水线
+description: |
+  标准功能开发 4 段流水线：
+  1. planner 梳理实现计划
+  2. plan-reviewer 审查计划是否对齐需求
+  3. coder 按计划写代码 + 测试 + 数据库迁移
+  4. code-reviewer 审查代码是否符合规范
+
+  失败时打回上一阶段重做；同一阶段被打回超过 maxRetries 次后中断流水线。
+
+  Token 优化：默认 contextMap / summaryMaxChars=600 / maxArtifactSize=6000；
+  workflow-runner 仅把上一 stage 的"## 摘要"喂给下一 stage，不传全文。
+
+contextMap: .agent/CONTEXT_MAP.md
+summaryMaxChars: 600
+maxArtifactSize: 6000
+stateFile: .agent/hooks/.state/feature-development.json
+
+stages:
+  - name: plan
+    displayName: 梳理实现计划
+    agent: agents/planner.md
+    inputs:
+      - .agent/CONTEXT_MAP.md
+      - .agent/docs/AI_GATEWAY_PROGRESS.md
+    outputs:
+      - plan.md
+    summaryRequired: true
+    onSuccess: review-plan
+    onFailure: stop
+
+  - name: review-plan
+    displayName: 审查实现计划
+    agent: agents/plan-reviewer.md
+    inputs:
+      - plan.md
+    outputs:
+      - plan-review.md
+    summaryRequired: true
+    maxRetries: 3
+    onSuccess: code
+    onFailure: plan
+
+  - name: code
+    displayName: 编写代码
+    agent: agents/coder.md
+    inputs:
+      - plan.md
+      - plan-review.md
+      - .agent/CONTEXT_MAP.md
+    outputs:
+      - src/**/*
+      - frontend/src/**/*
+      - src/main/resources/db/migration/**/*.sql
+      - code-changes.md
+    summaryRequired: true
+    maxRetries: 3
+    onSuccess: review-code
+    onFailure: stop
+
+  - name: review-code
+    displayName: 审查代码实现
+    agent: agents/code-reviewer.md
+    inputs:
+      - plan.md
+      - plan-review.md
+      - code-changes.md
+    outputs:
+      - code-review.md
+    summaryRequired: true
+    maxRetries: 3
+    onSuccess: done
+    onFailure: code
+
+triggers:
+  manual: true
+  command: /project:run-feature

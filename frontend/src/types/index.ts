@@ -192,6 +192,8 @@ export interface RoutingConfigForm {
 export interface GatewayInfoVO {
   /** 褰撳墠鍚庣鎺ュ彛 Base URL锛屽墠绔睍绀烘椂浼氫笌绔偣璺緞缁勫悎鎴愬畬鏁磋皟鐢ㄥ湴鍧€銆?*/
   baseUrl: string
+  /** 缃戝叧鐗堟湰鍙凤紝dev 鐜涓衡€淒ev鈥濓紝姝ｅ紡鏋勫缓鏉ヨ嚜 spring-boot BuildInfo銆?*/
+  version?: string
   /** 褰撳墠鍚庣宸叉敮鎸佺殑鍏紑璋冪敤绔偣銆?*/
   endpoints: GatewayEndpointVO[]
 }
@@ -287,6 +289,12 @@ export interface ChannelForm {
   videoPath: string
   /** 供应商特定的图片生成请求路径。 */
   imagePath: string
+  /** 供应商特定的嵌入请求路径（OpenAI Embeddings API）。 */
+  embeddingPath?: string
+  /** 供应商特定的语音合成请求路径（OpenAI Audio Speech API）。 */
+  audioSpeechPath?: string
+  /** 供应商特定的语音转写请求路径（OpenAI Audio Transcriptions API）。 */
+  audioTranscriptionPath?: string
   /** 供应商特定的模型列表请求路径。 */
   modelsPath: string
   /** 原始供应商密钥；更新时为空表示保留现有密钥。 */
@@ -499,15 +507,15 @@ export const routeModes = ['RANDOM', 'ROUND_ROBIN', 'WEIGHTED', 'SESSION_STICKY'
 /** 绠＄悊绔彲閫夌殑绔偣绫诲瀷锛岀敤浜庢寜妯″瀷闄愬埗鍏佽璋冪敤鐨勭鐐广€?*/
 /** 每个供应商默认支持的端点列表（能力维度），新建渠道时自动预选。 */
 export const supplierDefaultEndpoints: Record<string, string[]> = {
-  OPENAI: ['CHAT_COMPLETIONS', 'OPENAI_RESPONSES', 'OPENAI_VIDEOS', 'OPENAI_IMAGES'],
+  OPENAI: ['CHAT_COMPLETIONS', 'OPENAI_RESPONSES', 'OPENAI_VIDEOS', 'OPENAI_IMAGES', 'OPENAI_EMBEDDINGS', 'AUDIO_SPEECH', 'AUDIO_TRANSCRIPTIONS'],
   ANTHROPIC: ['ANTHROPIC_MESSAGES'],
-  CUSTOM: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
-  MIMO_TOKEN_PLAN: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
-  DEEPSEEK: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
-  VOLC_CODINGPLAN: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
-  OPENCODE: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  CUSTOM: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES', 'OPENAI_EMBEDDINGS', 'AUDIO_SPEECH', 'AUDIO_TRANSCRIPTIONS'],
+  MIMO_TOKEN_PLAN: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES', 'OPENAI_EMBEDDINGS', 'AUDIO_SPEECH', 'AUDIO_TRANSCRIPTIONS'],
+  DEEPSEEK: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES', 'OPENAI_EMBEDDINGS', 'AUDIO_SPEECH', 'AUDIO_TRANSCRIPTIONS'],
+  VOLC_CODINGPLAN: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES', 'OPENAI_EMBEDDINGS', 'AUDIO_SPEECH', 'AUDIO_TRANSCRIPTIONS'],
+  OPENCODE: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES', 'OPENAI_EMBEDDINGS', 'AUDIO_SPEECH', 'AUDIO_TRANSCRIPTIONS'],
   GEMINI: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
-  GPT_AUTH: ['CHAT_COMPLETIONS', 'OPENAI_VIDEOS', 'OPENAI_IMAGES'],
+  GPT_AUTH: ['CHAT_COMPLETIONS', 'OPENAI_VIDEOS', 'OPENAI_IMAGES', 'OPENAI_EMBEDDINGS', 'AUDIO_SPEECH', 'AUDIO_TRANSCRIPTIONS'],
   CLAUDE_AUTH: ['ANTHROPIC_MESSAGES'],
 }
 
@@ -518,6 +526,9 @@ export const endpointLabels: Record<string, string> = {
   OPENAI_RESPONSES: 'Responses API',
   OPENAI_VIDEOS: '视频生成',
   OPENAI_IMAGES: '图像生成',
+  OPENAI_EMBEDDINGS: '嵌入生成',
+  AUDIO_SPEECH: '语音合成',
+  AUDIO_TRANSCRIPTIONS: '语音转写',
 }
 
 /** 各端点类型在各供应商下的默认请求路径，用于新建渠道时自动填充。 */
@@ -582,6 +593,42 @@ export const capabilityDefaultPaths: Record<string, Record<string, string>> = {
     GPT_AUTH: '/v1/images/generations',
     CLAUDE_AUTH: '/v1/images/generations',
   },
+  OPENAI_EMBEDDINGS: {
+    OPENAI: '/v1/embeddings',
+    ANTHROPIC: '/v1/embeddings',
+    CUSTOM: '/v1/embeddings',
+    MIMO_TOKEN_PLAN: '/v1/embeddings',
+    DEEPSEEK: '/v1/embeddings',
+    VOLC_CODINGPLAN: '/v1/embeddings',
+    OPENCODE: '/v1/embeddings',
+    GEMINI: '/v1/embeddings',
+    GPT_AUTH: '/v1/embeddings',
+    CLAUDE_AUTH: '/v1/embeddings',
+  },
+  AUDIO_SPEECH: {
+    OPENAI: '/v1/audio/speech',
+    ANTHROPIC: '/v1/audio/speech',
+    CUSTOM: '/v1/audio/speech',
+    MIMO_TOKEN_PLAN: '/v1/audio/speech',
+    DEEPSEEK: '/v1/audio/speech',
+    VOLC_CODINGPLAN: '/v1/audio/speech',
+    OPENCODE: '/v1/audio/speech',
+    GEMINI: '/v1/audio/speech',
+    GPT_AUTH: '/v1/audio/speech',
+    CLAUDE_AUTH: '/v1/audio/speech',
+  },
+  AUDIO_TRANSCRIPTIONS: {
+    OPENAI: '/v1/audio/transcriptions',
+    ANTHROPIC: '/v1/audio/transcriptions',
+    CUSTOM: '/v1/audio/transcriptions',
+    MIMO_TOKEN_PLAN: '/v1/audio/transcriptions',
+    DEEPSEEK: '/v1/audio/transcriptions',
+    VOLC_CODINGPLAN: '/v1/audio/transcriptions',
+    OPENCODE: '/v1/audio/transcriptions',
+    GEMINI: '/v1/audio/transcriptions',
+    GPT_AUTH: '/v1/audio/transcriptions',
+    CLAUDE_AUTH: '/v1/audio/transcriptions',
+  },
 }
 
 export const endpointTypeOptions = [
@@ -590,4 +637,7 @@ export const endpointTypeOptions = [
   { label: 'Responses API', value: 'OPENAI_RESPONSES' },
   { label: '视频生成', value: 'OPENAI_VIDEOS' },
   { label: '图像生成', value: 'OPENAI_IMAGES' },
-]
+  { label: '嵌入生成', value: 'OPENAI_EMBEDDINGS' },
+  { label: '语音合成', value: 'AUDIO_SPEECH' },
+  { label: '语音转写', value: 'AUDIO_TRANSCRIPTIONS' },
+] 

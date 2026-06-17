@@ -41,6 +41,7 @@ public class RoutingService {
     private final AiChannelModelMapper modelMapper;
     private final AiChannelMapper channelMapper;
     private final SystemConfigService systemConfigService;
+    private final cn.ms08.apiconvert.circuitbreaker.CircuitBreakerRegistry circuitBreakerRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -61,13 +62,15 @@ public class RoutingService {
     private final Map<FailureKey, FailureState> failureStates = new ConcurrentHashMap<>();
 
     /**
-     * 注入路由所需的模型/渠道 Mapper 和系统配置服务。
+     * 注入路由所需的模型/渠道 Mapper、系统配置服务和熔断器注册表。
      */
     public RoutingService(AiChannelModelMapper modelMapper, AiChannelMapper channelMapper,
-                          SystemConfigService systemConfigService) {
+                          SystemConfigService systemConfigService,
+                          cn.ms08.apiconvert.circuitbreaker.CircuitBreakerRegistry circuitBreakerRegistry) {
         this.modelMapper = modelMapper;
         this.channelMapper = channelMapper;
         this.systemConfigService = systemConfigService;
+        this.circuitBreakerRegistry = circuitBreakerRegistry;
     }
 
     /**
@@ -160,17 +163,19 @@ public class RoutingService {
     }
 
     /**
-     * 上游调用成功后清理该密钥在此渠道模型上的失败状态。
+     * 上游调用成功后清理该密钥在此渠道模型上的失败状态，并向熔断器记录一次成功。
      */
     public void recordSuccess(Long apiKeyId, ModelRoute route) {
         if (route == null) {
             return;
         }
         failureStates.remove(failureKey(apiKeyId, route));
+        updateCircuitBreaker(route, true);
     }
 
     /**
-     * 上游调用失败后累计连续失败次数，达到配置阈值时进入临时避让并清理相关会话粘性绑定。
+     * 上游调用失败后累计连续失败次数，达到配置阈值时进入临时避让并清理相关会话粘性绑定，
+     * 同时向熔断器记录一次失败（窗口满且超过失败率阈值时自动 OPEN）。
      */
     public void recordFailure(Long apiKeyId, UnifiedChatRequest request, ModelRoute route, String sessionKey) {
         if (route == null) {
@@ -181,6 +186,7 @@ public class RoutingService {
         if (stickyKey != null) {
             stickyBindings.remove(stickyKey);
         }
+        updateCircuitBreaker(route, false);
         if (!config.failureCooldownEnabled()) {
             return;
         }
@@ -193,6 +199,21 @@ public class RoutingService {
                 state.failureCount = 0;
             }
         }
+    }
+
+    /**
+     * 把上游调用结果反馈给 (providerCode, providerModel) 维度的熔断器；
+     * 同步更新 Prometheus 指标中的失败率 gauge。
+     */
+    private void updateCircuitBreaker(ModelRoute route, boolean success) {
+        var breaker = circuitBreakerRegistry.forKey(route.providerCode(), route.providerModel());
+        if (success) {
+            breaker.recordSuccess();
+        } else {
+            breaker.recordFailure();
+        }
+        circuitBreakerRegistry.updateFailureRate(route.providerCode(), route.providerModel(),
+                breaker.totalCalls(), breaker.failureCount());
     }
 
     private ModelRoute resolve(String requestedModel, Long apiKeyId, Set<String> allowedChannelCodes,
@@ -256,7 +277,9 @@ public class RoutingService {
     }
 
     /**
-     * 过滤出启用、ACTIVE 且配置了上游密钥的渠道，同时按端点类型限制过滤。
+     * 过滤出启用、ACTIVE 且配置了上游密钥的渠道，同时按端点类型限制和熔断器状态过滤。
+     * 熔断器 OPEN 状态的渠道直接跳过，避免把请求路由到已知不可用的上游；HALF_OPEN 状态
+     * 仍允许通过（试探配额由 {@link cn.ms08.apiconvert.circuitbreaker.CircuitBreaker} 自身控制）。
      */
     private List<RouteCandidate> activeCandidates(List<AiChannelModelEntity> models, Set<String> allowedChannelCodes,
                                                   Set<String> allowedModelNames, EndpointType endpointType) {
@@ -273,12 +296,17 @@ public class RoutingService {
             }
             AiChannelEntity channel = channelMapper.selectOne(new LambdaQueryWrapper<AiChannelEntity>()
                     .eq(AiChannelEntity::getCode, model.getChannelCode()));
-            if (channel != null
-                    && Boolean.TRUE.equals(channel.getEnabled())
-                    && "ACTIVE".equals(channel.getStatus())
-                    && hasUsableCredential(channel)) {
-                candidates.add(new RouteCandidate(model, channel));
+            if (channel == null
+                    || !Boolean.TRUE.equals(channel.getEnabled())
+                    || !"ACTIVE".equals(channel.getStatus())
+                    || !hasUsableCredential(channel)) {
+                continue;
             }
+            if (circuitBreakerRegistry.forKey(channel.getCode(), model.getProviderModel()).state()
+                    == cn.ms08.apiconvert.circuitbreaker.CircuitBreaker.State.OPEN) {
+                continue;
+            }
+            candidates.add(new RouteCandidate(model, channel));
         }
         return sorted(candidates);
     }
@@ -424,7 +452,9 @@ public class RoutingService {
         AiChannelEntity channel = selected.channel();
         return new ModelRoute(model.getPublicName(), channel.getCode(), ProviderType.valueOf(channel.getType()),
                 model.getProviderModel(), channel.getBaseUrl(), channel.getChatPath(), channel.getVideoPath(),
-                channel.getImagePath(), channel.getApiKey(),
+                channel.getImagePath(), channel.getEmbeddingPath(),
+                channel.getAudioSpeechPath(), channel.getAudioTranscriptionPath(),
+                channel.getApiKey(),
                 channel.getAuthMode(), channel.getAuthFilePath(),
                 model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion(),
                 parseCapabilities(channel.getCapabilities()),
