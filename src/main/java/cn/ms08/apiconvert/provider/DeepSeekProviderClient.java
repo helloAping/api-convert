@@ -6,9 +6,6 @@ import cn.ms08.apiconvert.adapter.protocol.OpenAiRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponseAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesRequestAdapter;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesResponseAdapter;
-import cn.ms08.apiconvert.dto.AnthropicMessageRequest;
-import cn.ms08.apiconvert.dto.ModelRoute;
-import cn.ms08.apiconvert.dto.OpenAiChatCompletionRequest;
 import cn.ms08.apiconvert.dto.ProviderModel;
 import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
 import cn.ms08.apiconvert.dto.ProviderQuota;
@@ -23,9 +20,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 @Component
 public class DeepSeekProviderClient extends BaseAiProviderClient {
@@ -45,49 +40,10 @@ public class DeepSeekProviderClient extends BaseAiProviderClient {
     @Override
     public ProviderType type() { return ProviderType.DEEPSEEK; }
 
-    // ==================== Hooks ====================
-
-    @Override
-    protected OpenAiChatCompletionRequest beforeChatRequest(ModelRoute route, OpenAiChatCompletionRequest request) {
-        if (request.getMessages() != null) {
-            for (var msg : request.getMessages()) {
-                if ("assistant".equals(msg.getRole()) && msg.getReasoningContent() == null) {
-                    msg.setReasoningContent("");
-                }
-            }
-        }
-        return request;
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    protected AnthropicMessageRequest beforeAnthropicRequest(ModelRoute route, AnthropicMessageRequest request) {
-        if (request.getMessages() != null) {
-            for (var msg : request.getMessages()) {
-                Object content = msg.getContent();
-                if (content instanceof List<?> blocks) {
-                    List<Object> mutableBlocks = new ArrayList<>(blocks);
-                    boolean changed = false;
-                    for (int i = 0; i < mutableBlocks.size(); i++) {
-                        Object block = mutableBlocks.get(i);
-                        if (block instanceof Map<?, ?> m && "thinking".equals(String.valueOf(m.get("type")))) {
-                            Map<String, Object> mutable = new LinkedHashMap<>((Map<String, Object>) m);
-                            if (!mutable.containsKey("thinking") || String.valueOf(mutable.get("thinking")).isBlank()) {
-                                Object text = mutable.get("text");
-                                mutable.put("thinking", text == null ? "" : String.valueOf(text));
-                                mutableBlocks.set(i, mutable);
-                                changed = true;
-                            }
-                        }
-                    }
-                    if (changed) {
-                        msg.setContent(mutableBlocks);
-                    }
-                }
-            }
-        }
-        return request;
-    }
+    // Chat Completions 的 reasoning_content="" 兜底、Anthropic Messages 的 thinking 块补全
+    // 之前在 beforeChatRequest / beforeAnthropicRequest 里实现，已迁移到
+    // {@link cn.ms08.apiconvert.adapter.endpoint.DeepSeekHook}，按 ProviderType 维度集中维护。
+    // 这里不再覆写 BaseAiProviderClient 的钩子，避免重复逻辑。
 
     // ==================== models / quota ====================
 
@@ -145,3 +101,4 @@ public class DeepSeekProviderClient extends BaseAiProviderClient {
         }
     }
 }
+

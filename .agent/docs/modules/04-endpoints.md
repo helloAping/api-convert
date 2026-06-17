@@ -46,27 +46,29 @@
 
 | 组件 | 说明 |
 |---|---|
-| `EndpointProviderAdapter` 接口 | `sourceEndpoint()` 源端点、`targetProvider()` 目标供应商、`adaptRequest()` 请求预处理（默认透传）、`adaptResponse()` 响应适配 |
-| `EndpointProviderAdapterRegistry` | 构建 `(EndpointType, ProviderType)` → `EndpointProviderAdapter` 映射 |
-| 12 个具体适配器 | 覆盖主流跨协议组合 |
+| `EndpointProviderAdapter` 接口 | `sourceEndpoint()` 源端点、`targetEndpoint()` 目标端点（与供应商解耦），旧 `targetProvider()` 作为过渡期回退；`adaptRequest()` / `adaptResponse()` 完成协议转换 |
+| `EndpointProviderAdapterRegistry` | 构建 `(EndpointType, EndpointType)` 主键 + `(EndpointType, ProviderType)` 兼容回退键。重复主键用 `putIfAbsent` 静默跳过，让 provider 维度的覆盖适配器（如 `ResponsesToDeepSeekChatAdapter` 覆盖 `ResponsesToOpenAiCompatibleAdapter` 的 `(OPENAI_RESPONSES, CHAT_COMPLETIONS)` key）能共存 |
+| 9 个具体适配器 | 覆盖主流跨协议组合 |
 | `ChatToolSequenceNormalizer` | DeepSeek Chat 等严格 Chat 上游要求 assistant `tool_calls` 与对应 `tool` 结果相邻；该辅助类会重排匹配结果并裁剪无结果调用 |
+| `ProviderHook` + `ProviderHookRegistry` | 按 `ProviderType` 维度的供应商特化钩子（如 DeepSeek 兜 `reasoning_content=""` / 补 `thinking` 字段），与跨协议 adapter 正交串联 |
 
 ### 3.2 适配器列表
 
-| 端点 → 供应商 | 适配器 | 说明 |
-|---|---|---|
-| `CHAT_COMPLETIONS` → `ANTHROPIC` | `ChatCompletionsToAnthropicAdapter` | Chat → Claude |
-| `CHAT_COMPLETIONS` → `DEEPSEEK_CHAT` | `ChatCompletionsToDeepSeekChatAdapter` | Chat → DeepSeek Chat |
-| `CHAT_COMPLETIONS` → `DEEPSEEK_ANTHROPIC` | `ChatCompletionsToDeepSeekAnthropicAdapter` | Chat → DeepSeek Claude |
-| `CHAT_COMPLETIONS` → `GEMINI` | `ChatCompletionsToGeminiAdapter` | Chat → Gemini |
-| `ANTHROPIC_MESSAGES` → `OPENAI_COMPATIBLE` | `AnthropicToOpenAiCompatibleAdapter` | Claude → OpenAI |
-| `ANTHROPIC_MESSAGES` → `DEEPSEEK_CHAT` | `AnthropicToDeepSeekChatAdapter` | Claude → DeepSeek Chat |
-| `ANTHROPIC_MESSAGES` → `GEMINI` | `AnthropicMessagesToGeminiAdapter` | Claude → Gemini |
-| `ANTHROPIC_MESSAGES` → `DEEPSEEK_ANTHROPIC` | `AnthropicMessagesToDeepSeekAnthropicAdapter` | Claude → DeepSeek Claude |
-| `OPENAI_RESPONSES` → `OPENAI_COMPATIBLE` | `ResponsesToOpenAiCompatibleAdapter` | Responses → OpenAI |
-| `OPENAI_RESPONSES` → `ANTHROPIC` | `ResponsesToAnthropicAdapter` | Responses → Claude |
-| `OPENAI_RESPONSES` → `DEEPSEEK_CHAT` | `ResponsesToDeepSeekChatAdapter` | Responses → DeepSeek Chat |
-| `OPENAI_RESPONSES` → `DEEPSEEK_ANTHROPIC` | `ResponsesToDeepSeekAnthropicAdapter` | Responses → DeepSeek Claude |
+| 源端点 | 目标端点 | 适配器 | 说明 |
+|---|---|---|---|
+| `CHAT_COMPLETIONS` | `ANTHROPIC_MESSAGES` | `ChatCompletionsToAnthropicAdapter` | Chat → Claude（适用于 CLAUDE_AUTH / ANTHROPIC 官方 / MIMO_TOKEN_PLAN） |
+| `CHAT_COMPLETIONS` | `CHAT_COMPLETIONS` | `ChatCompletionsToDeepSeekChatAdapter` | Chat → DeepSeek Chat（工具序列归一化） |
+| `CHAT_COMPLETIONS` | `CHAT_COMPLETIONS` | `ChatCompletionsToGeminiAdapter` | Chat → Gemini（清理 OpenAI 特有字段、developer 角色映射、响应重建） |
+| `ANTHROPIC_MESSAGES` | `CHAT_COMPLETIONS` | `AnthropicToOpenAiCompatibleAdapter` | Claude → OpenAI Chat |
+| `ANTHROPIC_MESSAGES` | `ANTHROPIC_MESSAGES` | `AnthropicMessagesToDeepSeekAnthropicAdapter` | Claude → DeepSeek Claude（响应重建） |
+| `ANTHROPIC_MESSAGES` | `ANTHROPIC_MESSAGES` | `AnthropicMessagesToGeminiAdapter` | Claude → Gemini（清理 Anthropic 特有字段、过滤 thinking/tool 块） |
+| `OPENAI_RESPONSES` | `CHAT_COMPLETIONS` | `ResponsesToOpenAiCompatibleAdapter` | Responses → OpenAI（展平 `reasoning.effort`、合并 function_call） |
+| `OPENAI_RESPONSES` | `CHAT_COMPLETIONS` | `ResponsesToDeepSeekChatAdapter` | Responses → DeepSeek Chat（`reasoning_content` 恢复） |
+| `OPENAI_RESPONSES` | `ANTHROPIC_MESSAGES` | `ResponsesToAnthropicAdapter` | Responses → Claude |
+
+**处理时序（请求方向）**：`hook.preProcess（源端点格式的供应商特化）→ adapter.adaptRequest（跨协议转换）`
+**处理时序（响应方向）**：`adapter.adaptResponse（目标端点 → 源端点）→ hook.postProcess（源端点格式的供应商特化）`
+**适配器查找顺序**：`(源端点, 供应商类型) → (源端点, 目标端点) → (源端点, adapterProvider(供应商类型))`——provider 维度覆盖优先于通用跨协议 adapter，确保 `ResponsesToDeepSeekChatAdapter` 等能覆盖 `ResponsesToOpenAiCompatibleAdapter` 的 `(OPENAI_RESPONSES, CHAT_COMPLETIONS)` key。
 
 ### 3.3 `response_format` 支持
 
@@ -90,12 +92,13 @@
         → ChatGatewayService.chat() / .stream()
           1. 生成 UUID requestId
           2. RoutingService.resolve(model)，密钥开启失败切换时会解析同模型候选列表
-          3. EndpointProviderAdapter.adaptRequest()  # 跨协议请求预处理
-          4. ProviderClientRegistry.get(type)  # 获取厂商客户端
-          5. 非流式: client.chat(route, adaptedRequest) → adaptResponse()；上游失败且密钥开启失败切换时按剩余候选重复 3-5
-          5. 流式: streamTransformerRegistry.get(endpoint, provider) → transformer.wrap() → client.streamChat()；上游未写出即失败且密钥开启失败切换时按剩余候选重复
-          6. ApiKeyQuotaService.deduct()  # 扣减额度
-          7. UsageRecorder.recordSuccess()  # 记录日志
+          3. ProviderHook.preProcess()  # 源端点格式下的供应商特化（如 DeepSeek 兜 reasoning_content）
+          4. EndpointProviderAdapter.adaptRequest()  # 跨协议请求预处理（找到即调用；同协议下 DeepSeek/Gemini 自适配器仍会跑工具序列归一化、字段清理等）
+          5. ProviderClientRegistry.get(type)  # 获取厂商客户端
+          6. 非流式: client.chat(route, adaptedRequest) → adaptResponse() → hook.postProcess()；上游失败且密钥开启失败切换时按剩余候选重复 3-6
+          6. 流式: StreamTransformerRegistry.getForUpstream(client, upstream) → transformer.wrap() → client.streamChat()；上游未写出即失败且密钥开启失败切换时按剩余候选重复
+          7. ApiKeyQuotaService.deduct()  # 扣减额度
+          8. UsageRecorder.recordSuccess()  # 记录日志
         → ResponseAdapter.toXXX()  # 转回外部响应格式
   → 返回客户端
 ```

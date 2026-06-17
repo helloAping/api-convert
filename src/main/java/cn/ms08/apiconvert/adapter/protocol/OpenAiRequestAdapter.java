@@ -131,7 +131,11 @@ public class OpenAiRequestAdapter {
                     }
                     case "user" -> providerRequest.setUser(String.valueOf(value));
                     case "reasoning_effort" -> {
-                        // OpenAI 特有字段，不发送给第三方供应商
+                        // Responses API 形态：rawOptions.reasoning.effort 已在跨协议适配器里展平为
+                        // reasoning_effort；写入显式字段以走标准序列化，避免落入 additionalProperties。
+                        if (value instanceof String s) {
+                            providerRequest.setReasoningEffort(s);
+                        }
                     }
                     case "seed" -> {
                         // OpenAI 特有字段，不发送给第三方供应商

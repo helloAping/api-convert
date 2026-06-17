@@ -125,6 +125,16 @@ public class OpenAiToAnthropicStreamTransformer extends OutputStream implements 
                 || provider == ProviderType.DEEPSEEK);
     }
 
+    /**
+     * 上游 OpenAI Chat Completions SSE → 客户端 Anthropic Messages SSE。
+     * 与供应商身份解耦：任何 Chat Completions 上游（OPENAI / GPT_AUTH / DEEPSEEK Chat 等）都能复用。
+     */
+    @Override
+    public boolean supportsUpstream(EndpointType clientEndpoint, EndpointType upstreamEndpoint) {
+        return clientEndpoint == EndpointType.ANTHROPIC_MESSAGES
+                && upstreamEndpoint == EndpointType.CHAT_COMPLETIONS;
+    }
+
     @Override
     public WrappedStream wrap(OutputStream target, String responseId, String model, long createdAt) {
         return new OpenAiToAnthropicWrappedStream(

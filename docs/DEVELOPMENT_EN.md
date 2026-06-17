@@ -10,7 +10,7 @@ The main request flow is:
 2. `GatewayApiKeyFilter` authenticates the gateway API key and loads channel/model scopes.
 3. `EndpointHandler` parses the entry protocol into unified request models.
 4. `RoutingService` selects a `ModelRoute` using model mapping, key scopes, routing mode, and failure cooldown.
-5. `EndpointProviderAdapter` converts requests and responses between the entry endpoint protocol and the upstream provider protocol.
+5. `ProviderHook.preProcess` applies per-provider specializations on the source-endpoint format (e.g. DeepSeek defaulting `reasoning_content=""`), then `EndpointProviderAdapter` performs cross-protocol conversion indexed by `(sourceEndpoint, targetEndpoint)`; the response direction reverses this.
 6. `AiProviderClient` calls the upstream model service.
 7. `ApiKeyQuotaService` estimates and deducts quota and records request-count windows.
 8. `UsageRecorder` writes request logs; Dashboard statistics are aggregated from logs.
@@ -55,26 +55,29 @@ Current usable provider types:
 
 | Type | Client | Upstream Protocol |
 |---|---|---|
-| `OPENAI_COMPATIBLE` | `OpenAiCompatibleProviderClient` | Chat Completions + Videos + Images |
-| `ANTHROPIC` | `AnthropicProviderClient` | Messages |
-| `OPENAI_RESPONSES` | `OpenAiResponsesProviderClient` | Responses API |
+| `OPENAI` | `OpenAiCompatibleProviderClient` | Chat Completions + Responses + Videos + Images (multi-capability) |
+| `ANTHROPIC` | `AnthropicProviderClient` | Messages (x-api-key) |
+| `CUSTOM` | `CustomProviderClient` | Chat Completions + Messages (user-provided baseUrl) |
+| `MIMO_TOKEN_PLAN` | `MimoTokenPlanProviderClient` | Chat Completions + Messages |
 | `GPT_AUTH` | `GptAuthProviderClient` | Chat Completions + Videos + Images + auth.json |
 | `CLAUDE_AUTH` | `ClaudeAuthProviderClient` | Messages + auth.json |
-| `DEEPSEEK_CHAT` | `DeepSeekChatProviderClient` | Chat Completions + reasoning |
-| `DEEPSEEK_ANTHROPIC` | `DeepSeekAnthropicProviderClient` | Messages + thinking |
-| `GEMINI` | `GeminiProviderClient` | Gemini `generateContent` |
+| `DEEPSEEK` | `DeepSeekProviderClient` | Chat Completions (with `reasoning_content`) + Messages (with thinking blocks) |
+| `GEMINI` | `GeminiProviderClient` | Gemini `generateContent` (shared by Chat and Anthropic) |
+| `VOLC_CODINGPLAN` | `VolcCodingPlanProviderClient` | Chat Completions + Messages (`/api/coding`) |
+| `OPENCODE` | `OpenCodeProviderClient` | Chat Completions + Messages (user-provided baseUrl) |
 
-`LOCAL` is only a reserved enum value. There is no usable Local provider client in this version.
+Since V17, providers are merged along capability dimensions: each provider declares natively supported endpoint capabilities via `EndpointCapability`; undeclared capabilities return `UNSUPPORTED_FEATURE` directly.
 
 To add a provider:
 
 1. Add a type to `ProviderType`.
-2. Implement `AiProviderClient` and register it as a Spring bean.
+2. Implement `AiProviderClient` and register it as a Spring bean; for multi-protocol capabilities, declare them via `EndpointCapability`.
 3. Ensure `ProviderClientRegistry` can resolve it.
-4. Add `EndpointProviderAdapter` implementations for all supported public endpoints.
-5. If streaming differs from the entry protocol, implement or reuse `StreamResponseTransformer`.
-6. Add it to admin frontend type lists and documentation.
-7. Add tests for URL construction, auth headers, request body conversion, error handling, and usage parsing.
+4. For provider-specific logic (e.g. DeepSeek defaulting `reasoning_content`), implement a `ProviderHook` annotated with `@HooksForProvider(ProviderType)`.
+5. New `EndpointProviderAdapter` implementations must declare `targetEndpoint()` along the `(source, target)` dimension so adapter identity is decoupled from provider type.
+6. If streaming differs from the entry protocol, implement or reuse `StreamResponseTransformer` and override `supportsUpstream(client, upstream)`.
+7. Add it to admin frontend type lists and documentation.
+8. Add tests for URL construction, auth headers, request body conversion, error handling, and usage parsing.
 
 Security requirements:
 
@@ -84,20 +87,19 @@ Security requirements:
 
 ## Adapter Development
 
-Public endpoints and upstream providers may use different protocols, so conversion is handled by `EndpointProviderAdapter`.
+Public endpoints and upstream providers may use different protocols, so conversion is handled by a two-layer composition:
+
+- **`EndpointProviderAdapter`**: implements cross-protocol request/response conversion indexed by `(sourceEndpoint, targetEndpoint)`, decoupled from provider identity.
+- **`ProviderHook`**: implements provider-specific specializations indexed by `ProviderType` (e.g. DeepSeek defaulting `reasoning_content=""`, filling `thinking` field), chained before/after the adapter.
+
+Processing order:
+- Request: `hook.preProcess (source-endpoint provider specialization) → adapter.adaptRequest (cross-protocol)`
+- Response: `adapter.adaptResponse (target → source) → hook.postProcess (source-endpoint provider specialization)`
 
 Recommended naming:
 
-```text
-{EndpointProtocol}To{ProviderProtocol}Adapter
-```
-
-Examples:
-
-- `ResponsesToOpenAiCompatibleAdapter`
-- `ResponsesToAnthropicAdapter`
-- `ChatCompletionsToDeepSeekChatAdapter`
-- `AnthropicMessagesToGeminiAdapter`
+- Cross-protocol adapter: `{SourceProtocol}To{TargetProtocol}Adapter` (e.g. `ResponsesToOpenAiCompatibleAdapter`).
+- Provider hook: `{ProviderName}Hook` (e.g. `DeepSeekHook`), annotated with `@HooksForProvider(ProviderType.X)`.
 
 Requirements:
 
@@ -105,7 +107,7 @@ Requirements:
 - Response adapters should output unified response models so quota and logs can read usage fields.
 - Tool-call sequences must satisfy the target provider constraints; DeepSeek Chat uses `ChatToolSequenceNormalizer` for strict ordering.
 - Unsupported capabilities should throw `UNSUPPORTED_FEATURE`; do not silently drop important fields.
-- New adapters should cover non-streaming and streaming behavior. Add a `StreamResponseTransformer` when streaming formats differ.
+- New adapters should cover non-streaming and streaming behavior. Add a `StreamResponseTransformer` and override `supportsUpstream(client, upstream)` when streaming formats differ.
 
 ## Routing and Model Rules
 

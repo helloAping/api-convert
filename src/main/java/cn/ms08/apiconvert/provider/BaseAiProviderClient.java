@@ -52,15 +52,24 @@ import java.nio.charset.StandardCharsets;
  * <h3>钩子方法</h3>
  * <table>
  *   <tr><th>方法</th><th>协议</th><th>时机</th><th>用途</th></tr>
- *   <tr><td>{@link #beforeChatRequest}</td><td>Chat Completions</td><td>请求发送前</td><td>修改请求体（如 DeepSeek 兜底 reasoning_content）</td></tr>
+ *   <tr><td>{@link #beforeChatRequest}</td><td>Chat Completions</td><td>请求发送前</td><td>修改请求体（兜底字段、补充 provider 私有参数等）</td></tr>
  *   <tr><td>{@link #afterChatResponse}</td><td>Chat Completions</td><td>响应解析后</td><td>修改统一响应</td></tr>
- *   <tr><td>{@link #beforeAnthropicRequest}</td><td>Anthropic Messages</td><td>请求发送前</td><td>修改请求体（如 DeepSeek 补全 thinking 字段）</td></tr>
+ *   <tr><td>{@link #beforeAnthropicRequest}</td><td>Anthropic Messages</td><td>请求发送前</td><td>修改请求体（补 thinking / 调整 system 块等）</td></tr>
  *   <tr><td>{@link #afterAnthropicResponse}</td><td>Anthropic Messages</td><td>响应解析后</td><td>修改统一响应</td></tr>
  *   <tr><td>{@link #beforeResponsesRequest}</td><td>Responses API</td><td>请求发送前</td><td>修改请求体</td></tr>
  *   <tr><td>{@link #afterResponsesResponse}</td><td>Responses API</td><td>响应解析后</td><td>修改统一响应</td></tr>
  *   <tr><td>{@link #resolveApiKey}</td><td>全部</td><td>构建鉴权头时</td><td>OAuth 类型供应商从 auth.json 读取 access_token</td></tr>
  *   <tr><td>{@link #authHeaderName}</td><td>Anthropic</td><td>构建鉴权头时</td><td>默认 x-api-key，可覆写为 Authorization: Bearer</td></tr>
  * </table>
+ *
+ * <p>
+ * <b>新代码建议改用 {@link cn.ms08.apiconvert.adapter.endpoint.ProviderHook}</b>：
+ * ProviderHook 与具体供应商类型绑定（{@code @HooksForProvider(ProviderType.X)}），由
+ * {@code ChatGatewayService} 在路由阶段统一串联（请求方向 hook.preProcess → 跨协议 adapter.adaptRequest；
+ * 响应方向 adapter.adaptResponse → hook.postProcess），与协议实现完全解耦。当前 DeepSeek 的
+ * {@code reasoning_content=""} 兜底和 thinking 块补全已迁出到 {@link cn.ms08.apiconvert.adapter.endpoint.DeepSeekHook}。
+ * 本类的 6 个请求/响应钩子仅作为旧扩展点保留。
+ * </p>
  *
  * <h3>鉴权</h3>
  * <ul>
@@ -307,7 +316,11 @@ public abstract class BaseAiProviderClient implements AiProviderClient {
 
     /**
      * Chat Completions 请求发送前钩子。
-     * 子类可覆写此方法修改请求体（如 DeepSeek 为 assistant 消息兜底 reasoning_content=""）。
+     * <p>
+     * <b>新代码建议改用 {@link cn.ms08.apiconvert.adapter.endpoint.ProviderHook}</b>，本方法
+     * 仅作为旧扩展点保留。DeepSeek 兜 reasoning_content="" 等供应商特化已迁出到
+     * {@link cn.ms08.apiconvert.adapter.endpoint.DeepSeekHook}。
+     * </p>
      *
      * @param route   已解析的路由信息
      * @param request 即将发送的 OpenAI Chat 请求体
@@ -318,8 +331,8 @@ public abstract class BaseAiProviderClient implements AiProviderClient {
     }
 
     /**
-     * Chat Completions 响应解析后钩子。
-     * 子类可覆写此方法修改统一响应。
+     * Chat Completions 响应解析后钩子。子类可覆写此方法修改统一响应。
+     * <p>新代码建议改用 {@link cn.ms08.apiconvert.adapter.endpoint.ProviderHook#postProcess}。</p>
      */
     protected UnifiedChatResponse afterChatResponse(ModelRoute route, UnifiedChatResponse response) {
         return response;
@@ -327,7 +340,11 @@ public abstract class BaseAiProviderClient implements AiProviderClient {
 
     /**
      * Anthropic Messages 请求发送前钩子。
-     * 子类可覆写此方法修改请求体（如 DeepSeek 补全 thinking 块的 thinking 字段）。
+     * <p>
+     * <b>新代码建议改用 {@link cn.ms08.apiconvert.adapter.endpoint.ProviderHook}</b>，本方法
+     * 仅作为旧扩展点保留。DeepSeek 补全 thinking 块的 thinking 字段等供应商特化已迁出到
+     * {@link cn.ms08.apiconvert.adapter.endpoint.DeepSeekHook}。
+     * </p>
      */
     protected AnthropicMessageRequest beforeAnthropicRequest(ModelRoute route, AnthropicMessageRequest request) {
         return request;
@@ -335,6 +352,7 @@ public abstract class BaseAiProviderClient implements AiProviderClient {
 
     /**
      * Anthropic Messages 响应解析后钩子。
+     * <p>新代码建议改用 {@link cn.ms08.apiconvert.adapter.endpoint.ProviderHook#postProcess}。</p>
      */
     protected UnifiedChatResponse afterAnthropicResponse(ModelRoute route, UnifiedChatResponse response) {
         return response;

@@ -10,7 +10,7 @@
 2. `GatewayApiKeyFilter` 校验网关 API Key，并加载渠道/模型授权范围。
 3. `EndpointHandler` 将不同入口协议转换为统一请求模型。
 4. `RoutingService` 根据模型、密钥授权、路由策略和失败避让选择 `ModelRoute`。
-5. `EndpointProviderAdapter` 按端点类型和 Provider 类型转换请求/响应。
+5. `ProviderHook.preProcess` 在源端点格式下做供应商特化（如 DeepSeek 兜 `reasoning_content=""`），再由 `EndpointProviderAdapter` 按 `(源端点, 目标端点)` 维度完成跨协议转换；响应方向反向。
 6. `AiProviderClient` 调用上游模型服务。
 7. `ApiKeyQuotaService` 估算/扣减额度，记录请求数限制窗口。
 8. `UsageRecorder` 写入请求日志，Dashboard 基于日志聚合统计。
@@ -55,26 +55,29 @@
 
 | 类型 | Client | 上游协议 |
 |---|---|---|
-| `OPENAI_COMPATIBLE` | `OpenAiCompatibleProviderClient` | Chat Completions + Videos + Images |
-| `ANTHROPIC` | `AnthropicProviderClient` | Messages |
-| `OPENAI_RESPONSES` | `OpenAiResponsesProviderClient` | Responses API |
+| `OPENAI` | `OpenAiCompatibleProviderClient` | Chat Completions + Responses + Videos + Images（多能力组合） |
+| `ANTHROPIC` | `AnthropicProviderClient` | Messages（x-api-key） |
+| `CUSTOM` | `CustomProviderClient` | Chat Completions + Messages（用户自填 baseUrl） |
+| `MIMO_TOKEN_PLAN` | `MimoTokenPlanProviderClient` | Chat Completions + Messages |
 | `GPT_AUTH` | `GptAuthProviderClient` | Chat Completions + Videos + Images + auth.json |
 | `CLAUDE_AUTH` | `ClaudeAuthProviderClient` | Messages + auth.json |
-| `DEEPSEEK_CHAT` | `DeepSeekChatProviderClient` | Chat Completions + reasoning |
-| `DEEPSEEK_ANTHROPIC` | `DeepSeekAnthropicProviderClient` | Messages + thinking |
-| `GEMINI` | `GeminiProviderClient` | Gemini `generateContent` |
+| `DEEPSEEK` | `DeepSeekProviderClient` | Chat Completions（含 reasoning_content）+ Messages（含 thinking 块） |
+| `GEMINI` | `GeminiProviderClient` | Gemini `generateContent`（Chat + Anthropic 共用） |
+| `VOLC_CODINGPLAN` | `VolcCodingPlanProviderClient` | Chat Completions + Messages（`/api/coding`） |
+| `OPENCODE` | `OpenCodeProviderClient` | Chat Completions + Messages（用户自填 baseUrl） |
 
-`LOCAL` 只是预留枚举，当前没有可用 Client。
+V17 起按能力维度合并：每个供应商通过 `EndpointCapability` 声明自身原生支持的端点能力，未声明的能力直接返回 `UNSUPPORTED_FEATURE`。
 
 新增 Provider 时：
 
 1. 在 `ProviderType` 中添加类型。
-2. 实现 `AiProviderClient`，并在 Spring 中注册为 Bean。
+2. 实现 `AiProviderClient` 并在 Spring 中注册为 Bean；如有多协议能力，按 `EndpointCapability` 接口声明。
 3. 在 `ProviderClientRegistry` 能按类型取到该 Client。
-4. 按需新增 `EndpointProviderAdapter`，覆盖每个需要支持的端点。
-5. 如支持流式输出，实现或复用 `StreamResponseTransformer`。
-6. 在管理端类型列表和文档中补充该 Provider。
-7. 增加单元测试，至少覆盖 URL 构造、鉴权头、请求体转换、错误处理和用量解析。
+4. 如需供应商特化逻辑（如 DeepSeek 兜 reasoning_content），实现 `ProviderHook` 并用 `@HooksForProvider(ProviderType)` 标记。
+5. 新增 `EndpointProviderAdapter` 时按 `(源端点, 目标端点)` 维度声明 `targetEndpoint()`，避免供应商身份绑死 key。
+6. 如支持流式输出，实现或复用 `StreamResponseTransformer`，跨协议流式按 `(client, upstream)` 重写 `supportsUpstream`。
+7. 在管理端类型列表和文档中补充该 Provider。
+8. 增加单元测试，至少覆盖 URL 构造、鉴权头、请求体转换、错误处理和用量解析。
 
 安全要求：
 
@@ -84,20 +87,19 @@
 
 ## 适配器开发规范
 
-端点与 Provider 不一定使用同一协议，因此通过 `EndpointProviderAdapter` 适配。
+端点与 Provider 不一定使用同一协议，因此通过两层组合完成转换：
+
+- **`EndpointProviderAdapter`**：按 `(源端点, 目标端点)` 维度实现跨协议请求/响应转换，与供应商身份解耦。
+- **`ProviderHook`**：按 `ProviderType` 维度实现供应商特化（如 DeepSeek 兜 `reasoning_content=""`、补 `thinking` 字段），在 adapter 之前/之后串联。
+
+处理时序：
+- 请求方向：`hook.preProcess（源端点格式的供应商特化）→ adapter.adaptRequest（跨协议转换）`
+- 响应方向：`adapter.adaptResponse（目标端点 → 源端点）→ hook.postProcess（源端点格式的供应商特化）`
 
 命名建议：
 
-```text
-{EndpointProtocol}To{ProviderProtocol}Adapter
-```
-
-示例：
-
-- `ResponsesToOpenAiCompatibleAdapter`
-- `ResponsesToAnthropicAdapter`
-- `ChatCompletionsToDeepSeekChatAdapter`
-- `AnthropicMessagesToGeminiAdapter`
+- 跨协议 adapter：`{SourceProtocol}To{TargetProtocol}Adapter`（如 `ResponsesToOpenAiCompatibleAdapter`）。
+- 供应商 hook：`{ProviderName}Hook`（如 `DeepSeekHook`），用 `@HooksForProvider(ProviderType.X)` 标记归属。
 
 开发要求：
 
@@ -105,7 +107,7 @@
 - 响应适配要输出统一响应模型，确保用量字段可被计费和日志使用。
 - 工具调用序列必须满足目标上游约束；DeepSeek Chat 使用 `ChatToolSequenceNormalizer` 修复严格顺序。
 - 不支持的能力要显式抛出 `UNSUPPORTED_FEATURE`，不要静默丢字段。
-- 新适配器需要覆盖非流式和流式行为；流式格式不同步时需要补充 `StreamResponseTransformer`。
+- 新适配器需要覆盖非流式和流式行为；流式格式不同步时需要补充 `StreamResponseTransformer` 并重写 `supportsUpstream(client, upstream)`。
 
 ## 路由与模型约定
 

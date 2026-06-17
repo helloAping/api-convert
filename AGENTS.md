@@ -74,7 +74,8 @@ Key capabilities:
 - **Responses API**: OpenAI Responses API protocol (`/v1/responses`) with SSE streaming via `RealTimeResponsesTransformer`
 - **SSE streaming passthrough**: byte-level proxy with usage extraction at stream end
 - **Smart routing**: random channel selection per model, direct channel/model specification via `channel/model` format
-- **Cross-protocol adapters**: 12× `EndpointProviderAdapter` implementations automatically transforming requests/responses between OpenAI Chat, Anthropic Messages, GPT Responses API, DeepSeek, and Gemini protocols
+- **Cross-protocol adapters**: 9× `EndpointProviderAdapter` implementations automatically transforming requests/responses between OpenAI Chat, Anthropic Messages, GPT Responses API, DeepSeek, and Gemini protocols (indexed by `(sourceEndpoint, targetEndpoint)` to decouple adapter identity from provider type)
+- **Provider hooks**: `ProviderHook` interface plus `DeepSeekHook` provide per-provider request/response specializations (e.g. DeepSeek Chat `reasoning_content=""`, Anthropic thinking-block `thinking` field) layered on top of the cross-protocol adapters
 - **Stream transformer**: pluggable `StreamResponseTransformer` abstraction for real-time SSE format conversion between endpoint types and provider protocols
 - **Endpoint strategy pattern**: `EndpointType` enum + `EndpointHandler` interface, each endpoint independently handles request parsing, adaptation, and response writing
 - **Provider strategy pattern**: `ProviderType` enum + `AiProviderClient` interface, supports OpenAI-compatible, Anthropic, OpenAI Responses API, Gemini upstreams

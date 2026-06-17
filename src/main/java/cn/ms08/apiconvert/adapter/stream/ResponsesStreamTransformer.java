@@ -135,6 +135,17 @@ public class ResponsesStreamTransformer extends OutputStream implements StreamRe
                 || provider == ProviderType.DEEPSEEK);
     }
 
+    /**
+     * Responses SSE 实时转换：上游 Chat Completions / Anthropic Messages SSE → OpenAI Responses SSE。
+     * 与供应商身份解耦：任何提供 Chat 或 Messages 上游 SSE 的渠道都可以复用同一份转换器。
+     */
+    @Override
+    public boolean supportsUpstream(EndpointType clientEndpoint, EndpointType upstreamEndpoint) {
+        return clientEndpoint == EndpointType.OPENAI_RESPONSES
+                && (upstreamEndpoint == EndpointType.CHAT_COMPLETIONS
+                || upstreamEndpoint == EndpointType.ANTHROPIC_MESSAGES);
+    }
+
     @Override
     public WrappedStream wrap(OutputStream target, String responseId, String model, long createdAt) {
         return new ResponsesWrappedStream(

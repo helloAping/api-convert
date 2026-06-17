@@ -11,20 +11,21 @@
 src/main/java/cn/ms08/apiconvert/
 ├── adapter/                            # 端点-供应商协议适配器
 │   ├── endpoint/
-│   │   ├── EndpointProviderAdapter.java              # 接口：按 (端点, 供应商) 组合适配
-│   │   ├── EndpointProviderAdapterRegistry.java      # 注册表
+│   │   ├── EndpointProviderAdapter.java              # 接口：按 (源端点, 目标端点) 维度适配
+│   │   ├── EndpointProviderAdapterRegistry.java      # 注册表：(源, 目标) 主键 + (源, 供应商) 回退键
+│   │   ├── ProviderHook.java                         # 供应商特化 hook 接口（preProcess / postProcess）
+│   │   ├── HooksForProvider.java                     # @HooksForProvider(ProviderType) 注解
+│   │   ├── ProviderHookRegistry.java                 # hook 注册表：按 ProviderType 索引
+│   │   ├── DeepSeekHook.java                         # DeepSeek 特化：Chat 兜 reasoning_content、Anthropic 补 thinking
 │   │   ├── AnthropicMessagesToDeepSeekAnthropicAdapter.java
 │   │   ├── AnthropicMessagesToGeminiAdapter.java
 │   │   ├── AnthropicTools.java                       # Anthropic 工具结构转换辅助
-│   │   ├── AnthropicToDeepSeekChatAdapter.java
 │   │   ├── AnthropicToOpenAiCompatibleAdapter.java
 │   │   ├── ChatCompletionsToAnthropicAdapter.java
-│   │   ├── ChatCompletionsToDeepSeekAnthropicAdapter.java
 │   │   ├── ChatCompletionsToDeepSeekChatAdapter.java
 │   │   ├── ChatCompletionsToGeminiAdapter.java
 │   │   ├── ChatToolSequenceNormalizer.java          # 严格 Chat 上游 tool_calls/tool 结果序列归一化
 │   │   ├── ResponsesToAnthropicAdapter.java
-│   │   ├── ResponsesToDeepSeekAnthropicAdapter.java
 │   │   ├── ResponsesToDeepSeekChatAdapter.java
 │   │   └── ResponsesToOpenAiCompatibleAdapter.java
 ├── config/                             # 配置
