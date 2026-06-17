@@ -41,6 +41,14 @@ public class RequestLogEntity {
      */
     private String requestType;
     /**
+     * 客户端请求的来源端点类型（CHAT_COMPLETIONS/ANTHROPIC_MESSAGES/OPENAI_RESPONSES 等）。
+     */
+    private String sourceEndpointType;
+    /**
+     * 实际请求上游的端点类型，可能因模型能力限制与来源端点不同。
+     */
+    private String upstreamEndpointType;
+    /**
      * 实际承载请求的渠道编码。
      */
     private String providerCode;

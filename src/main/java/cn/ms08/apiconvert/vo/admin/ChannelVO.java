@@ -2,6 +2,7 @@ package cn.ms08.apiconvert.vo.admin;
 
 import java.util.List;
 import java.time.LocalDateTime;
+import cn.ms08.apiconvert.dto.admin.ChannelCapability;
 
 /**
  * 由供应商、端点、凭证和模型记录组装出的管理端渠道视图。
@@ -44,7 +45,8 @@ public record ChannelVO(
     Integer priority,
     String status,
     Long modelCount,
-    List<ChannelModelMappingVO> models
+    List<ChannelModelMappingVO> models,
+    List<ChannelCapability> capabilities
 ) {
     /**
      * 在供应商凭证离开后端边界前进行脱敏。

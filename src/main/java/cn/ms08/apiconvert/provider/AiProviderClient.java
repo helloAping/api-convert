@@ -10,67 +10,80 @@ import cn.ms08.apiconvert.dto.ProviderQuotaFetchRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedChatResponse;
 import cn.ms08.apiconvert.dto.UnifiedUsage;
-import cn.ms08.apiconvert.exception.ErrorCode;
-import cn.ms08.apiconvert.exception.ProviderException;
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.vo.OpenAiImageResponse;
 import cn.ms08.apiconvert.vo.OpenAiVideoResponse;
-import org.springframework.http.HttpStatus;
 
 import java.io.OutputStream;
 import java.util.List;
 
 /**
- * 供应商特定适配边界，负责对话转发和模型发现。
+ * 供应商客户端接口，每个供应商实现此接口提供对上游 API 的完整调用能力。
+ * <p>
+ * 三种主要协议各有独立方法：{@link #chat}（OpenAI Chat Completions）、
+ * {@link #messages}（Anthropic Messages）、{@link #responses}（OpenAI Responses API）。
+ * {@link BaseAiProviderClient} 提供了完整 HTTP 实现和可覆写的钩子方法，子类通常只需覆写钩子。
+ *
+ * <h3>实现层级</h3>
+ * <pre>
+ *   AiProviderClient (接口)
+ *     └── BaseAiProviderClient (抽象基类, HTTP逻辑+钩子)
+ *           ├── OpenAIProviderClient       Chat+Responses+Video+Image
+ *           ├── DeepSeekProviderClient     Chat+Anthropic, 钩子定制
+ *           ├── VolcCodingPlanProviderClient Chat+Anthropic
+ *           ├── OpenCodeProviderClient     Chat+Anthropic
+ *           ├── GptAuthProviderClient      Chat+Video+Image, OAuth鉴权
+ *           └── ClaudeAuthProviderClient   Anthropic, OAuth鉴权
+ *     └── GeminiProviderClient (独立实现, 非OpenAI兼容协议)
+ * </pre>
  */
 public interface AiProviderClient {
 
-    /**
-     * 当前客户端处理的供应商类型，ProviderClientRegistry 会据此路由。
-     */
+    /** 供应商枚举值。 */
     ProviderType type();
 
     /**
-     * 将标准化对话请求发送到上游供应商。
+     * OpenAI Chat Completions 协议调用。
+     * 上游路径从渠道能力中按 {@link EndpointType#CHAT_COMPLETIONS} 解析，
+     * 鉴权头默认 {@code Authorization: Bearer xxx}，Anthropic 兼容接口可覆写为 {@code x-api-key}。
      */
     UnifiedChatResponse chat(ModelRoute route, UnifiedChatRequest request);
 
     /**
-     * 当前供应商客户端是否支持直接透传上游 SSE 流。
+     * Anthropic Messages 协议调用。
+     * 上游路径从渠道能力中按 {@link EndpointType#ANTHROPIC_MESSAGES} 解析，
+     * 鉴权头默认 {@code x-api-key}，自动附加 {@code anthropic-version: 2023-06-01}。
      */
-    default boolean supportsStreaming() {
-        return false;
-    }
+    UnifiedChatResponse messages(ModelRoute route, UnifiedChatRequest request);
 
     /**
-     * 将流式对话请求发送到上游，把 SSE 字节流直接写回调用方，并在上游返回时提取 token 用量。
+     * OpenAI Responses API 协议调用。
+     * 上游路径从渠道能力中按 {@link EndpointType#OPENAI_RESPONSES} 解析，
+     * 鉴权头默认 {@code Authorization: Bearer xxx}。
      */
-    default UnifiedUsage streamChat(ModelRoute route, UnifiedChatRequest request, OutputStream outputStream) {
-        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST, "stream is not supported for provider type " + type());
-    }
+    UnifiedChatResponse responses(ModelRoute route, UnifiedChatRequest request);
 
-    /**
-     * 向支持 OpenAI Videos API 的供应商发起视频生成请求；未实现的供应商默认返回不支持。
-     */
-    default OpenAiVideoResponse generateVideo(ModelRoute route, OpenAiVideoRequest request) {
-        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
-                "video generation is not supported for provider type " + type());
-    }
+    /** Chat Completions 协议 SSE 流式调用。 */
+    UnifiedUsage streamChat(ModelRoute route, UnifiedChatRequest request, OutputStream outputStream);
 
-    /**
-     * 向支持 OpenAI Images API 的供应商发起图片生成请求；未实现的供应商默认返回不支持。
-     */
-    default OpenAiImageResponse generateImage(ModelRoute route, OpenAiImageRequest request) {
-        throw new ProviderException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
-                "image generation is not supported for provider type " + type());
-    }
+    /** Anthropic Messages 协议 SSE 流式调用。 */
+    UnifiedUsage streamMessages(ModelRoute route, UnifiedChatRequest request, OutputStream outputStream);
 
-    /**
-     * 使用供应商特定的鉴权方式和响应解析逻辑获取上游模型选项。
-     */
+    /** Responses API 协议 SSE 流式调用。 */
+    UnifiedUsage streamResponses(ModelRoute route, UnifiedChatRequest request, OutputStream outputStream);
+
+    /** 是否支持指定协议的流式传输。 */
+    boolean supportsStreaming(EndpointType endpointType);
+
+    /** 视频生成，透传到渠道配置的 video 路径。 */
+    OpenAiVideoResponse generateVideo(ModelRoute route, OpenAiVideoRequest request);
+
+    /** 图片生成，透传到渠道配置的 image 路径。 */
+    OpenAiImageResponse generateImage(ModelRoute route, OpenAiImageRequest request);
+
+    /** 获取供应商可用模型列表。 */
     List<ProviderModel> models(ProviderModelFetchRequest request);
 
-    /**
-     * 实时查询供应商额度；结果仅返回给管理端，不写入数据库。
-     */
+    /** 查询供应商余额/额度。 */
     ProviderQuota quota(ProviderQuotaFetchRequest request);
 }

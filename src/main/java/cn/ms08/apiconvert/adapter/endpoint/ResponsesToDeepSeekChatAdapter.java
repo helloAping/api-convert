@@ -3,6 +3,7 @@ package cn.ms08.apiconvert.adapter.endpoint;
 import cn.ms08.apiconvert.adapter.protocol.OpenAiResponsesResponseAdapter;
 import cn.ms08.apiconvert.dto.UnifiedChatRequest;
 import cn.ms08.apiconvert.dto.UnifiedMessage;
+import cn.ms08.apiconvert.endpoint.EndpointType;
 import cn.ms08.apiconvert.provider.ProviderType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -23,8 +24,13 @@ public class ResponsesToDeepSeekChatAdapter extends ResponsesToOpenAiCompatibleA
     }
 
     @Override
+    public EndpointType targetEndpoint() {
+        return EndpointType.CHAT_COMPLETIONS;
+    }
+
+    @Override
     public ProviderType targetProvider() {
-        return ProviderType.DEEPSEEK_CHAT;
+        return ProviderType.DEEPSEEK;
     }
 
     /**

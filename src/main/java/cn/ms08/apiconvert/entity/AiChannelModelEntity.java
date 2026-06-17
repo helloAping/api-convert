@@ -84,6 +84,11 @@ public class AiChannelModelEntity {
      */
     private String allowedEndpointTypes;
     /**
+     * 逗号分隔的能力/端点类型名称，限定该模型只能使用指定的上游能力；
+     * 为空表示不限制，使用渠道的全部已配置能力。
+     */
+    private String allowedCapabilities;
+    /**
      * 模型映射创建时间，由项目上海时区自动填充。
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

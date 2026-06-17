@@ -21,7 +21,8 @@ public class ProviderClientRegistry {
     public AiProviderClient get(ProviderType type) {
         AiProviderClient client = clients.get(type);
         if (client == null) {
-            throw new GatewayException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_REQUEST, "Provider type not supported: " + type);
+            throw new GatewayException(ErrorCode.PROVIDER_UNAVAILABLE, HttpStatus.BAD_REQUEST,
+                    "Provider type not supported: " + type);
         }
         return client;
     }

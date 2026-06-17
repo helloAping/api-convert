@@ -29,11 +29,29 @@ public class StreamTransformerRegistry {
     }
 
     /**
-     * 按端点类型和供应商类型查找匹配的转换器；未找到时返回 {@code null}。
+     * 按 (客户端端点, 供应商类型) 查找匹配的转换器；未找到时返回 {@code null}。
      */
     public StreamResponseTransformer get(EndpointType endpointType, ProviderType providerType) {
         for (StreamResponseTransformer transformer : transformers) {
             if (transformer.supports(endpointType, providerType)) {
+                return transformer;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 按 (客户端 SSE 协议, 上游 SSE 协议) 查找匹配的转换器，用于客户端期望与上游不一致的场景。
+     * 由各 {@link StreamResponseTransformer} 子类根据自身支持的输入/输出协议自行声明，
+     * 例如 {@code ResponsesStreamTransformer} 支持 (OPENAI_RESPONSES, CHAT_COMPLETIONS) 和
+     * (OPENAI_RESPONSES, ANTHROPIC_MESSAGES) 两组。
+     */
+    public StreamResponseTransformer getForUpstream(EndpointType clientEndpoint, EndpointType upstreamEndpoint) {
+        if (clientEndpoint == null || upstreamEndpoint == null) {
+            return null;
+        }
+        for (StreamResponseTransformer transformer : transformers) {
+            if (transformer.supportsUpstream(clientEndpoint, upstreamEndpoint)) {
                 return transformer;
             }
         }
@@ -47,3 +65,4 @@ public class StreamTransformerRegistry {
         return transformers;
     }
 }
+

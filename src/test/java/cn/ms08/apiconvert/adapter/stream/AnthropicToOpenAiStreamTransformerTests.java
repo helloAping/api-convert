@@ -248,6 +248,33 @@ class AnthropicToOpenAiStreamTransformerTests {
         assertThat(output).contains("data: [DONE]");
     }
 
+    /**
+     * 当上游错误地透传了 OpenAI Chat 格式的 [DONE] 哨兵行时，转换器应当静默跳过，
+     * 避免在日志中产生 "Unrecognized token 'DONE'" 之类的告警。
+     */
+    @Test
+    void strayOpenAiDoneSentinelIsSkippedSilently() throws Exception {
+        ByteArrayOutputStream target = new ByteArrayOutputStream();
+        AnthropicToOpenAiStreamTransformer transformer =
+                new AnthropicToOpenAiStreamTransformer(target, "chatcmpl_test", "claude-3-opus", 1L);
+
+        // 喂入 message_start 确立上下文
+        writeLine(transformer, "event: message_start");
+        writeLine(transformer, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_done\",\"model\":\"claude-3-opus\",\"usage\":{\"input_tokens\":5}}}");
+        writeLine(transformer, "");
+
+        // 错误地透传了一个 [DONE] 行（上游实际是 OpenAI Chat 协议）
+        writeLine(transformer, "data: [DONE]");
+        writeLine(transformer, "");
+
+        String output = target.toString(StandardCharsets.UTF_8);
+
+        // 不应抛出 JSON 解析错误；上游的 [DONE] 必须被忽略
+        assertThat(output).doesNotContain("Unrecognized token");
+        // 转换器自己还没有 message_stop，所以此时不应已经发出 [DONE]
+        assertThat(output).doesNotContain("data: [DONE]");
+    }
+
     private static void writeLine(AnthropicToOpenAiStreamTransformer transformer, String line) throws Exception {
         byte[] bytes = (line + "\n").getBytes(StandardCharsets.UTF_8);
         transformer.write(bytes);

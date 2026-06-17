@@ -77,7 +77,9 @@ public class AdminRequestLogService {
         GatewayApiKeyEntity apiKey = entity.getGatewayApiKeyId() == null ? null : apiKeys.get(entity.getGatewayApiKeyId());
         return new RequestLogVO(entity.getId(), entity.getRequestId(), entity.getGatewayApiKeyId(),
                 apiKeyName(entity.getGatewayApiKeyId(), apiKey), apiKey == null ? null : apiKey.getKeyPreview(),
-                entity.getSourceProtocol(), entity.getRequestType(), entity.getProviderCode(), entity.getProviderType(),
+                entity.getSourceProtocol(), entity.getRequestType(),
+                entity.getSourceEndpointType(), entity.getUpstreamEndpointType(),
+                entity.getProviderCode(), entity.getProviderType(),
                 entity.getPublicModel(), entity.getProviderModel(),
                 entity.getStream(), entity.getSuccess(), entity.getHttpStatus(), entity.getLatencyMs(),
                 entity.getInputTokens(), entity.getCacheReadInputTokens(), entity.getOutputTokens(), entity.getTotalTokens(),

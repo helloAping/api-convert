@@ -30,6 +30,18 @@ public interface StreamResponseTransformer {
     boolean supports(EndpointType endpoint, ProviderType provider);
 
     /**
+     * 按 (客户端 SSE 协议, 上游 SSE 协议) 维度声明支持的转换对，由 {@link StreamTransformerRegistry#getForUpstream} 调用。
+     * <p>
+     * 默认实现回退到 {@link #supports(EndpointType, ProviderType)} 的语义，按客户端端点 +
+     * 供应商类型匹配。专门处理跨协议流式转换的转换器（如 {@code ResponsesStreamTransformer}）
+     * 应重写此方法以声明具体的 (客户端, 上游) 协议对。
+     * </p>
+     */
+    default boolean supportsUpstream(EndpointType clientEndpoint, EndpointType upstreamEndpoint) {
+        return false;
+    }
+
+    /**
      * 包装输出流，返回的 {@link WrappedStream} 负责将上游 SSE 转换为目标协议格式。
      *
      * @param target     真实的 HTTP 响应输出流

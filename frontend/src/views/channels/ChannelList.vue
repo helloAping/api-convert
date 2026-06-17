@@ -1,50 +1,56 @@
 ﻿<script setup lang="ts">
-import { h, onMounted, ref } from 'vue'
+import { h, computed, onMounted, ref } from 'vue'
 import { useMessage, NButton, NTag } from 'naive-ui'
 import type { DataTableColumn } from 'naive-ui'
-import { channelTypes } from '@/types'
+import { channelTypes, supplierDefaultEndpoints, capabilityDefaultPaths, endpointLabels } from '@/types'
 import type { ChannelForm, ChannelModelForm, ChannelQuotaVO, ChannelVO } from '@/types'
 import { endpointTypeOptions } from '@/types'
 import { createChannel, deleteChannel, fetchChannelModels, fetchChannelQuota, getChannels, startChannelAuth, submitChannelAuthCallbackUrl, updateChannel, uploadChannelAuth } from '@/api/channels'
 
 const message = useMessage()
-// 跟踪渠道表格加载状态，刷新期间保留当前数据。
 const loading = ref(false)
-// 后端聚合接口返回的渠道行数据。
 const data = ref<ChannelVO[]>([])
-// 控制创建/编辑弹窗是否展示。
 const showModal = ref(false)
-// 弹窗模式：create=新增、edit=编辑、copy=复制。
 const modalMode = ref<'create' | 'edit' | 'copy'>('create')
-// 编辑模式下的当前渠道 ID；null 表示创建或复制模式。
 const editingId = ref<number | null>(null)
-// 跟踪上游模型发现请求，让获取按钮展示加载状态。
 const fetchingModels = ref(false)
-// 从供应商模型接口获取并合并本地已选模型后的可搜索下拉选项。
 const modelOptions = ref<{ label: string; value: string }[]>([])
-// 多选框当前选中的上游模型 ID，实际保存时会同步到 form.models。
 const selectedProviderModels = ref<string[]>([])
-// 按渠道 ID 暂存用户点击刷新后获得的额度结果，不写入数据库。
 const quotaMap = ref<Record<number, ChannelQuotaVO>>({})
-// 按渠道 ID 跟踪额度刷新按钮加载状态。
 const quotaLoading = ref<Record<number, boolean>>({})
-// 弹窗内创建/编辑表单共用的可变状态。
 const form = ref<ChannelForm>(emptyForm())
 const authUploading = ref(false)
 const authFileInput = ref<HTMLInputElement | null>(null)
 const oauthAuthorizationUrl = ref('')
 const oauthCallbackUrl = ref('')
 
-// 表格列通过渲染函数展示协议标签、状态标签和行操作。
+const configuredCapabilityOptions = computed(() => {
+  const caps = form.value.capabilities || []
+  if (caps.length === 0) return endpointTypeOptions
+  const types = new Set(caps.map(c => c.type))
+  return endpointTypeOptions.filter(opt => types.has(opt.value))
+})
+
 const columns: DataTableColumn<ChannelVO>[] = [
   { title: '编号', key: 'id', width: 70 },
   { title: '渠道编码', key: 'code', width: 150 },
   { title: '渠道名称', key: 'name', width: 160 },
   { title: '供应商', key: 'type', width: 150, render: (row) => channelTypeLabel(row.type) },
   { title: 'Base URL', key: 'baseUrl', ellipsis: { tooltip: true } },
-  { title: '请求路径', key: 'chatPath', width: 180 },
-  { title: '视频接口路径', key: 'videoPath', width: 170 },
-  { title: '图片接口路径', key: 'imagePath', width: 190 },
+  {
+    title: '能力',
+    key: 'capabilities',
+    minWidth: 280,
+    render: (row) => {
+      const caps = row.capabilities || []
+      if (caps.length === 0) return h('span', { style: 'color:#94a3b8' }, '未配置')
+      return h('div', { class: 'capability-tags' }, caps.map((cap) =>
+        h(NTag, { type: 'info', size: 'small', round: true, bordered: true, title: cap.path || '' }, {
+          default: () => endpointLabels[cap.type] || cap.type,
+        })
+      ))
+    },
+  },
   { title: '模型数', key: 'modelCount', width: 90 },
   { title: '密钥', key: 'apiKey', width: 140 },
   {
@@ -79,12 +85,11 @@ const columns: DataTableColumn<ChannelVO>[] = [
   },
 ]
 
-// 创建带协议默认值的新渠道表单。
 function emptyForm(): ChannelForm {
   return {
     code: '',
     name: '',
-    type: 'OPENAI_COMPATIBLE',
+    type: 'OPENAI',
     baseUrl: '',
     chatPath: '/v1/chat/completions',
     videoPath: '/v1/videos',
@@ -99,10 +104,10 @@ function emptyForm(): ChannelForm {
     modelPrefix: '',
     models: [],
     enabled: true,
+    capabilities: [],
   }
 }
 
-// 将当前行的额度结果压缩成列表可读文本；刷新前不主动请求上游。
 function quotaText(row: ChannelVO) {
   const quota = quotaMap.value[row.id]
   if (!quota) {
@@ -111,40 +116,52 @@ function quotaText(row: ChannelVO) {
   return quota.summary || (quota.supported ? '已获取额度' : '不支持获取')
 }
 
-// 将供应商策略常量转换为管理界面的中文标签。
 function channelTypeLabel(type: string) {
   return {
-    OPENAI_COMPATIBLE: 'OpenAI 兼容',
+    OPENAI: 'OpenAI',
     ANTHROPIC: 'Anthropic',
-    OPENAI_RESPONSES: 'OpenAI Responses',
+    CUSTOM: '自定义',
+    MIMO_TOKEN_PLAN: 'MiMo Token Plan',
+    DEEPSEEK: 'DeepSeek',
+    VOLC_CODINGPLAN: '火山 CodingPlan',
+    OPENCODE: 'OpenCode',
+    GEMINI: 'Google Gemini',
     GPT_AUTH: 'GPT-AUTH',
     CLAUDE_AUTH: 'CLAUDE-AUTH',
-    DEEPSEEK_CHAT: 'DeepSeek Chat',
-    DEEPSEEK_ANTHROPIC: 'DeepSeek Anthropic',
-    GEMINI: 'Google Gemini',
   }[type] || type
 }
 
-// 供应商类型变化时切换默认请求路径和模型列表路径。
 function handleTypeChange(type: string) {
+  if (form.value.models.length > 0) {
+    const oldDefaults = supplierDefaultEndpoints[form.value.type] || []
+    form.value.models = form.value.models.map((model) => {
+      const currentEndpoints = model.allowedEndpointTypes || ''
+      if (!currentEndpoints || currentEndpoints === oldDefaults.join(',')) {
+        const newDefaults = supplierDefaultEndpoints[type] || []
+        return { ...model, allowedEndpointTypes: newDefaults.join(',') }
+      }
+      return model
+    })
+  }
   const defaults: Record<string, { baseUrl: string; chatPath: string; videoPath: string; imagePath: string; modelsPath: string }> = {
-    OPENAI_COMPATIBLE: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
-    ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
-    OPENAI_RESPONSES: { baseUrl: '', chatPath: '/v1/responses', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    OPENAI: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    ANTHROPIC: { baseUrl: 'https://api.anthropic.com', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    CUSTOM: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    MIMO_TOKEN_PLAN: { baseUrl: 'https://token-plan-cn.xiaomimimo.com', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    DEEPSEEK: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    VOLC_CODINGPLAN: { baseUrl: 'https://ark.cn-beijing.volces.com/api/coding', chatPath: '/v3/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v3/models' },
+    OPENCODE: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
+    GEMINI: { baseUrl: '', chatPath: '/v1beta/models', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1beta/models' },
     GPT_AUTH: { baseUrl: 'https://api.openai.com', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
     CLAUDE_AUTH: { baseUrl: 'https://api.anthropic.com', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
-    DEEPSEEK_CHAT: { baseUrl: '', chatPath: '/v1/chat/completions', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
-    DEEPSEEK_ANTHROPIC: { baseUrl: '', chatPath: '/v1/messages', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1/models' },
-    GEMINI: { baseUrl: '', chatPath: '/v1beta/models', videoPath: '/v1/videos', imagePath: '/v1/images/generations', modelsPath: '/v1beta/models' },
   }
-  // 收集所有默认路径，用于判断用户是否手动修改过
   const defaultPaths = new Set(Object.values(defaults).flatMap(d => [d.chatPath, d.videoPath, d.imagePath, d.modelsPath]))
   const newDefault = defaults[type]
   if (!newDefault) return
-  if (isAuthType(type)) {
+  // 官方供应商预填 baseUrl：GPT_AUTH / CLAUDE_AUTH / ANTHROPIC / MIMO_TOKEN_PLAN
+  if (newDefault.baseUrl) {
     form.value.baseUrl = newDefault.baseUrl
   }
-  // 仅当当前路径仍然匹配任意默认值时自动切换，用户手动修改过的路径不会被覆盖
   if (defaultPaths.has(form.value.chatPath)) {
     form.value.chatPath = newDefault.chatPath
   }
@@ -158,25 +175,30 @@ function handleTypeChange(type: string) {
     form.value.modelsPath = newDefault.modelsPath
   }
   form.value.authMode = isAuthType(type) ? 'AUTH_FILE' : 'API_KEY'
+  form.value.capabilities = []
 }
 
 function isAuthType(type: string) {
   return type === 'GPT_AUTH' || type === 'CLAUDE_AUTH'
 }
 
-// 多选模型变化时保留已有别名，新选中的模型默认不填别名，交给前缀生成默认展示名。
 function syncSelectedModels(values: string[]) {
   const uniqueValues = uniqueProviderModels(values)
   selectedProviderModels.value = uniqueValues
   const current = new Map(form.value.models.map((model) => [model.providerModel.trim(), model]))
-  form.value.models = uniqueValues.map((providerModel) => current.get(providerModel) || {
-    publicName: '',
-    providerModel,
-    modelAlias: '',
+  form.value.models = uniqueValues.map((providerModel) => {
+    const existing = current.get(providerModel)
+    if (existing) return existing
+    return {
+      publicName: '',
+      providerModel,
+      modelAlias: '',
+      allowedEndpointTypes: '',
+      allowedCapabilities: '',
+    }
   })
 }
 
-// 手动输入和上游返回都可能出现重复项，统一按去空格后的模型名保留一份。
 function uniqueProviderModels(providerModels: string[]) {
   return Array.from(new Set(providerModels
     .map((providerModel) => providerModel?.trim())
@@ -195,13 +217,11 @@ function mergeModelOptions(options: { label: string; value: string }[]) {
   modelOptions.value = Array.from(merged.values())
 }
 
-// 根据可选前缀生成模型管理中展示的默认对外模型名。
 function buildPublicModelName(providerModel: string, prefix: string) {
   const normalizedPrefix = prefix.trim().replace(/^\/+/, '').replace(/\/+$/, '')
   return normalizedPrefix ? `${normalizedPrefix}/${providerModel}` : providerModel
 }
 
-// 手动输入模型名或编辑已有渠道时，将未出现在接口返回中的模型补进下拉框。
 function ensureModelOptions(providerModels: string[]) {
   mergeModelOptions([
     ...modelOptions.value,
@@ -209,25 +229,21 @@ function ensureModelOptions(providerModels: string[]) {
   ])
 }
 
-// 只清理用户填写的别名；留空表示后端按前缀自动生成对外模型名。
 function normalizeModelAlias(model: ChannelModelForm) {
   model.modelAlias = model.modelAlias?.trim() || ''
   model.publicName = model.modelAlias
 }
 
-// 将逗号分隔的端点类型字符串解析为数组，供 n-select 多选使用。
 function parseEndpointTypes(value: string | null | undefined): string[] {
   if (!value) return []
   return value.split(',').map(s => s.trim()).filter(Boolean)
 }
 
-// 优先展示后端校验或上游错误详情，便于管理员排查供应商失败。
 function errorMessage(error: unknown, fallback: string) {
   const response = (error as { response?: { data?: { message?: string } } })?.response
   return response?.data?.message || fallback
 }
 
-// 从管理端聚合接口加载已保存渠道。
 async function load() {
   loading.value = true
   try {
@@ -240,7 +256,6 @@ async function load() {
   }
 }
 
-// 实时请求当前渠道上游额度，结果只保存在页面状态中。
 async function refreshQuota(row: ChannelVO) {
   quotaLoading.value = { ...quotaLoading.value, [row.id]: true }
   try {
@@ -258,7 +273,6 @@ async function refreshQuota(row: ChannelVO) {
   }
 }
 
-// 以创建模式打开弹窗，并清空之前的模型选项。
 function showCreate() {
   editingId.value = null
   modalMode.value = 'create'
@@ -270,7 +284,6 @@ function showCreate() {
   showModal.value = true
 }
 
-// 以编辑模式打开弹窗；apiKey 留空表示不替换现有密钥。
 function edit(item: ChannelVO) {
   editingId.value = item.id
   modalMode.value = 'edit'
@@ -300,8 +313,10 @@ function edit(item: ChannelVO) {
       outputQuotaPerMillion: model.outputQuotaPerMillion,
       cacheReadQuotaPerMillion: model.cacheReadQuotaPerMillion,
       allowedEndpointTypes: model.allowedEndpointTypes || '',
+      allowedCapabilities: model.allowedCapabilities || '',
     })),
     enabled: item.enabled,
+    capabilities: item.capabilities || [],
   }
   selectedProviderModels.value = uniqueProviderModels(form.value.models.map((model) => model.providerModel))
   modelOptions.value = []
@@ -309,7 +324,6 @@ function edit(item: ChannelVO) {
   showModal.value = true
 }
 
-// 以复制模式打开弹窗；复制除编码、名称、密钥外的所有参数。
 function copyChannel(source: ChannelVO) {
   editingId.value = null
   modalMode.value = 'copy'
@@ -339,8 +353,10 @@ function copyChannel(source: ChannelVO) {
       outputQuotaPerMillion: model.outputQuotaPerMillion,
       cacheReadQuotaPerMillion: model.cacheReadQuotaPerMillion,
       allowedEndpointTypes: model.allowedEndpointTypes || '',
+      allowedCapabilities: model.allowedCapabilities || '',
     })),
     enabled: source.enabled,
+    capabilities: source.capabilities || [],
   }
   selectedProviderModels.value = uniqueProviderModels(form.value.models.map((model) => model.providerModel))
   modelOptions.value = []
@@ -423,7 +439,6 @@ async function submitOauthCallbackUrl() {
   }
 }
 
-// 通过后端供应商特定实现获取上游模型选项。
 async function loadUpstreamModels() {
   fetchingModels.value = true
   try {
@@ -455,7 +470,6 @@ async function loadUpstreamModels() {
   }
 }
 
-// 根据弹窗模式创建或更新表单数据。
 async function save() {
   try {
     form.value.models.forEach(normalizeModelAlias)
@@ -472,7 +486,6 @@ async function save() {
   }
 }
 
-// 删除渠道，并由后端移除其依赖记录。
 async function remove(id: number) {
   try {
     await deleteChannel(id)
@@ -494,8 +507,8 @@ onMounted(load)
         <n-button type="primary" @click="showCreate">新增渠道</n-button>
       </n-space>
 
-      <n-alert type=”info” title=”渠道用于把网关请求转发到指定上游”>
-        选择供应商后填写上游 Base URL、实际请求路径和 API Key。模型支持多选和手动输入；别名非必填，填写后模型管理中会按别名单独展示，未填写时使用”模型前缀/上游模型名”。
+      <n-alert type="info" title="渠道用于把网关请求转发到指定上游">
+        选择供应商后勾选需要的端点能力，为每种能力填写独立的上游请求路径。模型支持多选和手动输入；别名非必填，填写后模型管理中会按别名单独展示，未填写时使用"模型前缀/上游模型名"。
       </n-alert>
 
       <n-data-table :columns="columns" :data="data" :loading="loading" :pagination="false" :scroll-x="2120" />
@@ -520,15 +533,59 @@ onMounted(load)
           <n-form-item v-if="!isAuthType(form.type)" label="Base URL">
             <n-input v-model:value="form.baseUrl" placeholder="例如：https://api.deepseek.com" />
           </n-form-item>
-          <n-form-item v-if="!isAuthType(form.type)" label="请求路径">
-            <n-input v-model:value="form.chatPath" placeholder="例如：/v1/chat/completions 或 /v1/messages" />
+
+          <n-form-item v-if="!isAuthType(form.type)" label="端点能力">
+            <n-space vertical style="width: 100%">
+              <n-select
+                :value="(form.capabilities || []).map(c => c.type)"
+                :options="endpointTypeOptions"
+                multiple
+                clearable
+                :max-tag-count="1"
+                placeholder="请选择需要支持的端点能力"
+                @update:value="(vals: string[]) => {
+                  const existing = form.capabilities || []
+                  const currentTypes = new Set(existing.map(c => c.type))
+                  const newSet = new Set(vals)
+                  const added = vals.filter(v => !currentTypes.has(v))
+                  const removed = new Set([...currentTypes].filter(t => !newSet.has(t)))
+                  const kept = existing.filter(c => !removed.has(c.type))
+                  for (const t of added) {
+                    kept.push({ type: t, path: capabilityDefaultPaths[t]?.[form.type] || '' })
+                  }
+                  form.capabilities = kept
+                  // 清理模型能力限制中已被移除的能力
+                  if (removed.size > 0) {
+                    form.models = form.models.map((m: ChannelModelForm) => {
+                      const caps = parseEndpointTypes(m.allowedCapabilities)
+                      const filtered = caps.filter(c => !removed.has(c))
+                      return { ...m, allowedCapabilities: filtered.join(',') }
+                    })
+                  }
+                }"
+              />
+              <div v-if="(form.capabilities || []).length > 0" class="capability-table">
+                <div class="capability-row capability-head">
+                  <div>端点类型</div>
+                  <div>请求路径</div>
+                </div>
+                <div
+                  v-for="cap in (form.capabilities || [])"
+                  :key="cap.type"
+                  class="capability-row"
+                >
+                  <n-text>{{ endpointLabels[cap.type] || cap.type }}</n-text>
+                  <n-input
+                    :value="cap.path"
+                    :placeholder="capabilityDefaultPaths[cap.type]?.[form.type] || ''"
+                    size="small"
+                    @update:value="(val: string) => { cap.path = val }"
+                  />
+                </div>
+              </div>
+            </n-space>
           </n-form-item>
-          <n-form-item v-if="!isAuthType(form.type)" label="视频接口路径">
-            <n-input v-model:value="form.videoPath" placeholder="例如：/v1/videos" />
-          </n-form-item>
-          <n-form-item v-if="!isAuthType(form.type)" label="图片接口路径">
-            <n-input v-model:value="form.imagePath" placeholder="例如：/v1/images/generations" />
-          </n-form-item>
+
           <n-form-item v-if="!isAuthType(form.type)" label="模型列表路径">
             <n-input v-model:value="form.modelsPath" placeholder="例如：/v1/models" />
           </n-form-item>
@@ -580,6 +637,7 @@ onMounted(load)
                   filterable
                   tag
                   clearable
+                  :max-tag-count="1"
                   placeholder="请选择或输入多个上游模型名"
                   style="width: 480px"
                   @update:value="syncSelectedModels"
@@ -595,6 +653,7 @@ onMounted(load)
                 <div>模型名称</div>
                 <div>模型别名</div>
                 <div>允许端点</div>
+                <div>能力限制</div>
               </div>
               <div
                 v-for="model in form.models"
@@ -612,8 +671,18 @@ onMounted(load)
                   :options="endpointTypeOptions"
                   multiple
                   clearable
+                  :max-tag-count="1"
                   placeholder="不限"
                   @update:value="(val: string[]) => { model.allowedEndpointTypes = val.join(',') }"
+                />
+                <n-select
+                  :value="parseEndpointTypes(model.allowedCapabilities)"
+                  :options="configuredCapabilityOptions"
+                  multiple
+                  clearable
+                  :max-tag-count="1"
+                  placeholder="不限"
+                  @update:value="(val: string[]) => { model.allowedCapabilities = val.join(',') }"
                 />
               </div>
             </div>
@@ -644,7 +713,7 @@ onMounted(load)
 
 .model-alias-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr);
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -679,5 +748,38 @@ onMounted(load)
 
 .quota-muted {
   color: #6b7280;
+}
+
+.capability-table {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.capability-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-top: 1px solid #edf0f5;
+}
+
+.capability-row:first-child {
+  border-top: 0;
+}
+
+.capability-head {
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 600;
+  background: #f8fafc;
+}
+
+.capability-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
 }
 </style>

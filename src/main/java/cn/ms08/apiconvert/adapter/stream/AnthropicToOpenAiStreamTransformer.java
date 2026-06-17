@@ -116,9 +116,23 @@ public class AnthropicToOpenAiStreamTransformer extends OutputStream implements 
     @Override
     public boolean supports(EndpointType endpoint, ProviderType provider) {
         return endpoint == EndpointType.CHAT_COMPLETIONS
-                && (provider == ProviderType.ANTHROPIC
+                && (provider == ProviderType.OPENAI
                 || provider == ProviderType.CLAUDE_AUTH
-                || provider == ProviderType.DEEPSEEK_ANTHROPIC);
+                || provider == ProviderType.ANTHROPIC
+                || provider == ProviderType.CUSTOM
+                || provider == ProviderType.MIMO_TOKEN_PLAN
+                || provider == ProviderType.DEEPSEEK);
+    }
+
+    /**
+     * 上游 Anthropic Messages SSE → 客户端 OpenAI Chat Completions SSE。
+     * 与供应商身份解耦：任何 Anthropic Messages 上游（CLAUDE_AUTH / ANTHROPIC 官方 / DEEPSEEK 兼容）
+     * 都能复用。
+     */
+    @Override
+    public boolean supportsUpstream(EndpointType clientEndpoint, EndpointType upstreamEndpoint) {
+        return clientEndpoint == EndpointType.CHAT_COMPLETIONS
+                && upstreamEndpoint == EndpointType.ANTHROPIC_MESSAGES;
     }
 
     @Override
@@ -250,6 +264,10 @@ public class AnthropicToOpenAiStreamTransformer extends OutputStream implements 
 
     private void processData(String data) throws IOException {
         if (completed) {
+            return;
+        }
+
+        if ("[DONE]".equals(data)) {
             return;
         }
 
