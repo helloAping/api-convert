@@ -60,6 +60,7 @@ public class VideoGatewayService {
                     .generateVideo(route, request);
             routingService.recordSuccess(principal.apiKeyId(), route);
             usageRecorder.recordSuccess(requestId, principal.apiKeyId(), SOURCE_PROTOCOL, REQUEST_TYPE,
+                    EndpointType.OPENAI_VIDEOS.name(), EndpointType.OPENAI_VIDEOS.name(),
                     route, false, HttpStatus.OK.value(), System.currentTimeMillis() - start, null);
             return response;
         } catch (ProviderException exception) {
@@ -79,7 +80,9 @@ public class VideoGatewayService {
             throw exception;
         } catch (Exception exception) {
             log.error("视频生成网关异常：{}", exception.getMessage(), exception);
-            usageRecorder.recordFailure(requestId, principal.apiKeyId(), SOURCE_PROTOCOL, REQUEST_TYPE, route,
+            usageRecorder.recordFailure(requestId, principal.apiKeyId(), SOURCE_PROTOCOL, REQUEST_TYPE,
+                    EndpointType.OPENAI_VIDEOS.name(), EndpointType.OPENAI_VIDEOS.name(),
+                    route,
                     request != null ? request.getModel() : null, false, HttpStatus.INTERNAL_SERVER_ERROR.value(),
                     System.currentTimeMillis() - start, ErrorCode.INTERNAL_ERROR.name(), "Internal server error");
             throw exception;

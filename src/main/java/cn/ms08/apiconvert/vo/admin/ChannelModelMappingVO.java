@@ -32,6 +32,7 @@ public record ChannelModelMappingVO(
         BigDecimal inputQuotaPerMillion,
         BigDecimal outputQuotaPerMillion,
         BigDecimal cacheReadQuotaPerMillion,
-        String allowedEndpointTypes
+        String allowedEndpointTypes,
+        String allowedCapabilities
 ) {
 }

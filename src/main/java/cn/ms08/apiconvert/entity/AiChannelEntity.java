@@ -53,6 +53,10 @@ public class AiChannelEntity {
      */
     private String imagePath;
     /**
+     * Channel capabilities JSON, each entry contains endpoint type and independent path.
+     */
+    private String capabilities;
+    /**
      * 模型列表请求路径。
      */
     private String modelsPath;

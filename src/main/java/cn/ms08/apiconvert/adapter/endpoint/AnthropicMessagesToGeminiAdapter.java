@@ -65,6 +65,11 @@ public class AnthropicMessagesToGeminiAdapter implements EndpointProviderAdapter
     }
 
     @Override
+    public EndpointType targetEndpoint() {
+        return EndpointType.ANTHROPIC_MESSAGES;
+    }
+
+    @Override
     public ProviderType targetProvider() {
         return ProviderType.GEMINI;
     }

@@ -14,11 +14,11 @@
 | 01 | **基础设施与数据层** | `modules/01-infrastructure.md` | Spring Boot、MyBatis-Plus、数据库安装/升级、核心数据表、启动引导 |
 | 02 | **安全鉴权与限流** | `modules/02-security.md` | API Key 鉴权（SHA-256）、额度计费、滑动窗口限流 |
 | 03 | **路由与调度** | `modules/03-routing.md` | 模型路由解析（RANDOM/ROUND_ROBIN/WEIGHTED/SESSION_STICKY）、工具优先、错误避让、请求日志 |
-| 04 | **端点与协议适配** | `modules/04-endpoints.md` | 6 个公开端点（CHAT_COMPLETIONS/ANTHROPIC_MESSAGES/OPENAI_RESPONSES/OPENAI_VIDEOS/OPENAI_IMAGES/OPENAI_MODELS）、12 个跨协议适配器、两层策略模式 |
-| 05 | **Provider 厂商实现** | `modules/05-providers.md` | 8 个 Provider 类型（OPENAI_COMPATIBLE/ANTHROPIC/OPENAI_RESPONSES/GPT_AUTH/CLAUDE_AUTH/DEEPSEEK_CHAT/DEEPSEEK_ANTHROPIC/GEMINI） |
+| 04 | **端点与协议适配** | `modules/04-endpoints.md` | 6 个公开端点（CHAT_COMPLETIONS/ANTHROPIC_MESSAGES/OPENAI_RESPONSES/OPENAI_VIDEOS/OPENAI_IMAGES/OPENAI_MODELS）、9 个跨协议适配器（按 `(源端点, 目标端点)` 维度索引 + 供应商 hook 串联）、两层策略模式 |
+| 05 | **Provider 厂商实现** | `modules/05-providers.md` | 10 个 Provider 类型：OPENAI / ANTHROPIC / CUSTOM / MIMO_TOKEN_PLAN / GPT_AUTH / CLAUDE_AUTH / DEEPSEEK / GEMINI / VOLC_CODINGPLAN / OPENCODE，每个供应商通过 `EndpointCapability` 声明自己原生支持的端点能力 |
 | 06 | **流式传输与 SSE 转换** | `modules/06-streaming.md` | SSE 字节级透传、`RealTimeResponsesTransformer` Codex 兼容转换 |
 | 07 | **管理端与前端** | `modules/07-admin.md` | 9 个管理端控制器、Sa-Token 鉴权、Dashboard 统计、Vue 3.5 前端 |
-| 08 | **测试体系** | `modules/08-testing.md` | 15 个测试类、65 个用例、运行命令 |
+| 08 | **测试体系** | `modules/08-testing.md` | 单元测试覆盖 adapter registry / hook / 流式转换器 / provider 客户端等 |
 | 09 | **部署与运维** | `modules/09-deployment.md` | Docker、Nginx、环境变量、API 测试命令、本地运行 |
 | 10 | **代码目录结构** | `modules/10-code-structure.md` | 完整的 Java 源码目录树 |
 
@@ -56,14 +56,16 @@
 
 | 类型 | 鉴权 | 协议 | 流式 | 说明 |
 |---|---|---|---|---|
-| `OPENAI_COMPATIBLE` | Bearer | Chat Completions + Videos + Images | ✅ | 通用兼容 |
-| `ANTHROPIC` | Bearer + version | Messages | ✅ | Claude 官方 |
-| `OPENAI_RESPONSES` | Bearer | Responses API | ✅ | 原生 Responses |
+| `OPENAI` | Bearer | Chat Completions + Responses + Videos + Images | ✅ | 通用 OpenAI 兼容上游，同时声明 Chat、Responses、Videos、Images 四个能力（V17 合并 OPENAI_COMPATIBLE / OPENAI_RESPONSES） |
+| `ANTHROPIC` | x-api-key | Messages | ✅ | 官方 Anthropic 供应商（V19 新增），默认 baseUrl `https://api.anthropic.com`，仅声明 ANTHROPIC_MESSAGES 能力 |
+| `CUSTOM` | Bearer / x-api-key | Chat Completions + Messages | ✅ | 自定义供应商（V19 新增），用户自填 baseUrl，同时声明 CHAT_COMPLETIONS + ANTHROPIC_MESSAGES 两个能力 |
+| `MIMO_TOKEN_PLAN` | Bearer / x-api-key | Chat Completions + Messages | ✅ | Xiaomi MiMo Token Plan 供应商（V19 新增），默认 baseUrl `https://token-plan-cn.xiaomimimo.com`，参考 https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call |
 | `GPT_AUTH` | Bearer (auth.json) | Chat Completions + Videos + Images | ✅ | OAuth 授权（V12） |
 | `CLAUDE_AUTH` | Bearer (auth.json) | Messages | ✅ | OAuth 授权（V12） |
-| `DEEPSEEK_CHAT` | Bearer | Chat + reasoning | ✅ | DeepSeek Chat 风格 |
-| `DEEPSEEK_ANTHROPIC` | Bearer + version | Messages + thinking | ✅ | DeepSeek Claude 风格 |
+| `DEEPSEEK` | Bearer | Chat + reasoning + Messages + thinking | ✅ | DeepSeek，同时声明 OpenAI Chat（含 `reasoning_content`）与 Anthropic Messages（含 thinking 块）两个能力 |
 | `GEMINI` | `x-goog-api-key` | `generateContent` | ❌ | Google Gemini |
+| `VOLC_CODINGPLAN` | Bearer | Chat Completions + Messages | ✅ | 火山 CodingPlan，同时声明 OpenAI Chat 与 Anthropic Messages 两个能力，默认 baseUrl `https://ark.cn-beijing.volces.com/api/coding`，Chat 走 `/v3/chat/completions` |
+| `OPENCODE` | Bearer | Chat Completions + Messages | ✅ | OpenCode，同时声明 OpenAI Chat 与 Anthropic Messages 两个能力，baseUrl 由用户填写 |
 
 ---
 
@@ -80,6 +82,16 @@
 | 日期 | 问题 | 修复 | 相关文件 |
 |---|---|---|---|
 | 2026-05-27 | OpenAiChatCompletionRequest 将 null 的 frequency_penalty/presence_penalty 序列化发送至上游，导致图片识别上游返回 400 错误 | 添加 @JsonInclude(JsonInclude.Include.NON_NULL) 注解，避免序列化 null 字段 | dto/OpenAiChatCompletionRequest.java |
+| 2026-06-16 | `ModelRoute.effectiveEndpoint()` 在客户端端点不在 `allowedCapabilities` 时直接采用用户填写的 `allowedCapabilities` 第一个能力作为上游端点，导致请求日志 `sourceEndpointType` 为「对话补全」但实际却走「Anthropic Messages」地址 | 回退顺序改为按 `capabilities`（已用 `allowedCapabilities` 过滤）保留渠道侧配置顺序的第一个能力，保证渠道主能力（Chat Completions）优先于模型侧补登的次能力（Anthropic Messages） | dto/ModelRoute.java |
+| 2026-06-16 | 用户在「能力配置」中限制模型只允许 Anthropic Messages，外部以 chat 端点请求时仍被 `effectiveEndpoint` fallback 到 `clientEndpoint`（CHAT_COMPLETIONS），触发渠道 400 错误 | 当渠道 `capabilities` 为空或与 `allowedCapabilities` 无交集时，fallback 改为 `allowedCapabilities` 中用户填写的第一个能力，确保用户对模型的能力限制被尊重，从而触发 Chat↔Anthropic 跨协议适配器 | dto/ModelRoute.java |
+| 2026-06-16 | Codex 请求 mimo-v2.5 报 "stream closed before response.completed"；流式上游请求日志使用 `route.chatPath()`（旧单字段）而非 `route.resolvedChatPath(upstreamEndpoint)`，导致日志路径与实际请求 URL 不一致 | `streamToClient` 流式日志改用 `resolvedChatPath(upstreamEndpoint)`；`ResponsesStreamTransformer.flush()` 强制设置 `finishReasonSeen=true` 后再 `trySendCompleted`，避免上游不发 usage chunk 时 Codex 客户端提前断流；`ChannelList.vue` 列表去掉 `请求路径` / `视频接口路径` / `图片接口路径` 三列，换成 `能力` 列以 tag 形式展示 `capabilities` 列表 | service/ChatGatewayService.java, adapter/stream/ResponsesStreamTransformer.java, frontend/src/views/channels/ChannelList.vue |
+| 2026-06-16 | Codex `/v1/responses` 报 `No adapter found for endpoint CHAT_COMPLETIONS with provider MIMO_TOKEN_PLAN`：V18 把适配器按 `(sourceEndpoint, targetProvider)` 索引，把供应商身份绑死在 key 上，但适配器本质是「上游端点协议 → 下游端点协议」的能力转换，与具体供应商类型解耦。OPENAI / DEEPSEEK / MIMO_TOKEN_PLAN / CUSTOM 任何支持目标端点协议的供应商都应该复用同一份适配器 | `EndpointProviderAdapter` 接口新增 `targetEndpoint()` 取代（并存）`targetProvider()`；`EndpointProviderAdapterRegistry` 改用 `(sourceEndpoint, targetEndpoint)` 作主 key，旧 `(source, provider)` 仍保留为回退路径；9 个具体适配器全部补 `targetEndpoint()`（AnthropicToOpenAiCompatible→CHAT_COMPLETIONS / ChatCompletionsToAnthropic→ANTHROPIC_MESSAGES / ResponsesToOpenAiCompatible→CHAT_COMPLETIONS / ResponsesToAnthropic→ANTHROPIC_MESSAGES / DeepSeek & Gemini 系列 target 与 source 同端点）；`ChatGatewayService.applyAdapter` / `applyRequestAdapter` 签名加 `targetEndpoint` 参数，先按能力维度查，miss 时回退到旧按供应商查 | adapter/endpoint/EndpointProviderAdapter.java, adapter/endpoint/EndpointProviderAdapterRegistry.java, adapter/endpoint/*Adapter.java, service/ChatGatewayService.java, test/.../EndpointProviderAdapterRegistryTest.java |
+| 2026-06-17 | 实现「跨协议 adapter × 供应商 hook」双层组合：能力适配器按 `(source, target)` 解耦供应商身份，但 DeepSeek 这种「Chat Completions 必须带 reasoning_content=""、Anthropic thinking 块必须带 thinking 字段」的渠道特化逻辑又必须绑定到具体供应商。新增 `ProviderHook` 接口（按 `@HooksForProvider(ProviderType)` 注解注册），`ProviderHookRegistry` 按 `ProviderType` 索引；`DeepSeekHook` 用单一类同时覆盖 Chat Completions 和 Anthropic Messages 两种源端点（`preProcess` 收到 `sourceEndpoint` 参数后按形态分支处理）；`ChatGatewayService.applyRequestAdapter` / `applyAdapter` 串联 hook 与 adapter，请求方向 `hook.preProcess → adapter.adaptRequest`、响应方向 `adapter.adaptResponse → hook.postProcess`；`DeepSeekProviderClient.beforeChatRequest` / `beforeAnthropicRequest` 删除，逻辑完全迁出 `BaseAiProviderClient` 钩子机制 | adapter/endpoint/ProviderHook.java, adapter/endpoint/HooksForProvider.java, adapter/endpoint/ProviderHookRegistry.java, adapter/endpoint/DeepSeekHook.java, provider/DeepSeekProviderClient.java, service/ChatGatewayService.java, test/.../DeepSeekHookTest.java |
+| 2026-06-17 | 修复 #1：同协议短路导致 DeepSeek/Gemini 自适配器被绕过；同 `(源, 目标)` key 上多个 provider 特化适配器（如 `ResponsesToOpenAiCompatibleAdapter` 与 `ResponsesToDeepSeekChatAdapter` 都声明 `(OPENAI_RESPONSES, CHAT_COMPLETIONS)`）会触发重复注册 | `ChatGatewayService.applyAdapter` / `applyRequestAdapter` 改为按 (源, 供应商) → (源, 目标) → (源, adapterProvider(供应商)) 顺序查，让 provider 维度覆盖优先；`EndpointProviderAdapterRegistry` 重复键改为 `putIfAbsent` 静默跳过而非抛 `IllegalStateException`，保证 Spring 上下文能正常启动；同步避免回归 `ChatCompletionsToDeepSeekChatAdapter` 的 `ChatToolSequenceNormalizer` 工具序列归一化、`ChatCompletionsToGeminiAdapter` 的 `mapDeveloperRole` / `cleanRawOptions` / 响应重建、DeepSeek/Gemini Anthropic 端同协议适配器 | service/ChatGatewayService.java, adapter/endpoint/EndpointProviderAdapterRegistry.java |
+| 2026-06-17 | 修复 #2：旧测试仍通过反射调用已删除的 `BaseAiProviderClient.beforeChatRequest` / `beforeAnthropicRequest`，与新 hook 架构脱节 | `AnthropicProviderClientTests` / `DeepSeekChatProviderClientTests` 改写为端到端链路测试：provider DTO → 协议 adapter.toUnified → `DeepSeekHook.preProcess` → 协议 adapter.toProviderRequest，覆盖 hook 在真实请求体上的效果 | test/.../AnthropicProviderClientTests.java, test/.../DeepSeekChatProviderClientTests.java |
+| 2026-06-17 | 修复 #3：`OpenAiRequestAdapter.toProviderRequest` 的 `reasoning_effort` 分支空操作，导致 `ResponsesToOpenAiCompatibleAdapterTests` 期望落空 | 改为 `providerRequest.setReasoningEffort(s)` 写入显式字段，避免落入 `additionalProperties` 被重复序列化 | adapter/protocol/OpenAiRequestAdapter.java |
+| 2026-06-17 | 修复 #4：`StreamResponseTransformer.supportsUpstream` 默认返回 false，`getForUpstream` 永远为 null，新流式分流路径成为死代码 | `ResponsesStreamTransformer` / `AnthropicToOpenAiStreamTransformer` / `OpenAiToAnthropicStreamTransformer` 各自按 (client, upstream) 维度重写 `supportsUpstream`，与供应商身份解耦 | adapter/stream/ResponsesStreamTransformer.java, adapter/stream/AnthropicToOpenAiStreamTransformer.java, adapter/stream/OpenAiToAnthropicStreamTransformer.java |
+| 2026-06-16 | 新增 3 个 ProviderType：`ANTHROPIC`（官方 Anthropic，默认 `https://api.anthropic.com`，x-api-key 鉴权，仅 Messages 能力）、`CUSTOM`（自定义，同时声明 Chat + Messages 两个能力，用户自填 baseUrl）、`MIMO_TOKEN_PLAN`（Xiaomi MiMo Token Plan，默认 `https://token-plan-cn.xiaomimimo.com`，Anthropic 路径 `/anthropic/v1/messages`，参考 https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call） | 新增 `AnthropicProviderClient` / `CustomProviderClient` / `MimoTokenPlanProviderClient`；`AdminChannelService.defaultBaseUrl` / `defaultPath` 写入官方默认地址；前端 `channelTypes` / `supplierDefaultEndpoints` / `capabilityDefaultPaths` / `handleTypeChange` 同步预填；`AnthropicToOpenAiStreamTransformer` / `OpenAiToAnthropicStreamTransformer` / `ResponsesStreamTransformer.supports` 加入新类型；`ProtocolFormat.fromProvider` 补全 switch 分支 | provider/ProviderType.java, provider/AnthropicProviderClient.java, provider/CustomProviderClient.java, provider/MimoTokenPlanProviderClient.java, service/admin/AdminChannelService.java, endpoint/ProtocolFormat.java, adapter/stream/*.java, frontend/src/types/index.ts, frontend/src/views/channels/ChannelList.vue |
 
 ---
 
@@ -100,6 +112,8 @@
 
 ### 后端
 
+- **OpenCode 供应商**：新增 `OPENCODE_CHAT` 和 `OPENCODE_ANTHROPIC` 两种 Provider 类型，支持 OpenCode 的 OpenAI 兼容和 Anthropic 兼容上游接口，使用标准 API Key 鉴权。
+- **火山 CodingPlan 供应商**：新增 `VOLC_CODINGPLAN_CHAT` 和 `VOLC_CODINGPLAN_ANTHROPIC` 两种 Provider 类型，分别对接火山引擎 CodingPlan 的 OpenAI 兼容接口（`https://ark.cn-beijing.volces.com/api/coding/v3`）和 Anthropic 兼容接口（`https://ark.cn-beijing.volces.com/api/coding`），使用标准 API Key 鉴权。
 - **Anthropic ↔ OpenAI Chat 流式 SSE 实时转换**：新增 `AnthropicToOpenAiStreamTransformer`（上游 Anthropic SSE → OpenAI Chat SSE）和 `OpenAiToAnthropicStreamTransformer`（上游 OpenAI Chat SSE → Anthropic SSE），补全 `CHAT_COMPLETIONS → ANTHROPIC` 和 `ANTHROPIC_MESSAGES → OPENAI_COMPATIBLE` 两条跨协议流式路径的实时格式转换能力；支持文本、工具调用、推理内容（thinking/reasoning_content）的逐 chunk 转换，自动映射 stop_reason/finish_reason，错误事件格式转换。
 - **V15 多模态端点路由**：渠道表新增 `video_path`、`image_path`，前端渠道管理支持保存视频生成和图片生成 API 路径；新增 `POST /v1/videos` 视频生成端点和 `POST /v1/images/generations` 图片生成端点，`AiProviderClient.generateVideo()`/`generateImage()` 默认不支持，`OPENAI_COMPATIBLE` 与 `GPT_AUTH` 按渠道保存路径透传。
 - JSON 解析兼容：全局 `ObjectMapper` 的 Jackson 单个字符串最大长度默认提升到 `100000000`，并通过 `API_CONVERT_JACKSON_MAX_STRING_LENGTH` 可配置；公开端点和 `RestClient` JSON 转换器统一使用该 mapper，支持 base64 图片/视频请求和响应透传，并兼容上游 OpenAI 兼容响应中的供应商扩展字段与 MiMo `audio_tokens`/`video_tokens` 用量明细。
@@ -121,4 +135,7 @@
 - **V16 渠道模型端点类型限制**：`ai_channel_model` 新增 `allowed_endpoint_types` 字段（逗号分隔的 EndpointType 名称），允许按模型标记只兼容特定端点类型；路由时自动过滤不匹配的候选渠道，解决同一模型多渠道（如 OpenAI Chat + Anthropic Messages）轮询到不兼容渠道导致工具调用 ID 不匹配的 400 错误。前端渠道管理新增"允许端点"多选列，留空表示不限制。
 - **Chat → Anthropic 工具调用适配修复**：`ChatCompletionsToAnthropicAdapter` 新增消息格式转换，将 OpenAI Chat 格式的 `tool_calls`（assistant 消息 options）和 `tool` 消息（role=tool + tool_call_id）正确转为 Anthropic 的 `tool_use`/`tool_result` content block 格式，修复 Chat 端点请求路由到 Anthropic 渠道时因 tool result ID 不匹配导致的 400 错误。
 - **Anthropic → OpenAI Chat 流式 usage JSON 修复**：`AnthropicToOpenAiStreamTransformer.writeChunk()` 修复 usage 字段被拼接到 JSON 对象 `}` 外部导致客户端 JSON 解析失败的 bug。
+- **V17 供应商能力维度合并**：将 12 个 ProviderType 合并为 7 个（`OPENAI / DEEPSEEK / VOLC_CODINGPLAN / OPENCODE / GEMINI / GPT_AUTH / CLAUDE_AUTH`），每个供应商通过 `EndpointCapability` 接口声明自身原生支持的端点能力（`OpenAiChatCapability` / `AnthropicMessagesCapability` / `OpenAiResponsesCapability`），子类只组合并按需覆盖。`ProviderClientRegistry.getCapability(type, endpointType)` 在路由时按能力查找对应实现，未声明的能力直接返回 `UNSUPPORTED_FEATURE`。前端渠道管理：渠道编辑页加 `supplierDefaultEndpoints` 默认能力预选与中文 `endpointLabels` 标签，新建模型自动填默认允许端点，切换供应商时同步迁移旧默认值；`handleTypeChange` 默认请求路径表统一到 V17 新枚举，`VOLC_CODINGPLAN` 默认 baseUrl 写入 `https://ark.cn-beijing.volces.com/api/coding` + `/v3/chat/completions`。SQL 迁移 `V17__provider_type_merge.sql` 把历史渠道的旧枚举值刷新到新值。
 - 失败重试切换渠道时，同步和流式路径均写入失败请求日志；Dashboard 查询增加 `success=true` 过滤，失败不计入请求数。
+- **V17 前端能力配置 UI**：渠道编辑表单用能力勾选表格替代旧的独立请求路径字段（chatPath/videoPath/imagePath），每种端点能力（Chat Completions / Anthropic Messages / Responses API / 视频生成 / 图片生成）通过 checkbox 勾选，勾选后显示独立的上游请求路径输入框，`capabilityDefaultPaths` 按供应商类型提供默认路径。切换供应商时自动重置能力列表。`ChannelForm` 和 `ChannelVO` 新增 `capabilities` 字段，`syncLegacyPaths` 同步 `ANTHROPIC_MESSAGES` 到 `chatPath`。
+- **Gemini 供应商能力迁移**：`GeminiProviderClient` 从直接实现 `AiProviderClient.chat()` 迁移到能力模式，内嵌 `GeminiChatCapability` 实现 `EndpointCapability`，同时声明 `CHAT_COMPLETIONS` 和 `ANTHROPIC_MESSAGES` 两个端点能力，均路由到同一 `generateContent` 调用逻辑。

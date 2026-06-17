@@ -46,8 +46,13 @@ public class AnthropicToOpenAiCompatibleAdapter implements EndpointProviderAdapt
     }
 
     @Override
+    public EndpointType targetEndpoint() {
+        return EndpointType.CHAT_COMPLETIONS;
+    }
+
+    @Override
     public ProviderType targetProvider() {
-        return ProviderType.OPENAI_COMPATIBLE;
+        return ProviderType.OPENAI;
     }
 
     /**

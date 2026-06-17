@@ -37,5 +37,6 @@ public record ChannelForm(
     String providerModel,
     String modelPrefix,
     List<ChannelModelForm> models,
-    Boolean enabled
+    Boolean enabled,
+    List<ChannelCapability> capabilities
 ) {}

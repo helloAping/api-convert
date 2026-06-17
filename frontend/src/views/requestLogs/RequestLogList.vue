@@ -53,6 +53,10 @@ function textOrDash(value: unknown) {
   return value === null || value === undefined || value === '' ? '-' : String(value)
 }
 
+function endpointLabel(value: string | null) {
+  return ({ CHAT_COMPLETIONS: 'Chat', ANTHROPIC_MESSAGES: 'Anthropic', OPENAI_RESPONSES: 'Responses', OPENAI_VIDEOS: '视频', OPENAI_IMAGES: '图片' } as Record<string, string>)[value || ''] || value || '-'
+}
+
 function inputTokenView(row: RequestLogVO) {
   return h('div', [
     h('div', textOrDash(row.inputTokens)),
@@ -84,6 +88,7 @@ const columns: DataTableColumn<RequestLogVO>[] = [
   { title: '密钥', key: 'gatewayApiKeyName', width: 170, ellipsis: { tooltip: true }, render: apiKeyView },
   { title: '协议', key: 'sourceProtocol', width: 90, render: (row) => protocolLabel(row.sourceProtocol) },
   { title: '接口类型', key: 'requestType', width: 110, render: (row) => requestTypeLabel(row.requestType) },
+  { title: '上游端点', key: 'upstreamEndpointType', width: 110, render: (row) => endpointLabel(row.upstreamEndpointType) },
   { title: '渠道', key: 'providerCode', width: 120, render: (row) => textOrDash(row.providerCode) },
   { title: '供应商类型', key: 'providerType', width: 140, render: (row) => textOrDash(row.providerType) },
   { title: '对外模型', key: 'publicModel', width: 150, ellipsis: { tooltip: true }, render: (row) => textOrDash(row.publicModel) },

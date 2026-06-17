@@ -1,4 +1,4 @@
-export interface ApiResponse<T> {
+﻿export interface ApiResponse<T> {
   code: number
   message: string
   data: T
@@ -11,55 +11,57 @@ export interface PageResult<T> {
   pageSize: number
 }
 
-/** 已保存自定义上游渠道的管理端视图，apiKey 始终由后端脱敏。 */
+/** 宸蹭繚瀛樿嚜瀹氫箟涓婃父娓犻亾鐨勭鐞嗙瑙嗗浘锛宎piKey 濮嬬粓鐢卞悗绔劚鏁忋€?*/
 export interface ChannelVO {
-  /** 渠道记录 ID。 */
+  /** 娓犻亾璁板綍 ID銆?*/
   id: number
-  /** 稳定的渠道编码，创建后不允许修改。 */
+  /** 绋冲畾鐨勬笭閬撶紪鐮侊紝鍒涘缓鍚庝笉鍏佽淇敼銆?*/
   code: string
-  /** 管理页面展示名称。 */
+  /** 绠＄悊椤甸潰灞曠ず鍚嶇О銆?*/
   name: string
-  /** 供应商类型（ProviderType），例如 OPENAI_COMPATIBLE、ANTHROPIC、OPENAI_RESPONSES、GEMINI。 */
+  /** 渚涘簲鍟嗙被鍨嬶紙ProviderType锛夛紝渚嬪 OPENAI_COMPATIBLE銆丄NTHROPIC銆丱PENAI_RESPONSES銆丟EMINI銆?*/
   type: string
-  /** 渠道是否可用于路由。 */
+  /** 娓犻亾鏄惁鍙敤浜庤矾鐢便€?*/
   enabled: boolean
-  /** 上游服务 Base URL。 */
+  /** 涓婃父鏈嶅姟 Base URL銆?*/
   baseUrl: string
-  /** 供应商特定的对话或消息请求路径。 */
+  /** 渚涘簲鍟嗙壒瀹氱殑瀵硅瘽鎴栨秷鎭姹傝矾寰勩€?*/
   chatPath: string
-  /** 供应商特定的视频生成请求路径。 */
+  /** 渚涘簲鍟嗙壒瀹氱殑瑙嗛鐢熸垚璇锋眰璺緞銆?*/
   videoPath: string
-  /** 供应商特定的图片生成请求路径。 */
+  /** 渚涘簲鍟嗙壒瀹氱殑鍥剧墖鐢熸垚璇锋眰璺緞銆?*/
   imagePath: string
-  /** 供应商特定的模型列表请求路径。 */
+  /** 渚涘簲鍟嗙壒瀹氱殑妯″瀷鍒楄〃璇锋眰璺緞銆?*/
   modelsPath: string
-  /** 渠道密钥兼容字段，当前等同于渠道 ID。 */
+  /** 娓犻亾瀵嗛挜鍏煎瀛楁锛屽綋鍓嶇瓑鍚屼簬娓犻亾 ID銆?*/
   credentialId: number | null
-  /** 渠道密钥展示名，不能作为真实凭证使用。 */
+  /** 娓犻亾瀵嗛挜灞曠ず鍚嶏紝涓嶈兘浣滀负鐪熷疄鍑瘉浣跨敤銆?*/
   credentialName: string
-  /** 已脱敏的 API Key，不要把该值当作真实密钥提交回后端。 */
+  /** 宸茶劚鏁忕殑 API Key锛屼笉瑕佹妸璇ュ€煎綋浣滅湡瀹炲瘑閽ユ彁浜ゅ洖鍚庣銆?*/
   apiKey: string
-  /** 渠道鉴权模式：API_KEY、AUTH_FILE 或 OAUTH。 */
+  /** 娓犻亾閴存潈妯″紡锛欰PI_KEY銆丄UTH_FILE 鎴?OAUTH銆?*/
   authMode: string
-  /** auth.json/OAuth 授权状态。 */
+  /** auth.json/OAuth 鎺堟潈鐘舵€併€?*/
   authStatus: string
-  /** 脱敏后的授权身份摘要。 */
+  /** 鑴辨晱鍚庣殑鎺堟潈韬唤鎽樿銆?*/
   authSubject: string | null
-  /** access token 过期时间。 */
+  /** access token 杩囨湡鏃堕棿銆?*/
   authExpiresAt: string | null
-  /** 是否已经绑定授权文件。 */
+  /** 鏄惁宸茬粡缁戝畾鎺堟潈鏂囦欢銆?*/
   hasAuthFile: boolean
-  /** 渠道路由权重，加权模式下数值越高分配流量越多。 */
+  /** 娓犻亾璺敱鏉冮噸锛屽姞鏉冩ā寮忎笅鏁板€艰秺楂樺垎閰嶆祦閲忚秺澶氥€?*/
   priority: number
-  /** 渠道状态，例如 ACTIVE 或 DISABLED。 */
+  /** 娓犻亾鐘舵€侊紝渚嬪 ACTIVE 鎴?DISABLED銆?*/
   status: string
-  /** 绑定到该渠道的模型映射数量。 */
+  /** 缁戝畾鍒拌娓犻亾鐨勬ā鍨嬫槧灏勬暟閲忋€?*/
   modelCount: number
   /** 渠道已保存的模型映射列表。 */
   models: ChannelModelMappingVO[]
+  /** 渠道能力配置列表，每项对应一种上游端点类型及其独立请求路径。 */
+  capabilities: ChannelCapability[]
 }
 
-/** 用户点击刷新时实时获取的渠道额度，不持久化。 */
+/** 鐢ㄦ埛鐐瑰嚮鍒锋柊鏃跺疄鏃惰幏鍙栫殑娓犻亾棰濆害锛屼笉鎸佷箙鍖栥€?*/
 export interface ChannelQuotaVO {
   channelId: number
   channelCode: string
@@ -72,19 +74,19 @@ export interface ChannelQuotaVO {
   rawSummary: string
 }
 
-/** 模型管理页聚合后的模型视图。 */
+/** 妯″瀷绠＄悊椤佃仛鍚堝悗鐨勬ā鍨嬭鍥俱€?*/
 export interface ModelVO {
   id: number
   publicName: string
   providerCode: string
   providerModel: string
-  /** 是否支持图片/视觉输入。 */
+  /** 鏄惁鏀寔鍥剧墖/瑙嗚杈撳叆銆?*/
   vision: boolean | null
-  /** 是否支持工具/函数调用。 */
+  /** 鏄惁鏀寔宸ュ叿/鍑芥暟璋冪敤銆?*/
   toolsSupport: boolean | null
-  /** 是否支持 JSON 输出模式。 */
+  /** 鏄惁鏀寔 JSON 杈撳嚭妯″紡銆?*/
   jsonModeSupport: boolean | null
-  /** 最大上下文窗口（token 数）。 */
+  /** 鏈€澶т笂涓嬫枃绐楀彛锛坱oken 鏁帮級銆?*/
   contextLength: number | null
   enabled: boolean
   channelCount: number
@@ -95,7 +97,7 @@ export interface ModelVO {
   cacheReadQuotaPerMillion: number | null
 }
 
-/** 管理端网关密钥视图，rawKey 仅用于历史兼容，界面应优先展示脱敏预览。 */
+/** 绠＄悊绔綉鍏冲瘑閽ヨ鍥撅紝rawKey 浠呯敤浜庡巻鍙插吋瀹癸紝鐣岄潰搴斾紭鍏堝睍绀鸿劚鏁忛瑙堛€?*/
 export interface ApiKeyVO {
   id: number
   name: string
@@ -113,7 +115,7 @@ export interface ApiKeyVO {
   limits: ApiKeyLimitVO[]
 }
 
-/** 新建网关密钥后返回的结果，rawKey 只在创建响应中用于管理员复制。 */
+/** 鏂板缓缃戝叧瀵嗛挜鍚庤繑鍥炵殑缁撴灉锛宺awKey 鍙湪鍒涘缓鍝嶅簲涓敤浜庣鐞嗗憳澶嶅埗銆?*/
 export interface ApiKeyCreationVO {
   id: number
   name: string
@@ -130,7 +132,7 @@ export interface ApiKeyCreationVO {
   limits: ApiKeyLimitVO[]
 }
 
-/** 网关密钥限制项视图，支持额度和请求数等滑动窗口限制。 */
+/** 缃戝叧瀵嗛挜闄愬埗椤硅鍥撅紝鏀寔棰濆害鍜岃姹傛暟绛夋粦鍔ㄧ獥鍙ｉ檺鍒躲€?*/
 export interface ApiKeyLimitVO {
   id: number | null
   limitType: string
@@ -148,6 +150,8 @@ export interface RequestLogVO {
   gatewayApiKeyPreview: string | null
   sourceProtocol: string
   requestType: string
+  sourceEndpointType: string | null
+  upstreamEndpointType: string | null
   providerCode: string | null
   providerType: string | null
   publicModel: string | null
@@ -184,25 +188,25 @@ export interface RoutingConfigForm {
   stickyTtlMinutes: number
 }
 
-/** 控制台展示的网关外部调用信息，不包含任何密钥。 */
+/** 鎺у埗鍙板睍绀虹殑缃戝叧澶栭儴璋冪敤淇℃伅锛屼笉鍖呭惈浠讳綍瀵嗛挜銆?*/
 export interface GatewayInfoVO {
-  /** 当前后端接口 Base URL，前端展示时会与端点路径组合成完整调用地址。 */
+  /** 褰撳墠鍚庣鎺ュ彛 Base URL锛屽墠绔睍绀烘椂浼氫笌绔偣璺緞缁勫悎鎴愬畬鏁磋皟鐢ㄥ湴鍧€銆?*/
   baseUrl: string
-  /** 当前后端已支持的公开调用端点。 */
+  /** 褰撳墠鍚庣宸叉敮鎸佺殑鍏紑璋冪敤绔偣銆?*/
   endpoints: GatewayEndpointVO[]
 }
 
-/** 单个网关端点的展示信息。 */
+/** 鍗曚釜缃戝叧绔偣鐨勫睍绀轰俊鎭€?*/
 export interface GatewayEndpointVO {
-  /** HTTP 方法，例如 GET 或 POST。 */
+  /** HTTP 鏂规硶锛屼緥濡?GET 鎴?POST銆?*/
   method: string
-  /** 端点路径，例如 /v1/chat/completions。 */
+  /** 绔偣璺緞锛屼緥濡?/v1/chat/completions銆?*/
   path: string
-  /** 兼容协议或通用分类。 */
+  /** 鍏煎鍗忚鎴栭€氱敤鍒嗙被銆?*/
   protocol: string
-  /** 调用该端点所需的鉴权方式。 */
+  /** 璋冪敤璇ョ鐐规墍闇€鐨勯壌鏉冩柟寮忋€?*/
   auth: string
-  /** 面向管理员的简短用途说明。 */
+  /** 闈㈠悜绠＄悊鍛樼殑绠€鐭敤閫旇鏄庛€?*/
   description: string
 }
 
@@ -259,7 +263,15 @@ export interface DashboardSeriesPointVO {
   totalTokens: number
 }
 
-/** 创建或更新渠道聚合配置的表单载荷。 */
+/** 鍒涘缓鎴栨洿鏂版笭閬撹仛鍚堥厤缃殑琛ㄥ崟杞借嵎銆?*/
+
+/** 渠道能力配置项，每项对应一种上游端点类型及其独立请求路径。 */
+export interface ChannelCapability {
+  /** 端点类型名称，对应 EndpointType 枚举值 */
+  type: string
+  /** 该能力对应的上游请求路径 */
+  path: string
+}
 export interface ChannelForm {
   /** 稳定的渠道编码，创建后不允许修改。 */
   code: string
@@ -295,83 +307,89 @@ export interface ChannelForm {
   models: ChannelModelForm[]
   /** 渠道是否启用。 */
   enabled: boolean
+  /** 渠道能力配置列表，每项对应一种上游端点类型及其独立请求路径。 */
+  capabilities?: ChannelCapability[]
 }
 
-/** 渠道表单中的单个模型映射项。 */
+/** 娓犻亾琛ㄥ崟涓殑鍗曚釜妯″瀷鏄犲皠椤广€?*/
 export interface ChannelModelForm {
-  /** 网关对外暴露的模型名；为空时由前缀和上游模型名生成。 */
+  /** 缃戝叧瀵瑰鏆撮湶鐨勬ā鍨嬪悕锛涗负绌烘椂鐢卞墠缂€鍜屼笂娓告ā鍨嬪悕鐢熸垚銆?*/
   publicName: string
-  /** 上游供应商真实模型 ID。 */
+  /** 涓婃父渚涘簲鍟嗙湡瀹炴ā鍨?ID銆?*/
   providerModel: string
-  /** 用户手动设置的模型别名；为空时使用默认对外模型名。 */
+  /** 鐢ㄦ埛鎵嬪姩璁剧疆鐨勬ā鍨嬪埆鍚嶏紱涓虹┖鏃朵娇鐢ㄩ粯璁ゅ澶栨ā鍨嬪悕銆?*/
   modelAlias: string
-  /** 每 100 万普通输入 token 消耗的额度。 */
+  /** 姣?100 涓囨櫘閫氳緭鍏?token 娑堣€楃殑棰濆害銆?*/
   inputQuotaPerMillion?: number | null
-  /** 每 100 万输出 token 消耗的额度。 */
+  /** 姣?100 涓囪緭鍑?token 娑堣€楃殑棰濆害銆?*/
   outputQuotaPerMillion?: number | null
-  /** 每 100 万缓存读取输入 token 消耗的额度。 */
+  /** 姣?100 涓囩紦瀛樿鍙栬緭鍏?token 娑堣€楃殑棰濆害銆?*/
   cacheReadQuotaPerMillion?: number | null
-  /** 是否支持图片/视觉输入。 */
+  /** 鏄惁鏀寔鍥剧墖/瑙嗚杈撳叆銆?*/
   vision?: boolean | null
-  /** 是否支持工具/函数调用。 */
+  /** 鏄惁鏀寔宸ュ叿/鍑芥暟璋冪敤銆?*/
   toolsSupport?: boolean | null
-  /** 是否支持 JSON 输出模式。 */
+  /** 鏄惁鏀寔 JSON 杈撳嚭妯″紡銆?*/
   jsonModeSupport?: boolean | null
-  /** 最大上下文窗口（token 数）。 */
+  /** 鏈€澶т笂涓嬫枃绐楀彛锛坱oken 鏁帮級銆?*/
   contextLength?: number | null
   /** 逗号分隔的 EndpointType 名称；为空或空字符串表示不限制端点类型。 */
   allowedEndpointTypes?: string | null
+  /** 逗号分隔的能力类型名称，限定该模型可用的上游能力；为空表示使用渠道全部能力。 */
+  allowedCapabilities?: string | null
 }
 
-/** 渠道详情中返回的模型映射项。 */
+/** 娓犻亾璇︽儏涓繑鍥炵殑妯″瀷鏄犲皠椤广€?*/
 export interface ChannelModelMappingVO {
-  /** 模型映射记录 ID。 */
+  /** 妯″瀷鏄犲皠璁板綍 ID銆?*/
   id: number
-  /** 网关对外暴露的模型名。 */
+  /** 缃戝叧瀵瑰鏆撮湶鐨勬ā鍨嬪悕銆?*/
   publicName: string
-  /** 上游供应商真实模型 ID。 */
+  /** 涓婃父渚涘簲鍟嗙湡瀹炴ā鍨?ID銆?*/
   providerModel: string
-  /** 用户手动设置的模型别名；为空时使用默认对外模型名。 */
+  /** 鐢ㄦ埛鎵嬪姩璁剧疆鐨勬ā鍨嬪埆鍚嶏紱涓虹┖鏃朵娇鐢ㄩ粯璁ゅ澶栨ā鍨嬪悕銆?*/
   modelAlias: string | null
-  /** 该模型映射是否启用。 */
+  /** 璇ユā鍨嬫槧灏勬槸鍚﹀惎鐢ㄣ€?*/
   enabled: boolean
-  /** 每 100 万普通输入 token 消耗的额度。 */
+  /** 姣?100 涓囨櫘閫氳緭鍏?token 娑堣€楃殑棰濆害銆?*/
   inputQuotaPerMillion: number | null
-  /** 每 100 万输出 token 消耗的额度。 */
+  /** 姣?100 涓囪緭鍑?token 娑堣€楃殑棰濆害銆?*/
   outputQuotaPerMillion: number | null
-  /** 每 100 万缓存读取输入 token 消耗的额度。 */
+  /** 姣?100 涓囩紦瀛樿鍙栬緭鍏?token 娑堣€楃殑棰濆害銆?*/
   cacheReadQuotaPerMillion: number | null
-  /** 是否支持图片/视觉输入。 */
+  /** 鏄惁鏀寔鍥剧墖/瑙嗚杈撳叆銆?*/
   vision: boolean | null
-  /** 是否支持工具/函数调用。 */
+  /** 鏄惁鏀寔宸ュ叿/鍑芥暟璋冪敤銆?*/
   toolsSupport: boolean | null
-  /** 是否支持 JSON 输出模式。 */
+  /** 鏄惁鏀寔 JSON 杈撳嚭妯″紡銆?*/
   jsonModeSupport: boolean | null
-  /** 最大上下文窗口（token 数）。 */
+  /** 鏈€澶т笂涓嬫枃绐楀彛锛坱oken 鏁帮級銆?*/
   contextLength: number | null
-  /** 逗号分隔的 EndpointType 名称；为空表示不限制端点类型。 */
+  /** 閫楀彿鍒嗛殧鐨?EndpointType 鍚嶇О锛涗负绌鸿〃绀轰笉闄愬埗绔偣绫诲瀷銆?*/
   allowedEndpointTypes: string | null
+  /** 逗号分隔的能力类型名称，限定该模型可用的上游能力；为空表示使用渠道全部能力。 */
+  allowedCapabilities: string | null
 }
 
-/** 后端获取上游模型选项所需的未保存表单值。 */
+/** 鍚庣鑾峰彇涓婃父妯″瀷閫夐」鎵€闇€鐨勬湭淇濆瓨琛ㄥ崟鍊笺€?*/
 export interface ChannelModelFetchRequest {
-  /** 供应商类型（ProviderType），用于选择后端供应商客户端。 */
+  /** 渚涘簲鍟嗙被鍨嬶紙ProviderType锛夛紝鐢ㄤ簬閫夋嫨鍚庣渚涘簲鍟嗗鎴风銆?*/
   type: string
-  /** 编辑已有渠道时传递渠道 ID，允许后端在密钥留空时读取已保存密钥。 */
+  /** 缂栬緫宸叉湁娓犻亾鏃朵紶閫掓笭閬?ID锛屽厑璁稿悗绔湪瀵嗛挜鐣欑┖鏃惰鍙栧凡淇濆瓨瀵嗛挜銆?*/
   channelId?: number | null
-  /** 上游服务 Base URL。 */
+  /** 涓婃父鏈嶅姟 Base URL銆?*/
   baseUrl: string
-  /** 供应商特定的模型列表请求路径。 */
+  /** 渚涘簲鍟嗙壒瀹氱殑妯″瀷鍒楄〃璇锋眰璺緞銆?*/
   modelsPath: string
-  /** 仅用于本次获取请求的原始供应商密钥。 */
+  /** 浠呯敤浜庢湰娆¤幏鍙栬姹傜殑鍘熷渚涘簲鍟嗗瘑閽ャ€?*/
   apiKey: string
 }
 
-/** 供应商特定模型发现返回的模型选项。 */
+/** 渚涘簲鍟嗙壒瀹氭ā鍨嬪彂鐜拌繑鍥炵殑妯″瀷閫夐」銆?*/
 export interface UpstreamModelVO {
-  /** 可写入 providerModel 的上游模型 ID。 */
+  /** 鍙啓鍏?providerModel 鐨勪笂娓告ā鍨?ID銆?*/
   id: string
-  /** 下拉框中展示的可选归属文本。 */
+  /** 涓嬫媺妗嗕腑灞曠ず鐨勫彲閫夊綊灞炴枃鏈€?*/
   ownedBy: string
 }
 
@@ -392,7 +410,7 @@ export interface ChannelAuthStatusVO {
   hasAuthFile: boolean
 }
 
-/** 创建网关密钥的表单载荷，空渠道/模型列表表示不限制对应范围。 */
+/** 鍒涘缓缃戝叧瀵嗛挜鐨勮〃鍗曡浇鑽凤紝绌烘笭閬?妯″瀷鍒楄〃琛ㄧず涓嶉檺鍒跺搴旇寖鍥淬€?*/
 export interface ApiKeyForm {
   name: string
   failoverEnabled: boolean
@@ -405,7 +423,7 @@ export interface ApiKeyForm {
   limits: ApiKeyLimitForm[]
 }
 
-/** 更新网关密钥的表单载荷，limits 为空数组表示清空所有窗口限制。 */
+/** 鏇存柊缃戝叧瀵嗛挜鐨勮〃鍗曡浇鑽凤紝limits 涓虹┖鏁扮粍琛ㄧず娓呯┖鎵€鏈夌獥鍙ｉ檺鍒躲€?*/
 export interface ApiKeyUpdateForm {
   status: string
   failoverEnabled: boolean
@@ -417,7 +435,7 @@ export interface ApiKeyUpdateForm {
   limits: ApiKeyLimitForm[]
 }
 
-/** 单条网关密钥限制项表单，不能包含任何密钥或 token 配置。 */
+/** 鍗曟潯缃戝叧瀵嗛挜闄愬埗椤硅〃鍗曪紝涓嶈兘鍖呭惈浠讳綍瀵嗛挜鎴?token 閰嶇疆銆?*/
 export interface ApiKeyLimitForm {
   limitType: string
   windowValue: number | null
@@ -440,15 +458,15 @@ export interface ModelEnabledForm {
   enabled: boolean
 }
 
-/** 管理端更新模型能力配置的请求体。 */
+/** 绠＄悊绔洿鏂版ā鍨嬭兘鍔涢厤缃殑璇锋眰浣撱€?*/
 export interface ModelCapabilitiesForm {
-  /** 是否支持图片/视觉输入。 */
+  /** 鏄惁鏀寔鍥剧墖/瑙嗚杈撳叆銆?*/
   vision: boolean | null
-  /** 是否支持工具/函数调用。 */
+  /** 鏄惁鏀寔宸ュ叿/鍑芥暟璋冪敤銆?*/
   toolsSupport: boolean | null
-  /** 是否支持 JSON 输出模式。 */
+  /** 鏄惁鏀寔 JSON 杈撳嚭妯″紡銆?*/
   jsonModeSupport: boolean | null
-  /** 最大上下文窗口（token 数）。 */
+  /** 鏈€澶т笂涓嬫枃绐楀彛锛坱oken 鏁帮級銆?*/
   contextLength: number | null
 }
 
@@ -471,18 +489,105 @@ export interface RequestLogSearchParam {
 }
 
 /** 渠道聚合表单当前支持的供应商策略类型。 */
-export const channelTypes = ['OPENAI_COMPATIBLE', 'ANTHROPIC', 'OPENAI_RESPONSES', 'GPT_AUTH', 'CLAUDE_AUTH', 'DEEPSEEK_CHAT', 'DEEPSEEK_ANTHROPIC', 'GEMINI']
+export const channelTypes = ['OPENAI', 'ANTHROPIC', 'CUSTOM', 'MIMO_TOKEN_PLAN', 'DEEPSEEK', 'VOLC_CODINGPLAN', 'OPENCODE', 'GEMINI', 'GPT_AUTH', 'CLAUDE_AUTH']
 export const activeStatuses = ['ACTIVE', 'DISABLED', 'EXPIRED']
-/** 管理端可选的滑动窗口单位，请求数可用分钟，额度界面会隐藏分钟。 */
+/** 绠＄悊绔彲閫夌殑婊戝姩绐楀彛鍗曚綅锛岃姹傛暟鍙敤鍒嗛挓锛岄搴︾晫闈細闅愯棌鍒嗛挓銆?*/
 export const quotaWindowUnits = ['MINUTE', 'HOUR', 'DAY']
-/** 管理端当前开放的密钥限制类型，表结构保留未来扩展能力。 */
+/** 绠＄悊绔綋鍓嶅紑鏀剧殑瀵嗛挜闄愬埗绫诲瀷锛岃〃缁撴瀯淇濈暀鏈潵鎵╁睍鑳藉姏銆?*/
 export const apiKeyLimitTypes = ['QUOTA', 'REQUEST']
 export const routeModes = ['RANDOM', 'ROUND_ROBIN', 'WEIGHTED', 'SESSION_STICKY']
-/** 管理端可选的端点类型，用于按模型限制允许调用的端点。 */
+/** 绠＄悊绔彲閫夌殑绔偣绫诲瀷锛岀敤浜庢寜妯″瀷闄愬埗鍏佽璋冪敤鐨勭鐐广€?*/
+/** 每个供应商默认支持的端点列表（能力维度），新建渠道时自动预选。 */
+export const supplierDefaultEndpoints: Record<string, string[]> = {
+  OPENAI: ['CHAT_COMPLETIONS', 'OPENAI_RESPONSES', 'OPENAI_VIDEOS', 'OPENAI_IMAGES'],
+  ANTHROPIC: ['ANTHROPIC_MESSAGES'],
+  CUSTOM: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  MIMO_TOKEN_PLAN: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  DEEPSEEK: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  VOLC_CODINGPLAN: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  OPENCODE: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  GEMINI: ['CHAT_COMPLETIONS', 'ANTHROPIC_MESSAGES'],
+  GPT_AUTH: ['CHAT_COMPLETIONS', 'OPENAI_VIDEOS', 'OPENAI_IMAGES'],
+  CLAUDE_AUTH: ['ANTHROPIC_MESSAGES'],
+}
+
+/** 端点类型中文标签，用于管理界面展示。 */
+export const endpointLabels: Record<string, string> = {
+  CHAT_COMPLETIONS: 'Chat Completions',
+  ANTHROPIC_MESSAGES: 'Anthropic Messages',
+  OPENAI_RESPONSES: 'Responses API',
+  OPENAI_VIDEOS: '视频生成',
+  OPENAI_IMAGES: '图像生成',
+}
+
+/** 各端点类型在各供应商下的默认请求路径，用于新建渠道时自动填充。 */
+export const capabilityDefaultPaths: Record<string, Record<string, string>> = {
+  CHAT_COMPLETIONS: {
+    OPENAI: '/v1/chat/completions',
+    ANTHROPIC: '/v1/messages',
+    CUSTOM: '/v1/chat/completions',
+    MIMO_TOKEN_PLAN: '/v1/chat/completions',
+    DEEPSEEK: '/v1/chat/completions',
+    VOLC_CODINGPLAN: '/v3/chat/completions',
+    OPENCODE: '/v1/chat/completions',
+    GEMINI: '/v1beta/models',
+    GPT_AUTH: '/v1/chat/completions',
+    CLAUDE_AUTH: '/v1/chat/completions',
+  },
+  ANTHROPIC_MESSAGES: {
+    OPENAI: '/v1/messages',
+    ANTHROPIC: '/v1/messages',
+    CUSTOM: '/v1/messages',
+    MIMO_TOKEN_PLAN: '/anthropic/v1/messages',
+    DEEPSEEK: '/v1/messages',
+    VOLC_CODINGPLAN: '/v1/messages',
+    OPENCODE: '/v1/messages',
+    GEMINI: '/v1beta/models',
+    GPT_AUTH: '/v1/messages',
+    CLAUDE_AUTH: '/v1/messages',
+  },
+  OPENAI_RESPONSES: {
+    OPENAI: '/v1/responses',
+    ANTHROPIC: '/v1/responses',
+    CUSTOM: '/v1/responses',
+    MIMO_TOKEN_PLAN: '/v1/responses',
+    DEEPSEEK: '/v1/responses',
+    VOLC_CODINGPLAN: '/v1/responses',
+    OPENCODE: '/v1/responses',
+    GEMINI: '/v1/responses',
+    GPT_AUTH: '/v1/responses',
+    CLAUDE_AUTH: '/v1/responses',
+  },
+  OPENAI_VIDEOS: {
+    OPENAI: '/v1/videos',
+    ANTHROPIC: '/v1/videos',
+    CUSTOM: '/v1/videos',
+    MIMO_TOKEN_PLAN: '/v1/videos',
+    DEEPSEEK: '/v1/videos',
+    VOLC_CODINGPLAN: '/v1/videos',
+    OPENCODE: '/v1/videos',
+    GEMINI: '/v1/videos',
+    GPT_AUTH: '/v1/videos',
+    CLAUDE_AUTH: '/v1/videos',
+  },
+  OPENAI_IMAGES: {
+    OPENAI: '/v1/images/generations',
+    ANTHROPIC: '/v1/images/generations',
+    CUSTOM: '/v1/images/generations',
+    MIMO_TOKEN_PLAN: '/v1/images/generations',
+    DEEPSEEK: '/v1/images/generations',
+    VOLC_CODINGPLAN: '/v1/images/generations',
+    OPENCODE: '/v1/images/generations',
+    GEMINI: '/v1/images/generations',
+    GPT_AUTH: '/v1/images/generations',
+    CLAUDE_AUTH: '/v1/images/generations',
+  },
+}
+
 export const endpointTypeOptions = [
   { label: 'Chat Completions', value: 'CHAT_COMPLETIONS' },
   { label: 'Anthropic Messages', value: 'ANTHROPIC_MESSAGES' },
   { label: 'Responses API', value: 'OPENAI_RESPONSES' },
   { label: '视频生成', value: 'OPENAI_VIDEOS' },
-  { label: '图片生成', value: 'OPENAI_IMAGES' },
+  { label: '图像生成', value: 'OPENAI_IMAGES' },
 ]

@@ -85,6 +85,11 @@ public class ChatGatewayService {
      */
     private final StreamTransformerRegistry streamTransformerRegistry;
     /**
+     * 供应商特化 hook 注册表，按 ProviderType 索引——处理 DeepSeek reasoning_content
+     * 兜底、Gemini generationConfig 拆分等渠道特化逻辑，与 {@link #adapterRegistry}（跨协议格式转换）正交。
+     */
+    private final cn.ms08.apiconvert.adapter.endpoint.ProviderHookRegistry hookRegistry;
+    /**
      * 用于在流式响应中写入 OpenAI 风格错误事件。
      */
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -95,13 +100,15 @@ public class ChatGatewayService {
     public ChatGatewayService(RoutingService routingService, ProviderClientRegistry providerClientRegistry,
                               UsageRecorder usageRecorder, ApiKeyQuotaService apiKeyQuotaService,
                               EndpointProviderAdapterRegistry adapterRegistry,
-                              StreamTransformerRegistry streamTransformerRegistry) {
+                              StreamTransformerRegistry streamTransformerRegistry,
+                              cn.ms08.apiconvert.adapter.endpoint.ProviderHookRegistry hookRegistry) {
         this.routingService = routingService;
         this.providerClientRegistry = providerClientRegistry;
         this.usageRecorder = usageRecorder;
         this.apiKeyQuotaService = apiKeyQuotaService;
         this.adapterRegistry = adapterRegistry;
         this.streamTransformerRegistry = streamTransformerRegistry;
+        this.hookRegistry = hookRegistry;
     }
 
     public UnifiedChatResponse chat(UnifiedChatRequest request, HttpServletRequest servletRequest) {
@@ -152,12 +159,17 @@ public class ChatGatewayService {
                 route = routes.get(index);
                 try {
                     apiKeyQuotaService.assertEnough(principal.apiKeyId(), route, estimatedUsage);
-                    UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, route);
-                    UnifiedChatResponse response = providerClientRegistry.get(route.providerType()).chat(route, adaptedRequest);
-                    UnifiedChatResponse adaptedResponse = applyAdapter(response, endpointType, route);
+                    EndpointType upstreamEndpoint = route.effectiveEndpoint(endpointType);
+                    UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, upstreamEndpoint, route);
+                    AiProviderClient client = providerClientRegistry.get(route.providerType());
+                    UnifiedChatResponse response = dispatchProtocol(client, route, adaptedRequest, upstreamEndpoint);
+                    UnifiedChatResponse adaptedResponse = applyAdapter(response, endpointType, upstreamEndpoint, route);
                     routingService.recordSuccess(principal.apiKeyId(), route);
                     apiKeyQuotaService.deduct(principal.apiKeyId(), route, adaptedResponse.usage(), estimatedUsage);
-                    usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, stream,
+                    usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                            endpointType != null ? endpointType.name() : null,
+                            upstreamEndpoint.name(),
+                            route, stream,
                             HttpStatus.OK.value(), System.currentTimeMillis() - start, adaptedResponse.usage());
                     return adaptedResponse;
                 } catch (Exception exception) {
@@ -177,7 +189,10 @@ public class ChatGatewayService {
                         retryCode = ErrorCode.INTERNAL_ERROR.name();
                         retryMsg = exception.getMessage() != null ? exception.getMessage() : exception.getClass().getSimpleName();
                     }
-                    usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), stream,
+                    usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                            endpointType != null ? endpointType.name() : null,
+                            route.effectiveEndpoint(endpointType).name(),
+                            route, request.model(), stream,
                             retryStatus, System.currentTimeMillis() - start, retryCode, retryMsg);
                     log.warn("同步请求当前渠道失败，切换备用渠道继续尝试：模型={}、失败渠道={}、错误类型={}、错误={}",
                             request.model(), route.providerCode(), exception.getClass().getSimpleName(), exception.getMessage(), exception);
@@ -187,12 +202,18 @@ public class ChatGatewayService {
         } catch (GatewayException exception) {
             recordProviderFailure(principal, request, route, sessionKey, exception);
             log.warn("对话转发失败：{}", exception.getMessage(), exception);
-            usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), stream, exception.status().value(),
+            usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                    endpointType != null ? endpointType.name() : null,
+                    endpointType != null ? endpointType.name() : null,
+                    route, request.model(), stream, exception.status().value(),
                     System.currentTimeMillis() - start, exception.code().name(), exception.getMessage());
             throw exception;
         } catch (Exception exception) {
             log.error("对话转发异常：{}", exception.getMessage(), exception);
-            usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), stream,
+            usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                    endpointType != null ? endpointType.name() : null,
+                    endpointType != null ? endpointType.name() : null,
+                    route, request.model(), stream,
                     HttpStatus.INTERNAL_SERVER_ERROR.value(), System.currentTimeMillis() - start,
                     ErrorCode.INTERNAL_ERROR.name(), "Internal server error");
             throw exception;
@@ -270,14 +291,23 @@ public class ChatGatewayService {
                 attemptOutput = new CountingOutputStream(outputStream);
                 try {
                     apiKeyQuotaService.assertEnough(principal.apiKeyId(), route, estimatedUsage);
-                    // 流式路径也应用端点-供应商适配器的请求转换
-                    UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, route);
-                    // 检查是否需要流式响应转换（端点与供应商协议不一致时）
+                    // upstreamEndpoint 仅决定"上游走哪个端点类型 / 路径"，不影响 dispatch 方法。
+                    // 修复前 effectiveEndpoint 会改写 dispatch 端点，导致 Codex /v1/responses 被改走
+                    // /v1/chat/completions 再用 ResponsesStreamTransformer 补全，触发断流。
+                    EndpointType upstreamEndpoint = route.effectiveEndpoint(endpointType);
+                    // 请求体必须按上游协议改写（X→Y 适配），因此仍用 upstreamEndpoint
+                    UnifiedChatRequest adaptedRequest = applyRequestAdapter(request, endpointType, upstreamEndpoint, route);
+                    // dispatch 严格按客户端端点走；只有"上游 SSE 协议 ≠ 客户端 SSE 协议"时才挂 transformer
+                    EndpointType dispatchEndpoint = endpointType != null ? endpointType : upstreamEndpoint;
+                    // 检查是否需要流式响应转换（dispatch 端点与上游协议不一致时）
                     OutputStream targetStream = attemptOutput;
-                    if (endpointType != null) {
-                        StreamResponseTransformer transformer = streamTransformerRegistry.get(endpointType, route.providerType());
+                    if (dispatchEndpoint != null && upstreamEndpoint != null && upstreamEndpoint != dispatchEndpoint) {
+                        StreamResponseTransformer transformer = streamTransformerRegistry.getForUpstream(dispatchEndpoint, upstreamEndpoint);
                         if (transformer == null) {
-                            transformer = streamTransformerRegistry.get(endpointType, adapterProvider(route.providerType()));
+                            transformer = streamTransformerRegistry.get(dispatchEndpoint, route.providerType());
+                        }
+                        if (transformer == null) {
+                            transformer = streamTransformerRegistry.get(dispatchEndpoint, adapterProvider(route.providerType()));
                         }
                         if (transformer != null) {
                             long createdAt = java.time.Instant.now().getEpochSecond();
@@ -288,17 +318,17 @@ public class ChatGatewayService {
                             targetStream = wrappedStream.outputStream();
                         }
                     }
-                    AiProviderClient client = providerClientRegistry.get(route.providerType());
-                    if (!client.supportsStreaming()) {
+                    AiProviderClient streamClient = providerClientRegistry.get(route.providerType());
+                    if (!streamClient.supportsStreaming(dispatchEndpoint)) {
                         throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
                                 "stream is not supported for provider type " + route.providerType());
                     }
                     log.info("上游请求：POST {} {}、渠道类型：{}、渠道编码：{}、请求体：{}",
-                            route.baseUrl() + route.chatPath(),
+                            route.baseUrl() + route.resolvedChatPath(upstreamEndpoint),
                             formatSanitizedHeaders(route),
                             route.providerType(), route.providerCode(),
                             serializeRequest(adaptedRequest));
-                    UnifiedUsage usage = client.streamChat(route, adaptedRequest, targetStream);
+                    UnifiedUsage usage = dispatchStreamProtocol(streamClient, route, adaptedRequest, targetStream, dispatchEndpoint);
                     // 流式响应转换完成
                     if (wrappedStream != null) {
                         wrappedStream.complete();
@@ -313,7 +343,10 @@ public class ChatGatewayService {
                             safeTokens(usage != null ? usage.totalTokens() : null),
                             safeTokens(usage != null ? usage.cacheReadInputTokens() : null));
                     apiKeyQuotaService.deduct(principal.apiKeyId(), route, usage, estimatedUsage);
-                    usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, true,
+                    usageRecorder.recordSuccess(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                            endpointType != null ? endpointType.name() : null,
+                            upstreamEndpoint.name(),
+                            route, true,
                             HttpStatus.OK.value(), latencyMs, usage);
                     return;
                 } catch (Exception exception) {
@@ -335,7 +368,10 @@ public class ChatGatewayService {
                             retryCode = ErrorCode.INTERNAL_ERROR.name();
                             retryMsg = exception.getMessage() != null ? exception.getMessage() : exception.getClass().getSimpleName();
                         }
-                        usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), true,
+                        usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                                endpointType != null ? endpointType.name() : null,
+                                route.effectiveEndpoint(endpointType).name(),
+                                route, request.model(), true,
                                 retryStatus, System.currentTimeMillis() - start, retryCode, retryMsg);
                         log.warn("流式请求当前渠道未写出即失败，切换备用渠道继续尝试：模型={}、失败渠道={}、错误类型={}、错误={}",
                                 request.model(), route.providerCode(), exception.getClass().getSimpleName(), exception.getMessage(), exception);
@@ -353,7 +389,10 @@ public class ChatGatewayService {
                 recordProviderFailure(principal, request, route, sessionKey, exception);
                 log.warn("流式转发失败：{}", exception.getMessage(), exception);
             }
-            usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), true,
+            usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                    endpointType != null ? endpointType.name() : null,
+                    endpointType != null ? endpointType.name() : null,
+                    route, request.model(), true,
                     exception.status().value(), System.currentTimeMillis() - start, exception.code().name(), exception.getMessage());
             if (!isClientDisconnect(exception)) {
                 writeStreamErrorSafely(wrappedStream, outputStream, exception.getMessage(), exception.code().name().toLowerCase(), openAiType(exception.status()));
@@ -364,7 +403,10 @@ public class ChatGatewayService {
             } else {
                 log.error("流式转发异常：{}", exception.getMessage(), exception);
             }
-            usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType, route, request.model(), true,
+            usageRecorder.recordFailure(requestId, principal.apiKeyId(), sourceProtocol, requestType,
+                    endpointType != null ? endpointType.name() : null,
+                    endpointType != null ? endpointType.name() : null,
+                    route, request.model(), true,
                     HttpStatus.INTERNAL_SERVER_ERROR.value(), System.currentTimeMillis() - start,
                     ErrorCode.INTERNAL_ERROR.name(), "Internal server error");
             if (!isClientDisconnect(exception)) {
@@ -573,55 +615,132 @@ public class ChatGatewayService {
     /**
      * 应用端点-供应商接口适配器，处理跨协议响应格式转换。
      * <p>
+     * 适配器按 (源端点, 目标端点) 维度匹配——上游端点由 {@code ModelRoute.effectiveEndpoint} 解析，
+     * 不再绑定具体供应商身份：任何支持目标端点协议的供应商（OPENAI/DEEPSEEK/MIMO_TOKEN_PLAN ...）
+     * 都可以复用同一份适配器。
+     * </p>
+     * <p>
      * 查找已注册的 {@link EndpointProviderAdapter} 进行响应转换；未找到时按以下规则处理：
      * <ul>
-     *   <li>与端点默认供应商同协议 → 直接透传（仅修正 rawResponse 中的 model 为公共模型名）</li>
+     *   <li>源端点 == 目标端点（同协议）→ 直接透传（仅修正 rawResponse 中的 model 为公共模型名）</li>
      *   <li>跨协议且无适配器 → 抛 {@link ErrorCode#UNSUPPORTED_FEATURE}</li>
      * </ul>
      * </p>
+     * <p>
+     * <b>同协议但有 provider 特化的情况</b>（如 DeepSeek/Gemini）：适配器 {@code targetEndpoint} 与
+     * {@code sourceEndpoint} 相同（CHAT→CHAT / ANTHROPIC→ANTHROPIC），仍然需要调用以执行
+     * DeepSeek 工具序列归一化、Gemini rawOptions 清理、响应格式重建等 provider 维度特化逻辑。
+     * 因此查找顺序固定为 (源, 目标) → (源, 供应商) → (源, adapterProvider(供应商))，找到即调用；
+     * 真没有适配器时再走 passthrough（仅 source==target）或抛错。
+     * </p>
      */
-    private UnifiedChatResponse applyAdapter(UnifiedChatResponse response, EndpointType endpointType, ModelRoute route) {
-        if (endpointType == null) {
+    private UnifiedChatResponse applyAdapter(UnifiedChatResponse response, EndpointType sourceEndpoint, EndpointType targetEndpoint, ModelRoute route) {
+        if (sourceEndpoint == null) {
             return response;
         }
-        EndpointProviderAdapter adapter = adapterRegistry.get(endpointType, route.providerType());
+        // Layer 2：跨协议适配器 adaptResponse。
+        // 查找顺序：先 (源, 供应商) 命中 provider 维度覆盖（DeepSeek / Gemini 等在同 (source, target) 下
+        // 仍有 provider 特化的场景），再 (源, 目标) 命中通用跨协议适配器，最后 (源, adapterProvider(供应商))
+        // 兜底历史 key。找不到任何适配器时：同协议走 passthrough，跨协议抛错。
+        EndpointProviderAdapter adapter = adapterRegistry.get(sourceEndpoint, route.providerType());
         if (adapter == null) {
-            adapter = adapterRegistry.get(endpointType, adapterProvider(route.providerType()));
+            adapter = adapterRegistry.get(sourceEndpoint, targetEndpoint);
         }
-        if (adapter != null) {
-            return adapter.adaptResponse(response, route.publicModel());
+        if (adapter == null) {
+            adapter = adapterRegistry.get(sourceEndpoint, adapterProvider(route.providerType()));
         }
-        ProviderType resolvedProvider = route.providerType();
-        if (endpointType.defaultProvider() != null
-                && (resolvedProvider == endpointType.defaultProvider()
-                || adapterProvider(resolvedProvider) == endpointType.defaultProvider())) {
-            // 同协议透传：修正 model 为公共模型名
-            Object raw = response.rawResponse();
-            if (raw instanceof OpenAiResponsesResponse rr) {
-                rr.setModel(route.publicModel());
-            } else if (raw instanceof OpenAiChatCompletionResponse rr) {
-                rr.setModel(route.publicModel());
-            } else if (raw instanceof AnthropicMessageResponse rr) {
-                rr.setModel(route.publicModel());
+        if (adapter == null) {
+            if (sourceEndpoint == targetEndpoint || targetEndpoint == null) {
+                return passthrough(sourceEndpoint, route, response);
             }
-            return new UnifiedChatResponse(response.id(), route.publicModel(), response.messages(), response.usage(), raw);
+            throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                    "No adapter found for source endpoint " + sourceEndpoint
+                            + " -> target endpoint " + targetEndpoint
+                            + " (provider=" + route.providerType() + ")");
         }
-        // 跨协议且无适配器
-        throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
-                "No adapter found for endpoint " + endpointType + " with provider " + resolvedProvider);
+        UnifiedChatResponse adapted = adapter.adaptResponse(response, route.publicModel());
+        // Layer 1：hook postProcess（源端点格式下的供应商特化）
+        cn.ms08.apiconvert.adapter.endpoint.ProviderHook hook = hookRegistry.get(route.providerType());
+        if (hook != null) {
+            adapted = hook.postProcess(adapted, sourceEndpoint, route);
+        }
+        return adapted;
+    }
+
+    private UnifiedChatResponse passthrough(EndpointType sourceEndpoint, ModelRoute route, UnifiedChatResponse response) {
+        Object raw = response.rawResponse();
+        if (raw instanceof OpenAiResponsesResponse rr) {
+            rr.setModel(route.publicModel());
+        } else if (raw instanceof OpenAiChatCompletionResponse rr) {
+            rr.setModel(route.publicModel());
+        } else if (raw instanceof AnthropicMessageResponse rr) {
+            rr.setModel(route.publicModel());
+        }
+        return new UnifiedChatResponse(response.id(), route.publicModel(), response.messages(), response.usage(), raw);
+    }
+
+    /**
+     * 根据上游端点类型将请求分发到供应商对应的协议方法。
+     */
+    private UnifiedChatResponse dispatchProtocol(AiProviderClient client, ModelRoute route,
+                                                  UnifiedChatRequest request, EndpointType endpointType) {
+        return switch (endpointType) {
+            case CHAT_COMPLETIONS, OPENAI_VIDEOS, OPENAI_IMAGES -> client.chat(route, request);
+            case ANTHROPIC_MESSAGES -> client.messages(route, request);
+            case OPENAI_RESPONSES -> client.responses(route, request);
+            default -> throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                    "Unsupported upstream endpoint: " + endpointType);
+        };
+    }
+
+    /**
+     * 根据上游端点类型将流式请求分发到供应商对应的流式协议方法。
+     */
+    private UnifiedUsage dispatchStreamProtocol(AiProviderClient client, ModelRoute route,
+                                                 UnifiedChatRequest request, OutputStream outputStream,
+                                                 EndpointType endpointType) {
+        return switch (endpointType) {
+            case CHAT_COMPLETIONS -> client.streamChat(route, request, outputStream);
+            case ANTHROPIC_MESSAGES -> client.streamMessages(route, request, outputStream);
+            case OPENAI_RESPONSES -> client.streamResponses(route, request, outputStream);
+            default -> throw new GatewayException(ErrorCode.UNSUPPORTED_FEATURE, HttpStatus.BAD_REQUEST,
+                    "Unsupported upstream endpoint: " + endpointType);
+        };
     }
 
     /**
      * 应用端点-供应商适配器的请求转换，流式/非流式路径均需执行。
-     * 未找到适配器时直接返回原始请求。
+     * <p>
+     * 处理顺序：
+     * <ol>
+     *   <li>始终先执行 {@link cn.ms08.apiconvert.adapter.endpoint.ProviderHook#preProcess}，
+     *   让供应商特化（如 DeepSeek 兜 reasoning_content=""）在源端点格式下补字段；</li>
+     *   <li>按 (源, 目标) → (源, 供应商) → (源, adapterProvider(供应商)) 顺序查适配器，
+     *   命中即调用 {@code adaptRequest}；同协议下 DeepSeek/Gemini 适配器仍会跑（工具序列归一化、
+     *   rawOptions 清理等 provider 特化）；</li>
+     *   <li>未命中时直接返回原请求，不报错——上游 provider 通常能容忍未改写的请求体，
+     *   而跨协议请求的兜底由 {@link #applyAdapter} 负责。</li>
+     * </ol>
+     * </p>
      */
-    private UnifiedChatRequest applyRequestAdapter(UnifiedChatRequest request, EndpointType endpointType, ModelRoute route) {
-        if (endpointType == null) {
+    private UnifiedChatRequest applyRequestAdapter(UnifiedChatRequest request, EndpointType sourceEndpoint, EndpointType targetEndpoint, ModelRoute route) {
+        if (targetEndpoint == null) {
             return request;
         }
-        EndpointProviderAdapter adapter = adapterRegistry.get(endpointType, route.providerType());
+        // Layer 1：hook preProcess（源端点格式下的供应商特化）
+        cn.ms08.apiconvert.adapter.endpoint.ProviderHook hook = hookRegistry.get(route.providerType());
+        if (hook != null) {
+            request = hook.preProcess(request, sourceEndpoint, route);
+        }
+        // Layer 2：跨协议 / 同协议 provider 特化适配器 adaptRequest。
+        // 查找顺序：先 (源, 供应商) 命中 provider 维度覆盖，再 (源, 目标) 命中通用跨协议适配器，
+        // 最后 (源, adapterProvider(供应商)) 兜底历史 key。
+        EndpointProviderAdapter adapter = adapterRegistry.get(sourceEndpoint, route.providerType());
         if (adapter == null) {
-            adapter = adapterRegistry.get(endpointType, adapterProvider(route.providerType()));
+            adapter = adapterRegistry.get(sourceEndpoint, targetEndpoint);
+        }
+        if (adapter == null) {
+            adapter = adapterRegistry.get(sourceEndpoint, adapterProvider(route.providerType()));
         }
         if (adapter == null) {
             return request;
@@ -631,8 +750,8 @@ public class ChatGatewayService {
 
     private ProviderType adapterProvider(ProviderType providerType) {
         return switch (providerType) {
-            case GPT_AUTH -> ProviderType.OPENAI_COMPATIBLE;
-            case CLAUDE_AUTH -> ProviderType.ANTHROPIC;
+            case GPT_AUTH -> ProviderType.OPENAI;
+            case CLAUDE_AUTH -> ProviderType.OPENAI;
             default -> providerType;
         };
     }
@@ -688,7 +807,7 @@ public class ChatGatewayService {
             // 通用网络断开（非 Tomcat 环境）
             if (t instanceof java.io.IOException ioe) {
                 String msg = ioe.getMessage();
-                if (msg != null && (msg.contains("Broken pipe") || msg.contains("Connection reset") || msg.contains("connection was forcibly closed"))) {
+                if (msg != null && (msg.contains("Broken pipe") || msg.contains("Connection reset") || msg.contains("connection was forcibly closed") || msg.contains("closed"))) {
                     return true;
                 }
             }

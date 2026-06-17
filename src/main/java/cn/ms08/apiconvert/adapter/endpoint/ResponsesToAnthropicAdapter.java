@@ -47,8 +47,13 @@ public class ResponsesToAnthropicAdapter implements EndpointProviderAdapter {
     }
 
     @Override
+    public EndpointType targetEndpoint() {
+        return EndpointType.ANTHROPIC_MESSAGES;
+    }
+
+    @Override
     public ProviderType targetProvider() {
-        return ProviderType.ANTHROPIC;
+        return ProviderType.CLAUDE_AUTH;
     }
 
     @Override

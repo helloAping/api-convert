@@ -60,6 +60,11 @@ public class ChatCompletionsToGeminiAdapter implements EndpointProviderAdapter {
     }
 
     @Override
+    public EndpointType targetEndpoint() {
+        return EndpointType.CHAT_COMPLETIONS;
+    }
+
+    @Override
     public ProviderType targetProvider() {
         return ProviderType.GEMINI;
     }

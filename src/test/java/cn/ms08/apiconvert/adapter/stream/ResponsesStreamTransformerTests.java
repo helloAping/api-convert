@@ -125,6 +125,38 @@ class ResponsesStreamTransformerTests {
         assertThat(outputItems.get(1).path("call_id").asText()).isEqualTo("call_123");
     }
 
+    /**
+     * 上游 SSE 在 finish_reason 之后没有发出 usage chunk 时，仅靠 flush() 也必须补发 response.completed，
+     * 防止 Codex 客户端报 "stream closed before response.completed" 后断流。
+     */
+    @Test
+    void flushAloneEmitsCompletedEventWhenFinishReasonChunkMissing() throws Exception {
+        ByteArrayOutputStream target = new ByteArrayOutputStream();
+        ResponsesStreamTransformer transformer =
+                new ResponsesStreamTransformer(target, "resp_test", "mimo-v2.5-pro", 1L);
+        transformer.sendInitialEvents();
+
+        // 模拟 Codex 请求 MiMo Anthropic 路径：上游先发 message_start + content_block_delta + message_delta
+        writeLine(transformer, "event: message_start");
+        writeLine(transformer, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_x\",\"model\":\"mimo-v2.5-pro\",\"usage\":{\"input_tokens\":7,\"output_tokens\":0}}}");
+        writeLine(transformer, "");
+        writeLine(transformer, "event: content_block_start");
+        writeLine(transformer, "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}");
+        writeLine(transformer, "");
+        writeLine(transformer, "event: content_block_delta");
+        writeLine(transformer, "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}");
+        writeLine(transformer, "");
+        writeLine(transformer, "event: message_delta");
+        writeLine(transformer, "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}");
+        writeLine(transformer, "");
+        // 上游不发 message_stop 直接断流，仅靠 flush() 兜底
+        transformer.flush();
+
+        String output = target.toString(StandardCharsets.UTF_8);
+        assertThat(output).contains("event: response.completed");
+        assertCompletedPayloadsAreValidJson(output);
+    }
+
     private static void writeLine(ResponsesStreamTransformer transformer, String line) throws Exception {
         byte[] bytes = (line + "\n").getBytes(StandardCharsets.UTF_8);
         transformer.write(bytes);

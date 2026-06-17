@@ -8,6 +8,7 @@ import cn.ms08.apiconvert.dto.ProviderModelFetchRequest;
 import cn.ms08.apiconvert.dto.ProviderQuotaFetchRequest;
 import cn.ms08.apiconvert.dto.admin.ChannelForm;
 import cn.ms08.apiconvert.dto.admin.ChannelModelFetchRequest;
+import cn.ms08.apiconvert.dto.admin.ChannelCapability;
 import cn.ms08.apiconvert.dto.admin.ChannelModelForm;
 import cn.ms08.apiconvert.entity.AiChannelEntity;
 import cn.ms08.apiconvert.entity.AiChannelModelEntity;
@@ -23,6 +24,8 @@ import cn.ms08.apiconvert.vo.admin.ChannelQuotaVO;
 import cn.ms08.apiconvert.vo.admin.ChannelVO;
 import cn.ms08.apiconvert.vo.admin.UpstreamModelVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,7 +45,7 @@ public class AdminChannelService {
     /**
      * 默认供应商策略。
      */
-    private static final String DEFAULT_TYPE = "OPENAI_COMPATIBLE";
+    private static final String DEFAULT_TYPE = "OPENAI";
     /**
      * OpenAI 兼容渠道的默认对话补全路径。
      */
@@ -71,6 +74,15 @@ public class AdminChannelService {
      * CLAUDE_AUTH 默认使用 Anthropic 官方 API 地址，前端选择该类型时无需展示输入项。
      */
     private static final String DEFAULT_CLAUDE_AUTH_BASE_URL = "https://api.anthropic.com";
+    /**
+     * 官方 Anthropic 供应商默认 baseUrl，配合 x-api-key 鉴权。
+     */
+    private static final String DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+    /**
+     * Xiaomi MiMo Token Plan 默认 baseUrl，按量付费场景为 https://api.xiaomimimo.com。
+     * 参考 https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call
+     */
+    private static final String DEFAULT_MIMO_TOKEN_PLAN_BASE_URL = "https://token-plan-cn.xiaomimimo.com";
     /**
      * 默认凭证状态。
      */
@@ -102,6 +114,7 @@ public class AdminChannelService {
      * AUTH 类型渠道从 auth.json 中读取访问令牌用于模型发现。
      */
     private final AuthFileService authFileService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 注入渠道聚合操作所需的 Mapper 和供应商注册表。
@@ -149,7 +162,7 @@ public class AdminChannelService {
     public List<UpstreamModelVO> fetchModels(ChannelModelFetchRequest request) {
         requireText(request.baseUrl(), "Base URL 不能为空");
         String modelsPath = StringUtils.hasText(request.modelsPath()) ? request.modelsPath() : DEFAULT_MODELS_PATH;
-        ProviderType providerType = StringUtils.hasText(request.type()) ? ProviderType.valueOf(request.type()) : ProviderType.OPENAI_COMPATIBLE;
+        ProviderType providerType = StringUtils.hasText(request.type()) ? ProviderType.valueOf(request.type()) : ProviderType.OPENAI;
         String apiKey = resolveModelFetchApiKey(request, providerType);
         return providerClientRegistry.get(providerType)
                 .models(new ProviderModelFetchRequest(request.baseUrl(), modelsPath, apiKey))
@@ -221,7 +234,7 @@ public class AdminChannelService {
         requireText(form.code(), "渠道编码不能为空");
         requireText(form.name(), "渠道名称不能为空");
         String type = StringUtils.hasText(form.type()) ? form.type() : DEFAULT_TYPE;
-        if (!isAuthProvider(type)) {
+        if (!isAuthProvider(type) && !hasAutoDefaultBaseUrl(type)) {
             requireText(form.baseUrl(), "Base URL 不能为空");
         }
 
@@ -325,6 +338,12 @@ public class AdminChannelService {
         if (form.priority() != null) channel.setPriority(form.priority()); else if (creating) channel.setPriority(DEFAULT_PRIORITY);
         if (StringUtils.hasText(form.status())) channel.setStatus(form.status()); else if (creating) channel.setStatus(DEFAULT_STATUS);
         if (form.enabled() != null) channel.setEnabled(form.enabled()); else if (creating) channel.setEnabled(true);
+        if (form.capabilities() != null && !form.capabilities().isEmpty()) {
+            channel.setCapabilities(serializeCapabilities(form.capabilities()));
+            syncLegacyPaths(channel, form.capabilities());
+        } else if (creating) {
+            channel.setCapabilities(null);
+        }
     }
 
     /**
@@ -360,8 +379,10 @@ public class AdminChannelService {
                                 model.getVision(), model.getToolsSupport(), model.getJsonModeSupport(), model.getContextLength(),
                                 model.getEnabled(),
                                 model.getInputQuotaPerMillion(), model.getOutputQuotaPerMillion(), model.getCacheReadQuotaPerMillion(),
-                                model.getAllowedEndpointTypes()))
-                        .toList()
+                                model.getAllowedEndpointTypes(),
+                                model.getAllowedCapabilities()))
+                        .toList(),
+                parseCapabilities(channel.getCapabilities())
         );
     }
 
@@ -399,6 +420,7 @@ public class AdminChannelService {
             model.setJsonModeSupport(modelForm.jsonModeSupport());
             model.setContextLength(modelForm.contextLength());
             model.setAllowedEndpointTypes(modelForm.allowedEndpointTypes());
+            model.setAllowedCapabilities(modelForm.allowedCapabilities());
             model.setEnabled(true);
             channelModelMapper.insert(model);
         }
@@ -446,7 +468,7 @@ public class AdminChannelService {
                 normalized.put(publicName, new ChannelModelForm(publicName, providerModel, alias,
                     model.inputQuotaPerMillion(), model.outputQuotaPerMillion(), model.cacheReadQuotaPerMillion(),
                     model.vision(), model.toolsSupport(), model.jsonModeSupport(), model.contextLength(),
-                    model.allowedEndpointTypes()));
+                    model.allowedEndpointTypes(), model.allowedCapabilities()));
         }
         return new ArrayList<>(normalized.values());
     }
@@ -489,11 +511,9 @@ public class AdminChannelService {
     private String defaultPath(String type, String path) {
         if (StringUtils.hasText(path)) return path;
         return switch (type) {
-            case "ANTHROPIC", "DEEPSEEK_ANTHROPIC" -> DEFAULT_ANTHROPIC_PATH;
-            case "OPENAI_RESPONSES" -> "/v1/responses";
+            case "OPENAI", "DEEPSEEK", "VOLC_CODINGPLAN", "OPENCODE", "CUSTOM", "MIMO_TOKEN_PLAN" -> DEFAULT_CHAT_PATH;
             case "GPT_AUTH" -> DEFAULT_CHAT_PATH;
-            case "CLAUDE_AUTH" -> DEFAULT_ANTHROPIC_PATH;
-            case "DEEPSEEK_CHAT" -> DEFAULT_CHAT_PATH;
+            case "ANTHROPIC", "CLAUDE_AUTH" -> DEFAULT_ANTHROPIC_PATH;
             case "GEMINI" -> "/v1beta/models";
             default -> DEFAULT_CHAT_PATH;
         };
@@ -503,6 +523,8 @@ public class AdminChannelService {
         return switch (type) {
             case "GPT_AUTH" -> DEFAULT_GPT_AUTH_BASE_URL;
             case "CLAUDE_AUTH" -> DEFAULT_CLAUDE_AUTH_BASE_URL;
+            case "ANTHROPIC" -> DEFAULT_ANTHROPIC_BASE_URL;
+            case "MIMO_TOKEN_PLAN" -> DEFAULT_MIMO_TOKEN_PLAN_BASE_URL;
             default -> "";
         };
     }
@@ -522,5 +544,35 @@ public class AdminChannelService {
 
     private boolean isAuthProvider(String providerType) {
         return "GPT_AUTH".equals(providerType) || "CLAUDE_AUTH".equals(providerType);
+    }
+
+    /**
+     * 这类供应商在前端选择时无需手填 baseUrl，后端会写入默认官方地址。
+     */
+    private boolean hasAutoDefaultBaseUrl(String type) {
+        return isAuthProvider(type) || "ANTHROPIC".equals(type) || "MIMO_TOKEN_PLAN".equals(type);
+    }
+
+    private String serializeCapabilities(List<ChannelCapability> capabilities) {
+        if (capabilities == null || capabilities.isEmpty()) return null;
+        try { return objectMapper.writeValueAsString(capabilities); }
+        catch (Exception e) { return null; }
+    }
+
+    private List<ChannelCapability> parseCapabilities(String json) {
+        if (json == null || json.isBlank()) return null;
+        try { return objectMapper.readValue(json, new TypeReference<List<ChannelCapability>>() {}); }
+        catch (Exception e) { return null; }
+    }
+
+    private void syncLegacyPaths(AiChannelEntity channel, List<ChannelCapability> capabilities) {
+        for (ChannelCapability cap : capabilities) {
+            if (cap.path() == null || cap.path().isBlank()) continue;
+            switch (cap.type()) {
+                case "CHAT_COMPLETIONS", "ANTHROPIC_MESSAGES" -> channel.setChatPath(cap.path());
+                case "OPENAI_VIDEOS" -> channel.setVideoPath(cap.path());
+                case "OPENAI_IMAGES" -> channel.setImagePath(cap.path());
+            }
+        }
     }
 }
